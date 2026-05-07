@@ -34,8 +34,8 @@
     "reviewStalled_other": "Blocked · {{count}} reviews stalled with no clear next step",
     "needsAttention_one": "Blocked · 1 blocker needs attention",
     "needsAttention_other": "Blocked · {{count}} blockers need attention",
-    "needsAttentionCovered_one": "Blocked · {{attention}}; {{covered}} covered by active work",
-    "needsAttentionCovered_other": "Blocked · {{attention}}; {{covered}} covered by active work"
+    "needsAttentionCovered_one": "{{attention}}; {{covered}} covered by active work",
+    "needsAttentionCovered_other": "{{attention}}; {{covered}} covered by active work"
   },
   "thinkingEffort": {
     "default": "Default",

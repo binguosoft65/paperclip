@@ -34,8 +34,8 @@
     "reviewStalled_other": "已阻塞 · {{count}} 个审核停滞，无明确下一步",
     "needsAttention_one": "已阻塞 · 1 个阻塞项需要关注",
     "needsAttention_other": "已阻塞 · {{count}} 个阻塞项需要关注",
-    "needsAttentionCovered_one": "已阻塞 · {{attention}}；{{covered}} 已被活跃工作覆盖",
-    "needsAttentionCovered_other": "已阻塞 · {{attention}}；{{covered}} 已被活跃工作覆盖"
+    "needsAttentionCovered_one": "{{attention}}；{{covered}} 已被活跃工作覆盖",
+    "needsAttentionCovered_other": "{{attention}}；{{covered}} 已被活跃工作覆盖"
   },
   "thinkingEffort": {
     "default": "默认",
