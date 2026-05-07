@@ -1,10 +1,10 @@
 {
   "justNow": "just now",
-  "m": "m ago",
-  "h": "h ago",
-  "d": "d ago",
-  "w": "w ago",
-  "mo": "mo ago",
+  "m": "{{n}}m ago",
+  "h": "{{n}}h ago",
+  "d": "{{n}}d ago",
+  "w": "{{n}}w ago",
+  "mo": "{{n}}mo ago",
   "task": "task",
   "task_plural": "tasks"
 }

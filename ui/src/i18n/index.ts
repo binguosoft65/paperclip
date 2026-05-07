@@ -26,6 +26,7 @@ i18next
   .use(LanguageDetector)
   .use(initReactI18next)
   .init({
+    initAsync: false,
     resources: {
       en: { common: common_en, status: status_en, activity: activity_en, time: time_en, auth: auth_en, settings: settings_en, issues: issues_en, keyboard: keyboard_en },
       "zh-CN": { common: common_zhCN, status: status_zhCN, activity: activity_zhCN, time: time_zhCN, auth: auth_zhCN, settings: settings_zhCN, issues: issues_zhCN, keyboard: keyboard_zhCN },
@@ -37,6 +38,8 @@ i18next
       order: ["localStorage", "navigator"],
       caches: ["localStorage"],
       lookupLocalStorage: LOCALE_STORAGE_KEY,
+      convertDetectedLanguage: (lng: string) =>
+        lng.startsWith("zh") ? "zh-CN" : lng,
     },
   });
 
