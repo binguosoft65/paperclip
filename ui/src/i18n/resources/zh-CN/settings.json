@@ -50,7 +50,9 @@
     "signOutTitle": "退出登录",
     "signOutDesc": "退出此 Paperclip 实例。你将被重定向到登录页面。",
     "signOut": "退出登录",
-    "signingOut": "正在退出..."
+    "signingOut": "正在退出...",
+    "signOutFailed": "退出登录失败。",
+    "updateGeneralError": "更新通用设置失败。"
   },
   "experimental": {
     "confirmAutoRecovery": "确认自动恢复",

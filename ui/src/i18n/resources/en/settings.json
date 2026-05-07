@@ -50,7 +50,9 @@
     "signOutTitle": "Sign out",
     "signOutDesc": "Sign out of this Paperclip instance. You will be redirected to the login page.",
     "signOut": "Sign out",
-    "signingOut": "Signing out..."
+    "signingOut": "Signing out...",
+    "signOutFailed": "Failed to sign out.",
+    "updateGeneralError": "Failed to update general settings."
   },
   "experimental": {
     "confirmAutoRecovery": "Confirm auto-recovery",
