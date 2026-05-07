@@ -10,6 +10,7 @@ import auth_en from "./resources/en/auth.json";
 import settings_en from "./resources/en/settings.json";
 import issues_en from "./resources/en/issues.json";
 import keyboard_en from "./resources/en/keyboard.json";
+import company_en from "./resources/en/company.json";
 
 import common_zhCN from "./resources/zh-CN/common.json";
 import status_zhCN from "./resources/zh-CN/status.json";
@@ -19,6 +20,7 @@ import auth_zhCN from "./resources/zh-CN/auth.json";
 import settings_zhCN from "./resources/zh-CN/settings.json";
 import issues_zhCN from "./resources/zh-CN/issues.json";
 import keyboard_zhCN from "./resources/zh-CN/keyboard.json";
+import company_zhCN from "./resources/zh-CN/company.json";
 
 const LOCALE_STORAGE_KEY = "paperclip.locale";
 
@@ -28,8 +30,8 @@ i18next
   .init({
     initAsync: false,
     resources: {
-      en: { common: common_en, status: status_en, activity: activity_en, time: time_en, auth: auth_en, settings: settings_en, issues: issues_en, keyboard: keyboard_en },
-      "zh-CN": { common: common_zhCN, status: status_zhCN, activity: activity_zhCN, time: time_zhCN, auth: auth_zhCN, settings: settings_zhCN, issues: issues_zhCN, keyboard: keyboard_zhCN },
+      en: { common: common_en, status: status_en, activity: activity_en, time: time_en, auth: auth_en, settings: settings_en, issues: issues_en, keyboard: keyboard_en, company: company_en },
+      "zh-CN": { common: common_zhCN, status: status_zhCN, activity: activity_zhCN, time: time_zhCN, auth: auth_zhCN, settings: settings_zhCN, issues: issues_zhCN, keyboard: keyboard_zhCN, company: company_zhCN },
     },
     fallbackLng: "en",
     defaultNS: "common",
