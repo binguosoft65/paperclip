@@ -1,0 +1,58 @@
+{
+  "issueStatus": {
+    "backlog": "Backlog",
+    "todo": "Todo",
+    "in_progress": "In Progress",
+    "in_review": "In Review",
+    "done": "Done",
+    "cancelled": "Cancelled",
+    "blocked": "Blocked"
+  },
+  "priority": {
+    "critical": "Critical",
+    "high": "High",
+    "medium": "Medium",
+    "low": "Low"
+  },
+  "effort": {
+    "minor": "Minor",
+    "small": "Small",
+    "medium": "Medium",
+    "large": "Large",
+    "major": "Major"
+  },
+  "blocked": {
+    "default": "Blocked",
+    "waitingOnActiveSubIssue_one": "Blocked · waiting on active sub-issue {{identifier}}",
+    "waitingOnActiveSubIssue_one_noId": "Blocked · waiting on 1 active sub-issue",
+    "waitingOnActiveSubIssue_other": "Blocked · waiting on {{count}} active sub-issues",
+    "coveredByActiveDependency_one": "Blocked · covered by active dependency {{identifier}}",
+    "coveredByActiveDependency_one_noId": "Blocked · covered by 1 active dependency",
+    "coveredByActiveDependency_other": "Blocked · covered by {{count}} active dependencies",
+    "reviewStalled_one": "Blocked · review stalled on {{identifier}}",
+    "reviewStalled_one_noId": "Blocked · review stalled with no clear next step",
+    "reviewStalled_other": "Blocked · {{count}} reviews stalled with no clear next step",
+    "needsAttention_one": "Blocked · 1 blocker needs attention",
+    "needsAttention_other": "Blocked · {{count}} blockers need attention",
+    "needsAttentionCovered_one": "Blocked · {{attention}}; {{covered}} covered by active work",
+    "needsAttentionCovered_other": "Blocked · {{attention}}; {{covered}} covered by active work"
+  },
+  "thinkingEffort": {
+    "default": "Default",
+    "minimal": "Minimal",
+    "low": "Low",
+    "medium": "Medium",
+    "high": "High",
+    "xhigh": "X-High",
+    "max": "Max"
+  },
+  "executionWorkspaceMode": {
+    "shared_workspace": "Project default",
+    "isolated_workspace": "New isolated workspace",
+    "reuse_existing": "Reuse existing workspace"
+  },
+  "workMode": {
+    "standard": "Standard",
+    "planning": "Planning"
+  }
+}

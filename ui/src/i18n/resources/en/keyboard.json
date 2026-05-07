@@ -1,0 +1,27 @@
+{
+  "keyboardShortcuts": "Keyboard shortcuts",
+  "sections": {
+    "inbox": "Inbox",
+    "issueDetail": "Issue detail",
+    "global": "Global"
+  },
+  "shortcuts": {
+    "moveDown": "Move down",
+    "moveUp": "Move up",
+    "collapseGroup": "Collapse selected group",
+    "expandGroup": "Expand selected group",
+    "openSelected": "Open selected item",
+    "archive": "Archive item",
+    "markRead": "Mark as read",
+    "markUnread": "Mark as unread",
+    "quickArchive": "Quick-archive back to inbox",
+    "goToInbox": "Go to inbox",
+    "focusComment": "Focus comment composer",
+    "search": "Search current page or quick search",
+    "newIssue": "New issue",
+    "toggleSidebar": "Toggle sidebar",
+    "togglePanel": "Toggle panel",
+    "showShortcuts": "Show keyboard shortcuts"
+  },
+  "then": "then"
+}

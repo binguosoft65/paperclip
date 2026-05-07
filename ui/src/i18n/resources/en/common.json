@@ -1,0 +1,62 @@
+{
+  "loading": "Loading...",
+  "error": {
+    "generic": "Something went wrong",
+    "authFailed": "Authentication failed",
+    "signOutFailed": "Failed to sign out.",
+    "loadGeneralSettingsFailed": "Failed to load general settings.",
+    "updateGeneralSettingsFailed": "Failed to update general settings."
+  },
+  "sidebar": {
+    "newIssue": "New Issue",
+    "dashboard": "Dashboard",
+    "inbox": "Inbox"
+  },
+  "search": {
+    "openSearch": "Search current page or quick search",
+    "placeholder": "Search..."
+  },
+  "accountMenu": {
+    "openAccountMenu": "Open account menu",
+    "viewProfile": "View profile",
+    "viewProfileDesc": "Open your activity, task, and usage ledger.",
+    "editProfile": "Edit profile",
+    "editProfileDesc": "Update your display name and avatar.",
+    "instanceSettings": "Instance settings",
+    "instanceSettingsDesc": "Jump back to the last settings page you opened.",
+    "documentation": "Documentation",
+    "documentationDesc": "Open Paperclip docs in a new tab.",
+    "switchToLightMode": "Switch to light mode",
+    "switchToDarkMode": "Switch to dark mode",
+    "toggleThemeDesc": "Toggle the app appearance.",
+    "signOut": "Sign out",
+    "signingOut": "Signing out...",
+    "signOutDesc": "End this browser session.",
+    "account": "Account",
+    "local": "Local",
+    "signedIn": "Signed in",
+    "localWorkspaceBoard": "Local workspace board",
+    "board": "Board"
+  },
+  "breadcrumb": {
+    "openSidebar": "Open sidebar"
+  },
+  "filter": {
+    "clearAll": "Clear all"
+  },
+  "notFound": {
+    "title": "Not Found",
+    "companyNotFound": "Company not found",
+    "companyNotFoundDesc": "No company matches prefix \"{{prefix}}\".",
+    "pageNotFound": "Page not found",
+    "pageNotFoundDesc": "This route does not exist.",
+    "requestedPath": "Requested path:",
+    "openDashboard": "Open dashboard",
+    "goHome": "Go home"
+  },
+  "dialog": {
+    "confirm": "Confirm",
+    "cancel": "Cancel",
+    "close": "Close"
+  }
+}

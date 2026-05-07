@@ -1,0 +1,14 @@
+{
+  "newIssue": "New Issue",
+  "create": "Create",
+  "creating": "Creating...",
+  "title": "Title",
+  "description": "Description",
+  "status": "Status",
+  "priority": "Priority",
+  "assignee": "Assignee",
+  "reviewer": "Reviewer",
+  "approver": "Approver",
+  "project": "Project",
+  "workMode": "Work mode"
+}

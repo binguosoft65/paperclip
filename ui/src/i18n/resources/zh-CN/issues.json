@@ -1,0 +1,14 @@
+{
+  "newIssue": "新建问题",
+  "create": "创建",
+  "creating": "创建中...",
+  "title": "标题",
+  "description": "描述",
+  "status": "状态",
+  "priority": "优先级",
+  "assignee": "负责人",
+  "reviewer": "审核人",
+  "approver": "审批人",
+  "project": "项目",
+  "workMode": "工作模式"
+}

@@ -1,0 +1,62 @@
+{
+  "loading": "加载中...",
+  "error": {
+    "generic": "出错了",
+    "authFailed": "身份验证失败",
+    "signOutFailed": "退出登录失败。",
+    "loadGeneralSettingsFailed": "加载通用设置失败。",
+    "updateGeneralSettingsFailed": "更新通用设置失败。"
+  },
+  "sidebar": {
+    "newIssue": "新建问题",
+    "dashboard": "仪表盘",
+    "inbox": "收件箱"
+  },
+  "search": {
+    "openSearch": "搜索当前页面或快速搜索",
+    "placeholder": "搜索..."
+  },
+  "accountMenu": {
+    "openAccountMenu": "打开账号菜单",
+    "viewProfile": "查看个人资料",
+    "viewProfileDesc": "查看你的活动、任务和使用记录。",
+    "editProfile": "编辑个人资料",
+    "editProfileDesc": "更新你的显示名称和头像。",
+    "instanceSettings": "实例设置",
+    "instanceSettingsDesc": "跳回上次打开的设置页面。",
+    "documentation": "文档",
+    "documentationDesc": "在新标签页打开 Paperclip 文档。",
+    "switchToLightMode": "切换到浅色模式",
+    "switchToDarkMode": "切换到深色模式",
+    "toggleThemeDesc": "切换应用外观。",
+    "signOut": "退出登录",
+    "signingOut": "正在退出...",
+    "signOutDesc": "结束当前浏览器会话。",
+    "account": "账号",
+    "local": "本地",
+    "signedIn": "已登录",
+    "localWorkspaceBoard": "本地工作区面板",
+    "board": "面板"
+  },
+  "breadcrumb": {
+    "openSidebar": "打开侧边栏"
+  },
+  "filter": {
+    "clearAll": "清除全部"
+  },
+  "notFound": {
+    "title": "未找到",
+    "companyNotFound": "公司未找到",
+    "companyNotFoundDesc": "没有匹配前缀 \"{{prefix}}\" 的公司。",
+    "pageNotFound": "页面未找到",
+    "pageNotFoundDesc": "此路由不存在。",
+    "requestedPath": "请求路径：",
+    "openDashboard": "打开仪表盘",
+    "goHome": "回到首页"
+  },
+  "dialog": {
+    "confirm": "确认",
+    "cancel": "取消",
+    "close": "关闭"
+  }
+}
