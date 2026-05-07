@@ -125,7 +125,14 @@
     "zoomIn": "放大",
     "zoomOut": "缩小",
     "fitChart": "适应图表到屏幕",
-    "showVariableHelp": "显示变量帮助"
+    "showVariableHelp": "显示变量帮助",
+    "closeSidebar": "关闭侧边栏",
+    "commentEditor": "评论编辑器",
+    "copyCommentAsMarkdown": "复制评论为 Markdown",
+    "modelLane": "模型通道",
+    "productivityReviewOpen": "生产力审查中",
+    "issueRunLedger": "问题运行记录",
+    "scrollableTable": "可滚动表格"
   },
   "placeholder": {
     "addDescription": "添加描述...",

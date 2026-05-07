@@ -125,7 +125,14 @@
     "zoomIn": "Zoom in",
     "zoomOut": "Zoom out",
     "fitChart": "Fit chart to screen",
-    "showVariableHelp": "Show variable help"
+    "showVariableHelp": "Show variable help",
+    "closeSidebar": "Close sidebar",
+    "commentEditor": "Comment editor",
+    "copyCommentAsMarkdown": "Copy comment as markdown",
+    "modelLane": "Model lane",
+    "productivityReviewOpen": "Productivity review open",
+    "issueRunLedger": "Issue run ledger",
+    "scrollableTable": "Scrollable table"
   },
   "placeholder": {
     "addDescription": "Add a description...",

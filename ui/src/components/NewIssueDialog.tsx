@@ -370,7 +370,7 @@ export function NewIssueDialog() {
   const draftTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const executionWorkspaceDefaultProjectId = useRef<string | null>(null);
   const initializationKeyRef = useRef<string | null>(null);
-  const { t } = useTranslation("status");
+  const { t } = useTranslation(["status", "common"]);
 
   const ISSUE_THINKING_EFFORT_OPTIONS = {
     claude_local: [
@@ -1637,7 +1637,7 @@ export function NewIssueDialog() {
                   <div
                     className="flex w-full overflow-hidden rounded-md border border-border"
                     role="radiogroup"
-                    aria-label="Model lane"
+                    aria-label={t('aria.modelLane')}
                   >
                     {(["primary", ...(assigneeSupportsCheapLane ? (["cheap"] as const) : ([] as const)), "custom"] as const).map((lane) => (
                       <button
