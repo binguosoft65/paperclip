@@ -58,5 +58,89 @@
     "confirm": "Confirm",
     "cancel": "Cancel",
     "close": "Close"
+  },
+  "dateRange": {
+    "monthToDate": "Month to Date",
+    "last7Days": "Last 7 Days",
+    "last30Days": "Last 30 Days",
+    "yearToDate": "Year to Date",
+    "allTime": "All Time",
+    "custom": "Custom"
+  },
+  "goals": {
+    "title": "Goals",
+    "noCompany": "Select a company to view goals.",
+    "noGoals": "No goals yet.",
+    "addGoal": "Add Goal",
+    "newGoal": "New Goal"
+  },
+  "onboarding": {
+    "addAnotherAgent": "Add another agent to {{name}}",
+    "createAnotherCompany": "Create another company",
+    "createFirstCompany": "Create your first company",
+    "addAgentAndTask": "Run onboarding again to add an agent and a starter task for this company.",
+    "createCompanyAndAgent": "Run onboarding again to create another company and seed its first agent.",
+    "getStarted": "Get started by creating a company and your first agent.",
+    "addAgent": "Add Agent",
+    "startOnboarding": "Start Onboarding"
+  },
+  "app": {
+    "paperclip": "Paperclip"
+  },
+  "actor": {
+    "system": "System",
+    "board": "Board",
+    "someone": "Someone",
+    "agent": "Agent"
+  },
+  "toast": {
+    "viewInbox": "View inbox",
+    "viewAgent": "View agent",
+    "viewRun": "View run",
+    "wantsToJoin": "{{label}} wants to join",
+    "joinRequestBody": "A new join request is waiting for approval.",
+    "started": "{{name}} started",
+    "errored": "{{name}} errored",
+    "succeeded": "succeeded",
+    "failed": "failed",
+    "timedOut": "timed out",
+    "cancelled": "cancelled",
+    "trigger": "Trigger: {{detail}}"
+  },
+  "aria": {
+    "markAsRead": "Mark as read",
+    "dismissFromInbox": "Dismiss from inbox",
+    "dismiss": "Dismiss",
+    "dismissNotification": "Dismiss notification",
+    "backToInbox": "Back to inbox",
+    "archiveFromInbox": "Archive from inbox",
+    "moreActions": "More actions",
+    "searchQuery": "Search query",
+    "clearSearch": "Clear search",
+    "newProject": "New project",
+    "newAgent": "New agent",
+    "addLabel": "Add label",
+    "mobileNavigation": "Mobile navigation",
+    "changeColor": "Change project color",
+    "zoomIn": "Zoom in",
+    "zoomOut": "Zoom out",
+    "fitChart": "Fit chart to screen",
+    "showVariableHelp": "Show variable help"
+  },
+  "placeholder": {
+    "addDescription": "Add a description...",
+    "search": "Search...",
+    "searchInbox": "Search inbox...",
+    "filterByType": "Filter by type",
+    "searchByNameOrEmail": "Search by name or email",
+    "addComment": "Add a comment...",
+    "addInstructions": "Add instructions...",
+    "searchFiles": "Search files...",
+    "category": "Category",
+    "approvalStatus": "Approval status",
+    "routineTitle": "Routine title",
+    "assignee": "Assignee",
+    "project": "Project",
+    "workspaceName": "Workspace name"
   }
 }

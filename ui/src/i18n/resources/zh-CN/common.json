@@ -58,5 +58,89 @@
     "confirm": "确认",
     "cancel": "取消",
     "close": "关闭"
+  },
+  "dateRange": {
+    "monthToDate": "本月至今",
+    "last7Days": "最近 7 天",
+    "last30Days": "最近 30 天",
+    "yearToDate": "年初至今",
+    "allTime": "全部时间",
+    "custom": "自定义"
+  },
+  "goals": {
+    "title": "目标",
+    "noCompany": "请选择公司以查看目标。",
+    "noGoals": "暂无目标。",
+    "addGoal": "添加目标",
+    "newGoal": "新建目标"
+  },
+  "onboarding": {
+    "addAnotherAgent": "为 {{name}} 添加另一个代理",
+    "createAnotherCompany": "创建另一个公司",
+    "createFirstCompany": "创建你的第一个公司",
+    "addAgentAndTask": "重新运行引导为此公司添加一个代理和一个入门任务。",
+    "createCompanyAndAgent": "重新运行引导以创建另一个公司并初始化其第一个代理。",
+    "getStarted": "开始创建一个公司和你的第一个代理。",
+    "addAgent": "添加代理",
+    "startOnboarding": "开始引导"
+  },
+  "app": {
+    "paperclip": "Paperclip"
+  },
+  "actor": {
+    "system": "系统",
+    "board": "面板",
+    "someone": "某人",
+    "agent": "代理"
+  },
+  "toast": {
+    "viewInbox": "查看收件箱",
+    "viewAgent": "查看代理",
+    "viewRun": "查看运行",
+    "wantsToJoin": "{{label}} 想要加入",
+    "joinRequestBody": "新的加入请求正在等待批准。",
+    "started": "{{name}} 已开始",
+    "errored": "{{name}} 出错",
+    "succeeded": "已成功",
+    "failed": "失败",
+    "timedOut": "超时",
+    "cancelled": "已取消",
+    "trigger": "触发器：{{detail}}"
+  },
+  "aria": {
+    "markAsRead": "标记为已读",
+    "dismissFromInbox": "从收件箱移除",
+    "dismiss": "关闭",
+    "dismissNotification": "关闭通知",
+    "backToInbox": "返回收件箱",
+    "archiveFromInbox": "从收件箱归档",
+    "moreActions": "更多操作",
+    "searchQuery": "搜索查询",
+    "clearSearch": "清除搜索",
+    "newProject": "新建项目",
+    "newAgent": "新建代理",
+    "addLabel": "添加标签",
+    "mobileNavigation": "移动导航",
+    "changeColor": "更改项目颜色",
+    "zoomIn": "放大",
+    "zoomOut": "缩小",
+    "fitChart": "适应图表到屏幕",
+    "showVariableHelp": "显示变量帮助"
+  },
+  "placeholder": {
+    "addDescription": "添加描述...",
+    "search": "搜索...",
+    "searchInbox": "搜索收件箱...",
+    "filterByType": "按类型筛选",
+    "searchByNameOrEmail": "按姓名或邮箱搜索",
+    "addComment": "添加评论...",
+    "addInstructions": "添加说明...",
+    "searchFiles": "搜索文件...",
+    "category": "分类",
+    "approvalStatus": "审批状态",
+    "routineTitle": "任务标题",
+    "assignee": "负责人",
+    "project": "项目",
+    "workspaceName": "工作区名称"
   }
 }
