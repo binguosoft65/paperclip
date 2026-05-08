@@ -425,7 +425,16 @@
     "successRate": "成功率",
     "last14Days": "最近 14 天",
     "moreIssues_one": "+{{count}} 个更多问题",
-    "moreIssues_other": "+{{count}} 个更多问题"
+    "moreIssues_other": "+{{count}} 个更多问题",
+    "sourceTimer": "定时器",
+    "sourceAssignment": "任务分配",
+    "sourceOnDemand": "按需",
+    "sourceAutomation": "自动化",
+    "worktreeSetup": "工作树设置",
+    "provision": "配置",
+    "teardown": "拆卸",
+    "worktreeCleanup": "工作树清理",
+    "viewCompanySkillsLibrary": "查看公司技能库"
   },
   "newAgent": {
     "breadcrumbAgents": "代理",

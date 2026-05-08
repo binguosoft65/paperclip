@@ -425,7 +425,16 @@
     "successRate": "Success Rate",
     "last14Days": "Last 14 days",
     "moreIssues_one": "+{{count}} more issue",
-    "moreIssues_other": "+{{count}} more issues"
+    "moreIssues_other": "+{{count}} more issues",
+    "sourceTimer": "Timer",
+    "sourceAssignment": "Assignment",
+    "sourceOnDemand": "On-demand",
+    "sourceAutomation": "Automation",
+    "worktreeSetup": "Worktree setup",
+    "provision": "Provision",
+    "teardown": "Teardown",
+    "worktreeCleanup": "Worktree cleanup",
+    "viewCompanySkillsLibrary": "View company skills library"
   },
   "newAgent": {
     "breadcrumbAgents": "Agents",

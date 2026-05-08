@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, useRef } from "react";
 import { useTranslation } from "react-i18next";
+import { t as i18nT } from "../i18n";
 import { useParams, useNavigate, Link, Navigate, useBeforeUnload } from "@/lib/router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
@@ -176,10 +177,10 @@ function formatEnvForDisplay(envValue: unknown, censorUsernameInLogs: boolean): 
 }
 
 const sourceLabels: Record<string, string> = {
-  timer: "Timer",
-  assignment: "Assignment",
-  on_demand: "On-demand",
-  automation: "Automation",
+  timer: i18nT("agentDetail.sourceTimer"),
+  assignment: i18nT("agentDetail.sourceAssignment"),
+  on_demand: i18nT("agentDetail.sourceOnDemand"),
+  automation: i18nT("agentDetail.sourceAutomation"),
 };
 
 const LIVE_SCROLL_BOTTOM_TOLERANCE_PX = 32;
@@ -420,13 +421,13 @@ function parseStoredLogContent(content: string): RunLogChunk[] {
 function workspaceOperationPhaseLabel(phase: WorkspaceOperation["phase"]) {
   switch (phase) {
     case "worktree_prepare":
-      return "Worktree setup";
+      return i18nT("agentDetail.worktreeSetup");
     case "workspace_provision":
-      return "Provision";
+      return i18nT("agentDetail.provision");
     case "workspace_teardown":
-      return "Teardown";
+      return i18nT("agentDetail.teardown");
     case "worktree_cleanup":
-      return "Worktree cleanup";
+      return i18nT("agentDetail.worktreeCleanup");
     default:
       return phase;
   }
@@ -2693,7 +2694,7 @@ export function AgentSkillsTab({
           to="/skills"
           className="text-sm font-medium text-foreground underline-offset-4 no-underline transition-colors hover:text-foreground/70 hover:underline"
         >
-          View company skills library
+          {i18nT("agentDetail.viewCompanySkillsLibrary")}
         </Link>
         {saveStatusLabel ? (
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
