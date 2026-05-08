@@ -1151,7 +1151,14 @@
       "reloadFailed": "重新加载失败",
       "reinstalled": "适配器已重新安装",
       "reinstallFailed": "重新安装失败"
-    }
+    },
+    "alreadyLatest": "已是最新",
+    "checking": "检查中...",
+    "current": "当前",
+    "latestOnNpm": "npm 上最新版本",
+    "package": "包",
+    "unavailable": "不可用",
+    "unknown": "未知"
   },
   "commandPalette": {
     "placeholder": "搜索问题、代理、项目...",
