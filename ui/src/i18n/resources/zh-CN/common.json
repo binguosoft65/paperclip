@@ -514,14 +514,14 @@
       "cleanupCommand": "pkill -f vite || true"
     },
     "sourceTypes": {
-      "localGit": "本地 Git 检出",
-      "localGitDesc": "Paperclip 可以直接使用的本地路径。",
-      "localNonGit": "本地非 Git 路径",
-      "localNonGitDesc": "没有 Git 语义的本地文件夹。",
-      "remoteGit": "远程 Git 仓库",
-      "remoteGitDesc": "带有可选引用和本地检出的仓库 URL。",
-      "remoteManaged": "远程管理工作区",
-      "remoteManagedDesc": "通过外部引用跟踪的托管工作区。"
+      "local_path": "本地 Git 检出",
+      "local_pathDesc": "Paperclip 可以直接使用的本地路径。",
+      "non_git_path": "本地非 Git 路径",
+      "non_git_pathDesc": "没有 Git 语义的本地文件夹。",
+      "git_repo": "远程 Git 仓库",
+      "git_repoDesc": "带有可选引用和本地检出的仓库 URL。",
+      "remote_managed": "远程管理工作区",
+      "remote_managedDesc": "通过外部引用跟踪的托管工作区。"
     },
     "visibility": {
       "default": "默认",
@@ -557,7 +557,8 @@
       "repoUrlRequired": "仓库 URL 必须是有效的 URL。",
       "jsonMustBeObject": "工作区命令 JSON 必须是 JSON 对象。",
       "invalidJson": "JSON 无效。"
-    }
+    },
+    "none": "无"
   },
   "executionWorkspace": {
     "title": "执行工作区",
@@ -642,7 +643,12 @@
       "loadingWorkspace": "正在加载工作区...",
       "loadingRoutines": "正在加载例行任务...",
       "loadingOperations": "正在加载工作区操作…",
-      "noOperations": "尚未记录任何工作区操作。"
+      "noOperations": "尚未记录任何工作区操作。",
+      "copied": "已复制",
+      "jobCompleted": "工作区任务已完成。",
+      "serviceStopped": "工作区服务已停止。",
+      "serviceRestarted": "工作区服务已重启。",
+      "serviceStarted": "工作区服务已启动。"
     },
     "advancedRuntimeJson": "高级运行时 JSON",
     "advancedRuntimeDesc": "仅当此执行工作区确实需要不同的服务或任务行为时，才覆盖继承的工作区命令模型。",
@@ -653,7 +659,8 @@
       "defaultAgentSet": "已设置默认代理",
       "chooseAgentWhenRunning": "运行时选择代理",
       "runNow": "立即运行",
-      "running": "运行中..."
+      "running": "运行中...",
+      "lastRun": "上次运行"
     },
     "facts": {
       "project": "项目",
@@ -668,7 +675,9 @@
       "branch": "分支",
       "opened": "打开于",
       "lastUsed": "最后使用于",
-      "cleanup": "清理"
+      "cleanup": "清理",
+      "none": "无",
+      "notScheduled": "未安排"
     },
     "serviceEmpty": {
       "noServices": "此执行工作区尚未启动任何服务。",
@@ -679,7 +688,13 @@
     "routineMessages": {
       "routineStarted": "例行任务已启动",
       "routineStartedBody": "Paperclip 使用此执行工作区创建了一个运行。",
-      "routineRunFailed": "例行任务运行失败"
+      "routineRunFailed": "例行任务运行失败",
+      "routineRunFailedBody": "Paperclip 无法启动例行任务运行。"
+    },
+    "validation": {
+      "repoUrl": "仓库 URL 必须是有效的 URL。",
+      "jsonMustBeObject": "工作区命令 JSON 必须是 JSON 对象。",
+      "invalidJson": "JSON 无效。"
     }
   },
   "goalDetail": {
@@ -1032,6 +1047,7 @@
     }
   },
   "pluginPage": {
+    "breadcrumbPlugins": "插件",
     "selectCompany": "请选择公司以查看此页面。",
     "loading": "正在加载...",
     "multiplePlugins": "多个插件声明了路由 <3>{{routePath}}</3>。请使用插件 ID 路由，直到冲突解决。",
@@ -1500,7 +1516,10 @@
       "hmac_sha256": "使用共享密钥对请求进行 HMAC SHA-256 签名。",
       "github_hmac": "接受 GitHub 风格的 X-Hub-Signature-256 头。",
       "none": "无需认证——Webhook URL 本身充当共享密钥。"
-    }
+    },
+    "saveTrigger": "保存触发器",
+    "rotateSecret": "轮换密钥",
+    "noActivity": "暂无活动。"
   },
   "approvals": {
     "title": "审批",

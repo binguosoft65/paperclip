@@ -514,14 +514,14 @@
       "cleanupCommand": "pkill -f vite || true"
     },
     "sourceTypes": {
-      "localGit": "Local git checkout",
-      "localGitDesc": "A local path Paperclip can use directly.",
-      "localNonGit": "Local non-git path",
-      "localNonGitDesc": "A local folder without git semantics.",
-      "remoteGit": "Remote git repo",
-      "remoteGitDesc": "A repo URL with optional refs and local checkout.",
-      "remoteManaged": "Remote-managed workspace",
-      "remoteManagedDesc": "A hosted workspace tracked by external reference."
+      "local_path": "Local git checkout",
+      "local_pathDesc": "A local path Paperclip can use directly.",
+      "non_git_path": "Local non-git path",
+      "non_git_pathDesc": "A local folder without git semantics.",
+      "git_repo": "Remote git repo",
+      "git_repoDesc": "A repo URL with optional refs and local checkout.",
+      "remote_managed": "Remote-managed workspace",
+      "remote_managedDesc": "A hosted workspace tracked by external reference."
     },
     "visibility": {
       "default": "Default",
@@ -557,7 +557,8 @@
       "repoUrlRequired": "Repo URL must be a valid URL.",
       "jsonMustBeObject": "Workspace commands JSON must be a JSON object.",
       "invalidJson": "Invalid JSON."
-    }
+    },
+    "none": "None"
   },
   "executionWorkspace": {
     "title": "Execution workspace",
@@ -642,7 +643,12 @@
       "loadingWorkspace": "Loading workspace...",
       "loadingRoutines": "Loading routines...",
       "loadingOperations": "Loading workspace operations…",
-      "noOperations": "No workspace operations have been recorded yet."
+      "noOperations": "No workspace operations have been recorded yet.",
+      "copied": "Copied",
+      "jobCompleted": "Workspace job completed.",
+      "serviceStopped": "Workspace service stopped.",
+      "serviceRestarted": "Workspace service restarted.",
+      "serviceStarted": "Workspace service started."
     },
     "advancedRuntimeJson": "Advanced runtime JSON",
     "advancedRuntimeDesc": "Override the inherited workspace command model only when this execution workspace truly needs different service or job behavior.",
@@ -653,7 +659,8 @@
       "defaultAgentSet": "Default agent set",
       "chooseAgentWhenRunning": "Choose agent when running",
       "runNow": "Run now",
-      "running": "Running..."
+      "running": "Running...",
+      "lastRun": "Last run"
     },
     "facts": {
       "project": "Project",
@@ -668,7 +675,9 @@
       "branch": "Branch",
       "opened": "Opened",
       "lastUsed": "Last used",
-      "cleanup": "Cleanup"
+      "cleanup": "Cleanup",
+      "none": "None",
+      "notScheduled": "Not scheduled"
     },
     "serviceEmpty": {
       "noServices": "No services have been started for this execution workspace yet.",
@@ -679,7 +688,13 @@
     "routineMessages": {
       "routineStarted": "Routine started",
       "routineStartedBody": "Paperclip created a run using this execution workspace.",
-      "routineRunFailed": "Routine run failed"
+      "routineRunFailed": "Routine run failed",
+      "routineRunFailedBody": "Paperclip could not start the routine run."
+    },
+    "validation": {
+      "repoUrl": "Repo URL must be a valid URL.",
+      "jsonMustBeObject": "Workspace commands JSON must be a JSON object.",
+      "invalidJson": "Invalid JSON."
     }
   },
   "goalDetail": {
@@ -1032,6 +1047,7 @@
     }
   },
   "pluginPage": {
+    "breadcrumbPlugins": "Plugins",
     "selectCompany": "Select a company to view this page.",
     "loading": "Loading...",
     "multiplePlugins": "Multiple plugins declare the route <3>{{routePath}}</3>. Use the plugin-id route until the conflict is resolved.",
@@ -1507,7 +1523,10 @@
       "hmac_sha256": "Expect an HMAC SHA-256 signature over the request using the shared secret.",
       "github_hmac": "Accept GitHub-style X-Hub-Signature-256 header (HMAC over raw body, no timestamp).",
       "none": "No authentication — the webhook URL itself acts as a shared secret."
-    }
+    },
+    "saveTrigger": "Save trigger",
+    "rotateSecret": "Rotate secret",
+    "noActivity": "No activity yet."
   },
   "approvals": {
     "title": "Approvals",
