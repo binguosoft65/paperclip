@@ -10,7 +10,35 @@
   "sidebar": {
     "newIssue": "新建问题",
     "dashboard": "仪表盘",
-    "inbox": "收件箱"
+    "inbox": "收件箱",
+    "work": "工作",
+    "issues": "问题",
+    "search": "搜索",
+    "routines": "例程",
+    "goals": "目标",
+    "workspaces": "工作区",
+    "company": "公司",
+    "org": "组织",
+    "skills": "技能",
+    "costs": "成本",
+    "activity": "活动",
+    "settings": "设置",
+    "live": "个活跃",
+    "companyMenu": {
+      "openSwitcher": "打开 {{name}} 工作区切换器",
+      "openSwitcherGeneric": "打开工作区切换器",
+      "selectWorkspace": "选择工作区",
+      "switchWorkspace": "切换工作区",
+      "done": "完成",
+      "edit": "编辑",
+      "noWorkspaces": "无工作区",
+      "addCompany": "添加公司...",
+      "invitePeopleTo": "邀请他人加入 {{name}}",
+      "invitePeople": "邀请他人",
+      "companySettings": "公司设置",
+      "signingOut": "正在退出...",
+      "signOut": "退出登录"
+    }
   },
   "search": {
     "openSearch": "搜索当前页面或快速搜索",

@@ -10,7 +10,35 @@
   "sidebar": {
     "newIssue": "New Issue",
     "dashboard": "Dashboard",
-    "inbox": "Inbox"
+    "inbox": "Inbox",
+    "work": "Work",
+    "issues": "Issues",
+    "search": "Search",
+    "routines": "Routines",
+    "goals": "Goals",
+    "workspaces": "Workspaces",
+    "company": "Company",
+    "org": "Org",
+    "skills": "Skills",
+    "costs": "Costs",
+    "activity": "Activity",
+    "settings": "Settings",
+    "live": "live",
+    "companyMenu": {
+      "openSwitcher": "Open {{name}} workspace switcher",
+      "openSwitcherGeneric": "Open workspace switcher",
+      "selectWorkspace": "Select workspace",
+      "switchWorkspace": "Switch workspace",
+      "done": "Done",
+      "edit": "Edit",
+      "noWorkspaces": "No workspaces",
+      "addCompany": "Add company...",
+      "invitePeopleTo": "Invite people to {{name}}",
+      "invitePeople": "Invite people",
+      "companySettings": "Company settings",
+      "signingOut": "Signing out...",
+      "signOut": "Sign out"
+    }
   },
   "search": {
     "openSearch": "Search current page or quick search",
