@@ -1573,6 +1573,7 @@
     "noApprovals": "No approvals yet.",
     "selectCompany": "Select a company first.",
     "approvalNotFound": "Approval not found.",
+    "approvalFallback": "Approval",
     "requestedBy": "Requested by",
     "linkedIssues": "Linked Issues",
     "linkedIssuesNote": "Linked issues remain open until the requesting agent follows up and closes them.",
@@ -1593,7 +1594,7 @@
     "backToApprovals": "Back to approvals",
     "reviewLinkedIssue": "Review linked issue",
     "reviewLinkedIssues": "Review linked issues",
-    "resolveBudgetStop": "Resolve this budget stop from the budget controls on /costs.",
+    "resolveBudgetStop": "Resolve this budget stop from the budget controls on <link>/costs</link>.",
     "toast": {
       "approveFailed": "Failed to approve",
       "rejectFailed": "Failed to reject",
@@ -1655,6 +1656,7 @@
     "title": "Join Request Queue",
     "description": "Review human and agent join requests outside the mixed inbox feed. This queue uses the same approval mutations as the inline inbox cards.",
     "breadcrumb": "Join Requests",
+    "breadcrumbCompany": "Company",
     "statusLabel": "Status",
     "requestTypeLabel": "Request type",
     "statusPending": "Pending approval",
@@ -1672,6 +1674,8 @@
     "reject": "Reject",
     "inviteContext": "Invite context",
     "inviteMetadataUnavailable": "Invite metadata unavailable",
+    "inviteContextFormat": "{{joinTypes}} join invite{{roleSuffix}}",
+    "defaultRoleFormat": " • default role {{role}}",
     "requestDetails": "Request details",
     "submitted": "Submitted {{date}}",
     "sourceIp": "Source IP {{ip}}",
@@ -1711,6 +1715,7 @@
   "instanceSettings": {
     "title": "Scheduler Heartbeats",
     "description": "Agents with a timer heartbeat enabled across all of your companies.",
+    "breadcrumbSettings": "Instance Settings",
     "breadcrumbHeartbeats": "Heartbeats",
     "active": "active",
     "disabled": "disabled",
@@ -1864,6 +1869,16 @@
     "boardInvitedBy": "Paperclip board",
     "agentJoinRequest": "Agent join request",
     "companyAccess": "Company access",
-    "adapterComingSoon": " (Coming soon)"
+    "adapterComingSoon": " (Coming soon)",
+    "thisPaperclipCompany": "this Paperclip company",
+    "aCompanyAdmin": "A company admin",
+    "thisAccountFallback": "this account",
+    "inviteNotFound": "Invite not found",
+    "checkAccessTryAgain": "Checking your company access. Try again in a moment.",
+    "alreadyBelongsToCompany": "This account already belongs to the company.",
+    "failedToAcceptInvite": "Failed to accept invite",
+    "submittingLabel": "Submitting join request",
+    "acceptBootstrapLabel": "Accept bootstrap invite",
+    "acceptCompanyLabel": "Accept company invite"
   }
 }

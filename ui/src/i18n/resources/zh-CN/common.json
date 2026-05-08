@@ -1566,6 +1566,7 @@
     "noApprovals": "暂无审批。",
     "selectCompany": "请先选择公司。",
     "approvalNotFound": "未找到审批。",
+    "approvalFallback": "审批",
     "requestedBy": "请求者",
     "linkedIssues": "关联问题",
     "linkedIssuesNote": "关联问题将保持打开状态，直到请求代理跟进并关闭它们。",
@@ -1586,7 +1587,7 @@
     "backToApprovals": "返回审批",
     "reviewLinkedIssue": "查看关联问题",
     "reviewLinkedIssues": "查看关联问题",
-    "resolveBudgetStop": "请通过 /costs 上的预算控制解决此预算停止。",
+    "resolveBudgetStop": "请通过 <link>/costs</link> 上的预算控制解决此预算停止。",
     "toast": {
       "approveFailed": "批准失败",
       "rejectFailed": "拒绝失败",
@@ -1648,6 +1649,7 @@
     "title": "加入请求队列",
     "description": "在混合收件箱之外审查人员和代理的加入请求。此队列使用与内联收件箱卡片相同的批准变更。",
     "breadcrumb": "加入请求",
+    "breadcrumbCompany": "公司",
     "statusLabel": "状态",
     "requestTypeLabel": "请求类型",
     "statusPending": "待批准",
@@ -1665,6 +1667,8 @@
     "reject": "拒绝",
     "inviteContext": "邀请上下文",
     "inviteMetadataUnavailable": "邀请元数据不可用",
+    "inviteContextFormat": "{{joinTypes}} 加入邀请{{roleSuffix}}",
+    "defaultRoleFormat": " • 默认角色 {{role}}",
     "requestDetails": "请求详情",
     "submitted": "提交于 {{date}}",
     "sourceIp": "源 IP {{ip}}",
@@ -1704,6 +1708,7 @@
   "instanceSettings": {
     "title": "调度器心跳",
     "description": "在所有公司中启用了定时器心跳的代理。",
+    "breadcrumbSettings": "实例设置",
     "breadcrumbHeartbeats": "心跳",
     "active": "活跃",
     "disabled": "已禁用",
@@ -1857,6 +1862,16 @@
     "boardInvitedBy": "Paperclip 面板",
     "agentJoinRequest": "代理加入请求",
     "companyAccess": "公司访问权限",
-    "adapterComingSoon": "（即将推出）"
+    "adapterComingSoon": "（即将推出）",
+    "thisPaperclipCompany": "该 Paperclip 公司",
+    "aCompanyAdmin": "一名公司管理员",
+    "thisAccountFallback": "此账号",
+    "inviteNotFound": "未找到邀请",
+    "checkAccessTryAgain": "正在检查您的公司访问权限。请稍后再试。",
+    "alreadyBelongsToCompany": "此账号已属于该公司。",
+    "failedToAcceptInvite": "接受邀请失败",
+    "submittingLabel": "正在提交加入请求",
+    "acceptBootstrapLabel": "接受引导邀请",
+    "acceptCompanyLabel": "接受公司邀请"
   }
 }
