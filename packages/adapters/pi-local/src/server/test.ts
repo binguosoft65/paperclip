@@ -78,6 +78,8 @@ function buildPiModelDiscoveryFailureCheck(message: string): AdapterEnvironmentC
   };
 }
 
+// Pi 环境检测：验证 CLI 命令可用、模型发现（pi --list-models）、
+// 认证就绪、模型配置有效。特别检测 pi-driver 安装问题（常见故障点）。
 export async function testEnvironment(
   ctx: AdapterEnvironmentTestContext,
 ): Promise<AdapterEnvironmentTestResult> {

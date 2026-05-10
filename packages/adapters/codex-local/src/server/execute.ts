@@ -49,9 +49,14 @@ import { buildCodexExecArgs } from "./codex-args.js";
 import { SANDBOX_INSTALL_COMMAND } from "../index.js";
 
 const __moduleDir = path.dirname(fileURLToPath(import.meta.url));
+// Codex CLI 在 rollout 检查时会输出非致命 ERROR 日志到 stderr。
+// Paperclip 过滤这些噪音，避免它们被用户误认为是运行失败。
 const CODEX_ROLLOUT_NOISE_RE =
   /^\d{4}-\d{2}-\d{2}T[^\s]+\s+ERROR\s+codex_core::rollout::list:\s+state db missing rollout path for thread\s+[a-z0-9-]+$/i;
 
+// 过滤 Codex CLI 标准错误中的 rollout 噪音日志。
+// Codex 在启动时可能输出非致命 ERROR 级别的 rollout 状态信息，
+// 这些是 Codex 内部实现细节，不应该暴露给 Paperclip 用户。
 function stripCodexRolloutNoise(text: string): string {
   const parts = text.split(/\r?\n/);
   const kept: string[] = [];
@@ -338,6 +343,9 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
     typeof envConfig.OPENAI_API_KEY === "string" && envConfig.OPENAI_API_KEY.trim().length > 0
       ? envConfig.OPENAI_API_KEY.trim()
       : null;
+  // Codex home 目录优先级：配置显式 CODEX_HOME > Paperclip 托管 home > 默认 ~/.codex。
+  // Paperclip 管理的 home 按公司隔离，seeds 来自源 CODEX_HOME 或 ~/.codex，
+  // 这样不同公司的 agent 使用各自独立的 skill 空间，不会相互污染。
   const preparedManagedCodexHome =
     configuredCodexHome
       ? null
@@ -347,8 +355,8 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
   const defaultCodexHome = resolveManagedCodexHomeDir(process.env, agent.companyId);
   const effectiveCodexHome = configuredCodexHome ?? preparedManagedCodexHome ?? defaultCodexHome;
   await fs.mkdir(effectiveCodexHome, { recursive: true });
-  // Inject skills into the same CODEX_HOME that Codex will actually run with
-  // (managed home in the default case, or an explicit override from adapter config).
+  // 将 Paperclip skill 注入到 Codex 实际使用的 CODEX_HOME/skills/ 目录。
+  // 这样 Codex 可以发现 "$paperclip" 等 skill，且不会污染项目工作目录。
   const codexSkillsDir = resolveCodexSkillsDir(effectiveCodexHome);
   await ensureCodexSkillsInjected(
     onLog,

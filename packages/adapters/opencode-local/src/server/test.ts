@@ -58,6 +58,8 @@ function normalizeEnv(input: unknown): Record<string, string> {
 const OPENCODE_AUTH_REQUIRED_RE =
   /(?:auth(?:entication)?\s+required|api\s*key|invalid\s*api\s*key|not\s+logged\s+in|opencode\s+auth\s+login|free\s+usage\s+exceeded)/i;
 
+// 环境检测：验证 OpenCode CLI 命令可用、模型发现（opencode models）正常、
+// 认证就绪、模型配置有效。支持远程执行目标的探测。
 export async function testEnvironment(
   ctx: AdapterEnvironmentTestContext,
 ): Promise<AdapterEnvironmentTestResult> {

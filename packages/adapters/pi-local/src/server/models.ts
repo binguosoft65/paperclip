@@ -100,6 +100,9 @@ function pruneExpiredDiscoveryCache(now: number) {
   }
 }
 
+// 运行 `pi --list-models` 发现可用模型。Pi 的输出是列格式（用 2+ 空格分隔）：
+// provider   model   context  max-out  thinking  images
+// 与 OpenCode（token 格式）不同。
 export async function discoverPiModels(input: {
   command?: unknown;
   cwd?: unknown;

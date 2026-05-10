@@ -28,6 +28,13 @@ function formatFastModeSupportedModels(): string {
   return `${CODEX_LOCAL_FAST_MODE_SUPPORTED_MODELS.join(", ")} or manually configured model IDs`;
 }
 
+// 构建 Codex CLI exec 模式的完整命令行参数。
+// 关键设计决策：
+// - 默认使用 exec --json 格式，方便解析结构化输出
+// - 推理力度通过 -c model_reasoning_effort=... 传递（Claude 用 --effort，Codex 用 model_reasoning_effort）
+// - Fast Mode 通过 -c service_tier="fast" + -c features.fast_mode=true 启用
+// - 交互式 session 恢复使用 "resume <sessionId> -" 格式
+// - reasoningEffort 是 modelReasoningEffort 的别名，用于 backward compatibility
 export function buildCodexExecArgs(
   config: unknown,
   options: { resumeSessionId?: string | null } = {},

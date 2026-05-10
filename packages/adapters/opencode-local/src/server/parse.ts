@@ -19,6 +19,9 @@ function errorText(value: unknown): string {
   }
 }
 
+// 解析 OpenCode CLI 的 JSONL 输出。
+// OpenCode 事件类型比 Gemini 更简洁：text（助理文本）、step_finish（用量统计）、
+// tool_use（工具调用）、error（错误）。没有 Gemini 的 assistant/message 分层。
 export function parseOpenCodeJsonl(stdout: string) {
   let sessionId: string | null = null;
   const messages: string[] = [];
@@ -88,6 +91,7 @@ export function parseOpenCodeJsonl(stdout: string) {
   };
 }
 
+// 检测 session 是否已失效（unknown session / not found），用于触发自动重试
 export function isOpenCodeUnknownSessionError(stdout: string, stderr: string): boolean {
   const haystack = `${stdout}\n${stderr}`
     .split(/\r?\n/)

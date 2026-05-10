@@ -43,13 +43,16 @@ function parseEnvBindings(bindings: unknown): Record<string, unknown> {
   return env;
 }
 
+// 将 UI 表单值转换为 pi_local 运行时配置。
+// timeoutSec=0（无超时），graceSec=20 秒优雅关闭。
+// thinkingEffort 映射到 Pi 的 --thinking 参数。
 export function buildPiLocalConfig(v: CreateConfigValues): Record<string, unknown> {
   const ac: Record<string, unknown> = {};
   if (v.cwd) ac.cwd = v.cwd;
   if (v.instructionsFilePath) ac.instructionsFilePath = v.instructionsFilePath;
   if (v.model) ac.model = v.model;
   if (v.thinkingEffort) ac.thinking = v.thinkingEffort;
-  
+
   // Pi sessions can run until the CLI exits naturally; keep timeout disabled (0)
   ac.timeoutSec = 0;
   ac.graceSec = 20;

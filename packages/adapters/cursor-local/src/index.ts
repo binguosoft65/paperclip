@@ -1,17 +1,16 @@
 import type { AdapterModelProfileDefinition } from "@paperclipai/adapter-utils";
 
+// 适配器唯一标识（不使用 "cursor_local" 是为了与早期版本兼容）
 export const type = "cursor";
+// 在 Paperclip UI 中显示的适配器名称
 export const label = "Cursor CLI (local)";
 
-// Cursor CLI is not distributed as an npm package — the official install
-// path is the upstream installer script at cursor.com/install. Other adapters
-// in this repo prefer `npm install -g <pkg>` which is content-addressed by the
-// registry; cursor must use `curl | bash` until upstream publishes a registry
-// artifact. Pinning a commit/version here would require shipping our own
-// mirror of the installer; revisit if Cursor adds an npm/release-asset
-// equivalent.
+// Cursor CLI 不发布 npm 包，官方安装途径是 curl | bash 脚本。
+// 与其他适配器（claude/codex 可通过 npm install -g 安装，由 registry 内容寻址保证确定性）
+// 不同，cursor 必须使用 curl | bash。如需版本锁定，需要自行托管安装脚本镜像。
 export const SANDBOX_INSTALL_COMMAND = "curl https://cursor.com/install -fsS | bash";
 
+// Cursor 默认模型：auto 让 Cursor 自主选择最合适的模型
 export const DEFAULT_CURSOR_LOCAL_MODEL = "auto";
 
 const CURSOR_FALLBACK_MODEL_IDS = [

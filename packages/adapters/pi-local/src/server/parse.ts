@@ -28,6 +28,13 @@ function extractTextContent(content: string | Array<{ type: string; text?: strin
     .join("");
 }
 
+// Pi JSONL 解析器。Pi 的事件类型与其他适配器差异较大：
+// - agent_start/agent_end：agent 生命周期
+// - turn_start/turn_end：单轮对话的生命周期
+// - message_update：流式消息更新（含 text_delta / thinking_delta）
+// - tool_execution_start/tool_execution_end：工具调用
+// - auto_retry_end：自动重试结束（失败时产生错误信息）
+// - 忽略 RPC 协议消息（response, extension_ui_request 等内部实现细节）
 export function parsePiJsonl(stdout: string): ParsedPiOutput {
   const result: ParsedPiOutput = {
     sessionId: null,

@@ -58,11 +58,15 @@ import { firstNonEmptyLine } from "./utils.js";
 
 const __moduleDir = path.dirname(fileURLToPath(import.meta.url));
 
+// 判断环境变量是否为非空值，用于区分 API 密钥计费和订阅计费模式
 function hasNonEmptyEnvValue(env: Record<string, string>, key: string): boolean {
   const raw = env[key];
   return typeof raw === "string" && raw.trim().length > 0;
 }
 
+// 根据环境中的 API Key 判断 Gemini 计费模式：
+// - 有 GEMINI_API_KEY 或 GOOGLE_API_KEY → "api"（按量计费）
+// - 无显式 API Key → "subscription"（订阅模式，通过 gemini auth login 认证）
 function resolveGeminiBillingType(env: Record<string, string>): "api" | "subscription" {
   return hasNonEmptyEnvValue(env, "GEMINI_API_KEY") || hasNonEmptyEnvValue(env, "GOOGLE_API_KEY")
     ? "api"
@@ -155,6 +159,8 @@ async function ensureGeminiSkillsInjected(
   }
 }
 
+// 在临时目录中构建 Gemini skills 的符号链接集合，用于远程执行时打包同步。
+// 只包含 agent 配置中声明的所需 skills。
 async function buildGeminiSkillsDir(
   config: Record<string, unknown>,
 ): Promise<string> {
@@ -170,6 +176,12 @@ async function buildGeminiSkillsDir(
   return target;
 }
 
+// Gemini Local 适配器主执行函数。
+// 设计权衡：
+// 1. 提示词通过 --prompt 参数传递（而非 stdin），这是 Gemini CLI 的设计约定
+// 2. Session 恢复使用 --resume，要求 cwd 与保存时一致（否则新建 session）
+// 3. Skills 直接注入 ~/.gemini/skills/ 而非通过环境变量覆盖，保证 CLI 自然找到认证凭据
+// 4. 远程执行时通过 Paperclip Bridge 实现宿主机到远程容器的网络隧道
 export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExecutionResult> {
   const { runId, agent, runtime, config, context, onLog, onMeta, onSpawn, authToken } = ctx;
   const executionTarget = readAdapterExecutionTarget({
@@ -199,6 +211,7 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
     )
     : [];
   const configuredCwd = asString(config.cwd, "");
+  // 当 workspace 类型为 agent_home 且用户显式配置了 cwd 时，优先使用配置的 cwd 而非 agentHome
   const useConfiguredInsteadOfAgentHome = workspaceSource === "agent_home" && configuredCwd.length > 0;
   const effectiveWorkspaceCwd = useConfiguredInsteadOfAgentHome ? "" : workspaceCwd;
   const cwd = effectiveWorkspaceCwd || configuredCwd || process.cwd();
@@ -388,6 +401,10 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
   const runtimeSessionId = asString(runtimeSessionParams.sessionId, runtime.sessionId ?? "");
   const runtimeSessionCwd = asString(runtimeSessionParams.cwd, "");
   const runtimeRemoteExecution = parseObject(runtimeSessionParams.remoteExecution);
+  // Session 恢复的条件：
+  // 1. 存在有效的 sessionId
+  // 2. 保存时的 cwd 与当前 cwd 一致（防止会话上下文错乱）
+  // 3. 远程执行目标身份匹配（远程 session 不能与本地 session 交叉使用）
   const canResumeSession =
     runtimeSessionId.length > 0 &&
     (runtimeSessionCwd.length === 0 || path.resolve(runtimeSessionCwd) === path.resolve(effectiveExecutionCwd)) &&
@@ -479,6 +496,10 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
     heartbeatPromptChars: renderedPrompt.length,
   };
 
+  // 构建 Gemini CLI 命令行参数。
+  // 设计决策：始终使用 stream-json 输出格式以便解析结构化事件；
+  // --approval-mode yolo 确保无人值守执行不会卡在交互式确认上；
+  // sandbox 默认关闭（--sandbox=none），避免不必要的性能开销。
   const buildArgs = (resumeSessionId: string | null) => {
     const args = ["--output-format", "stream-json"];
     if (resumeSessionId) args.push("--resume", resumeSessionId);
@@ -526,6 +547,12 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
     };
   };
 
+  // 将 Gemini CLI 的输出转换为统一的 AdapterExecutionResult。
+  // 关键逻辑：
+  // - 超时优先于错误信息返回
+  // - 检查是否需要认证（auth 错误单独标记）
+  // - Turn limit（exit code 53）特殊处理，清空 session 以便下次重试
+  // - 重试时不 fallback 到旧的 sessionId
   const toResult = (
     attempt: {
       proc: {
@@ -573,7 +600,7 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
       attempt.proc.exitCode,
     );
 
-    // On retry, don't fall back to old session ID — the old session was stale
+    // 重试时不再使用旧的 sessionId（旧 session 已过期）
     const canFallbackToRuntimeSession = !isRetry;
     const resolvedSessionId = attempt.parsed.sessionId
       ?? (canFallbackToRuntimeSession ? (runtimeSessionId ?? runtime.sessionId ?? null) : null);
@@ -627,6 +654,9 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
 
   try {
     const initial = await runAttempt(sessionId);
+    // Session 过期自动重试：当尝试恢复 session 失败时（未知 session 错误），
+    // 自动用空 session（新会话）重试一次。这是为了处理 session 持久化存储过期
+    // 或跨容器部署导致 session 丢失的情况。
     if (
       sessionId &&
       !initial.proc.timedOut &&

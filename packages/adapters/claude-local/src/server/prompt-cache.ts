@@ -6,6 +6,10 @@ import { createHash, type Hash } from "node:crypto";
 import type { AdapterExecutionContext } from "@paperclipai/adapter-utils";
 import { ensurePaperclipSkillSymlink, type PaperclipSkillEntry } from "@paperclipai/adapter-utils/server-utils";
 
+// Claude 提示词 bundle 缓存：将 skill 文件和指令文件按内容寻址打包为 stable bundle。
+// bundleKey 由内容哈希生成，相同内容的 skill/指令复用同一 bundle。
+// Claude CLI 的 --add-dir 参数引用此 bundle，避免每次执行重新发送技能内容。
+// 重复使用 stable bundle 还可以利用 Claude 的 prompt caching 减少 token 消耗。
 const DEFAULT_PAPERCLIP_INSTANCE_ID = "default";
 
 type SkillEntry = PaperclipSkillEntry;

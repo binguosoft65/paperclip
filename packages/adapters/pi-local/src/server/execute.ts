@@ -210,6 +210,14 @@ async function readSavedSessionCwd(input: {
   }
 }
 
+// Pi 本地适配器主执行函数。
+// Pi 的设计与其他适配器的关键区别：
+// 1. Session = 文件路径（~/.pi/paperclips/<timestamp>-<agentId>.jsonl），而非服务端 ID
+//    → 通过读取 session 文件头部的 cwd 来验证 cwd 是否匹配
+// 2. 提示词分离：系统指令用 --append-system-prompt，用户提示用 -p
+// 3. Skills 注入 ~/.pi/agent/skills/，且 skill 的 bin/ 目录自动加入 PATH
+// 4. 代理指令文件（instructionsFilePath）直接追加到 system prompt 后
+// 5. 行缓冲 stdout（bufferedOnLog）处理 JSON 分块，确保解析完整
 export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExecutionResult> {
   const { runId, agent, runtime, config, context, onLog, onMeta, onSpawn, authToken } = ctx;
   const executionTarget = readAdapterExecutionTarget({
@@ -255,6 +263,8 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
   });
   await ensureAbsoluteDirectory(cwd, { createIfMissing: true });
 
+  // 确保本地 session 目录存在。Pi 将 session 持久化为文件（~/.pi/paperclips/），
+  // 而非由 CLI 管理 session ID。远程执行时 session 由远程容器管理。
   if (!executionTargetIsRemote) {
     await ensureSessionsDir();
   }
@@ -597,6 +607,14 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
     ];
   })();
 
+  // 构建 Pi CLI 参数。
+  // 设计决策：
+  // 1. --mode json：JSON 输出模式便于解析
+  // 2. -p：非交互模式（处理提示后退出）
+  // 3. --append-system-prompt：扩展 Pi 的系统提示词，而非替换
+  // 4. 指令文件（instructionsFilePath）追加到系统提示后 + DEFAULT_PAPERCLIP_AGENT_PROMPT_TEMPLATE
+  // 5. --tools 硬编码工具集：Pi 始终启用 read/bash/edit/write/grep/find/ls
+  // 6. --session 接收文件路径（不是 ID），Pi 自动管理 session 文件
   const buildArgs = (sessionFile: string): string[] => {
     const args: string[] = [];
 
@@ -639,7 +657,9 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
       });
     }
 
-    // Buffer stdout by lines to handle partial JSON chunks
+    // Buffer stdout by lines to handle partial JSON chunks.
+    // Pi 的 JSONL 输出可能被 TCP 分片，导致一行 JSON 被分多次传入。
+    // 行缓冲确保 JSON 解析器只收到完整的行。
     let stdoutBuffer = "";
     const bufferedOnLog = async (stream: "stdout" | "stderr", chunk: string) => {
       if (stream === "stderr") {
@@ -755,6 +775,9 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
     const initialFailed =
       !initial.proc.timedOut && ((initial.proc.exitCode ?? 0) !== 0 || initial.parsed.errors.length > 0);
 
+    // Pi session 过期自动重试：当 session 文件不再有效时，
+    // 创建新的 session 文件并重试。Pi 的 session 是文件而非 ID，
+    // 因此需要调用 ensureAdapterExecutionTargetFile 创建空文件。
     if (
       canResumeSession &&
       initialFailed &&

@@ -1,9 +1,12 @@
 import type { AdapterSessionCodec } from "@paperclipai/adapter-utils";
 
+// 辅助函数：提取非空字符串
 function readNonEmptyString(value: unknown): string | null {
   return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
 }
 
+// sessionCodec：OpenCode 会话持久化编解码器。
+// 与 Gemini 类似，支持多种字段名格式以兼容不同版本。
 export const sessionCodec: AdapterSessionCodec = {
   deserialize(raw: unknown) {
     if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return null;

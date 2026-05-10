@@ -47,6 +47,9 @@ function summarizeProbeDetail(stdout: string, stderr: string, parsedError: strin
   return clean.length > max ? `${clean.slice(0, max - 1)}…` : clean;
 }
 
+// 环境检测主函数：验证 Gemini CLI 是否可用、认证是否就绪、工作目录是否有效。
+// 执行"hello probe"（发送"Respond with hello"）来端到端验证 CLI 能正常工作，
+// 并检测认证、配额、超时等常见问题。
 export async function testEnvironment(
   ctx: AdapterEnvironmentTestContext,
 ): Promise<AdapterEnvironmentTestResult> {

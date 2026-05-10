@@ -10,10 +10,14 @@ export {
 } from "./parse.js";
 import type { AdapterSessionCodec } from "@paperclipai/adapter-utils";
 
+// 辅助函数：提取非空字符串，用于 session 序列化/反序列化
 function readNonEmptyString(value: unknown): string | null {
   return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
 }
 
+// sessionCodec：负责 Gemini 会话 ID 的持久化和恢复。
+// 支持多种字段名（snake_case / camelCase）以兼容不同版本的 Gemini CLI。
+// 额外保存 cwd、workspace 元数据，以便心跳恢复时验证上下文是否匹配。
 export const sessionCodec: AdapterSessionCodec = {
   deserialize(raw: unknown) {
     if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return null;

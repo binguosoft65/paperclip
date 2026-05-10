@@ -24,6 +24,8 @@ const discoveryCache = new Map<string, { expiresAt: number; models: AdapterModel
 const VOLATILE_ENV_KEY_PREFIXES = ["PAPERCLIP_", "npm_", "NPM_"] as const;
 const VOLATILE_ENV_KEY_EXACT = new Set(["PWD", "OLDPWD", "SHLVL", "_", "TERM_SESSION_ID", "HOME"]);
 
+// 校验并返回模型 ID。OpenCode 严格要求 provider/model 格式，
+// 不满足此格式意味着配置错误，直接抛出异常。
 export function requireOpenCodeModelId(input: unknown): string {
   const model = asString(input, "").trim();
   if (!isValidOpenCodeModelId(model)) {

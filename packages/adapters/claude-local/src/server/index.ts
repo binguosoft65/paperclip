@@ -1,3 +1,13 @@
+// Claude Code 本地适配器服务端导出模块。
+// execute: 核心执行逻辑，通过 subprocess 启动 Claude CLI 的 --print 模式
+// runClaudeLogin: 运行 claude login 命令完成 OAuth 登录
+// listClaudeSkills / syncClaudeSkills: Paperclip 与 Claude skills 目录的同步管理
+// listClaudeModels: 读取 Claude Code 支持的模型列表
+// testEnvironment: 环境诊断，检查 CLI 可执行性、认证状态、hello probe
+// parseClaudeStreamJson / describeClaudeFailure / isClaudeMaxTurnsResult / isClaudeUnknownSessionError:
+//   输出解析工具，用于处理 Claude stream-json 格式的 stdout
+// getQuotaWindows / readClaudeAuthStatus / readClaudeToken / fetchClaudeQuota 等:
+//   用量配额查询和认证状态读取
 export { execute, runClaudeLogin } from "./execute.js";
 export { listClaudeSkills, syncClaudeSkills } from "./skills.js";
 export { listClaudeModels } from "./models.js";

@@ -4,6 +4,9 @@ import os from "node:os";
 import path from "node:path";
 import type { AdapterExecutionContext } from "@paperclipai/adapter-utils";
 
+// Claude 配置种子管理：远程执行时，Paperclip 将本地的 Claude 凭证和配置
+// 种子到远程执行目标的托管目录，确保远程 Claude 实例使用相同的认证配置。
+// 种子文件包括 credentials（OAuth/API 凭证）和 settings（配置偏好）。
 const DEFAULT_PAPERCLIP_INSTANCE_ID = "default";
 const SEEDED_SHARED_FILES = [
   ".credentials.json",

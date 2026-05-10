@@ -7,6 +7,9 @@ import {
   acpxAgentOptions,
 } from "../index.js";
 
+// ACPX 适配器的配置项 JSON Schema，供 UI 表单渲染和配置校验使用。
+// 配置项说明：agent 选择 ACP agent 类型（claude/codex/custom），
+// agentCommand 为自定义 ACP 命令，fastMode 仅对 Codex agent 生效。
 export function getConfigSchema(): AdapterConfigSchema {
   return {
     fields: [

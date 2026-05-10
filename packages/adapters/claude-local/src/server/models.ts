@@ -1,6 +1,9 @@
 import type { AdapterModel } from "@paperclipai/adapter-utils";
 import { models as DIRECT_MODELS } from "../index.js";
 
+// Claude 适配器根据认证方式返回不同的模型列表：
+// - Bedrock 环境：使用区域限定的 "us.anthropic.*" 格式 ID
+// - 非 Bedrock 环境：使用 Anthropic API 的标准模型 ID（如 claude-sonnet-4-6）
 /** AWS Bedrock model IDs — region-qualified identifiers required by the Bedrock API. */
 const BEDROCK_MODELS: AdapterModel[] = [
   { id: "us.anthropic.claude-opus-4-6-v1", label: "Bedrock Opus 4.6" },

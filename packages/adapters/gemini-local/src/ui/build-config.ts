@@ -51,6 +51,8 @@ function parseEnvBindings(bindings: unknown): Record<string, unknown> {
   return env;
 }
 
+// 将 UI 表单的配置值转换为 gemini_local 适配器的运行时配置。
+// timeoutSec=0 表示不设超时（让 Gemini CLI 自然运行），graceSec=15 秒优雅关闭。
 export function buildGeminiLocalConfig(v: CreateConfigValues): Record<string, unknown> {
   const ac: Record<string, unknown> = {};
   if (v.cwd) ac.cwd = v.cwd;

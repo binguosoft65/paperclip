@@ -187,6 +187,9 @@ async function probeGateway(input: {
   });
 }
 
+// 环境检测：验证 OpenClaw Gateway WebSocket 连接是否可达。
+// 发送 connect.challenge 握手以确认网关地址有效、协议支持、认证就绪。
+// 对远程非 loopback 的 ws:// 连接发出明文警告。
 export async function testEnvironment(
   ctx: AdapterEnvironmentTestContext,
 ): Promise<AdapterEnvironmentTestResult> {

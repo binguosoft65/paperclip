@@ -1,5 +1,7 @@
 import { asNumber, asString, parseJson, parseObject } from "@paperclipai/adapter-utils/server-utils";
 
+// 从 Gemini 消息对象中提取文本内容。支持 text、output_text、content 等多种格式，
+// 因为 Gemini CLI 流式 JSON 格式在不同版本中字段名有差异。
 function collectMessageText(message: unknown): string[] {
   if (typeof message === "string") {
     const trimmed = message.trim();
@@ -23,6 +25,8 @@ function collectMessageText(message: unknown): string[] {
   return lines;
 }
 
+// 从事件中读取 sessionId，支持 camelCase、snake_case 和 checkpoint/thread ID
+// 多种写法以兼容 Gemini CLI 不同版本的输出格式
 function readSessionId(event: Record<string, unknown>): string | null {
   return (
     asString(event.session_id, "").trim() ||
@@ -75,6 +79,10 @@ function accumulateUsage(
   );
 }
 
+// 解析 Gemini CLI stream-json 输出的核心函数。
+// Gemini CLI v0.38+ 使用 JSONL 格式逐行输出事件，每行一个 JSON 对象。
+// 事件类型包括：assistant（流式助理回复）、message（v0.38+ 的完整消息）、
+// result（运行结果、包含用量统计和状态）、error、system、text 等。
 export function parseGeminiJsonl(stdout: string) {
   let sessionId: string | null = null;
   const messages: string[] = [];

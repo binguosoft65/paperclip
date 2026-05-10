@@ -1,3 +1,9 @@
+// Cursor 本地适配器服务端导出模块。
+// execute: 核心执行逻辑，通过 subprocess 启动 Cursor agent CLI
+// ensureCursorSkillsInjected: 将 Paperclip skill 注入到 ~/.cursor/skills/ 目录
+// listCursorSkills / syncCursorSkills: Paperclip 与 Cursor skills 目录的同步管理
+// testEnvironment: 环境诊断，检查 CLI 可执行性、认证状态、hello probe
+// parseCursorJsonl / isCursorUnknownSessionError: Cursor JSONL 输出解析和 session 错误识别
 export { execute, ensureCursorSkillsInjected } from "./execute.js";
 export { listCursorSkills, syncCursorSkills } from "./skills.js";
 export { testEnvironment } from "./test.js";

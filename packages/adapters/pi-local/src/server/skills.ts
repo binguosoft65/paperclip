@@ -20,6 +20,7 @@ function asString(value: unknown): string | null {
   return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
 }
 
+// Pi skills 安装路径：~/.pi/agent/skills/（与其他适配器不同，Pi 使用专用目录）
 function resolvePiSkillsHome(config: Record<string, unknown>) {
   const env =
     typeof config.env === "object" && config.env !== null && !Array.isArray(config.env)

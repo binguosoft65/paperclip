@@ -392,9 +392,9 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
   const billingType = resolveClaudeBillingType(effectiveEnv);
   const claudeSkillEntries = await readPaperclipRuntimeSkillEntries(config, __moduleDir);
   const desiredSkillNames = new Set(resolveClaudeDesiredSkillNames(config, claudeSkillEntries));
-  // When instructionsFilePath is configured, build a stable content-addressed
-  // file that includes both the file content and the path directive, so we only
-  // need --append-system-prompt-file (Claude CLI forbids using both flags together).
+  // 当配置了 instructionsFilePath 时，将文件内容与路径指令合并为一个稳定的、
+  // 内容寻址的文件。这样只需 --append-system-prompt-file 一个参数即可同时注入
+  // 指令内容 + 路径信息（Claude CLI 禁止同时使用 --instruction 和 --append-system-prompt-file）。
   let combinedInstructionsContents: string | null = null;
   if (instructionsFilePath) {
     try {
@@ -419,6 +419,8 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
     instructionsContents: combinedInstructionsContents,
     onLog,
   });
+  // 远程执行时，判断是否由 Paperclip 管理远程 Claude 配置目录（含凭证注入），
+  // 避免用户配置泄漏到远程沙箱。需要同时满足：远程执行、使用托管 home、未显式配置 CLAUDE_CONFIG_DIR。
   const useManagedRemoteClaudeConfig =
     executionTargetIsRemote &&
     adapterExecutionTargetUsesManagedHome(executionTarget) &&
@@ -603,6 +605,10 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
     heartbeatPromptChars: renderedPrompt.length,
   };
 
+  // 构建 Claude CLI 命令行参数。
+  // 默认采用 --print 模式（非交互式）配合 stream-json 输出格式。
+  // --dangerously-skip-permissions 默认开启，因为 Claude 在 headless --print
+  // 模式下无法处理交互式权限弹窗。
   const buildClaudeArgs = (
     resumeSessionId: string | null,
     attemptInstructionsFilePath: string | undefined,
@@ -611,17 +617,15 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
     if (resumeSessionId) args.push("--resume", resumeSessionId);
     if (dangerouslySkipPermissions) args.push("--dangerously-skip-permissions");
     if (chrome) args.push("--chrome");
-    // For Bedrock: only pass --model when the ID is a Bedrock-native identifier
-    // (e.g. "us.anthropic.*" or ARN). Anthropic-style IDs like "claude-opus-4-6" are invalid
-    // on Bedrock, so skip them and let the CLI use its own configured model.
+    // Bedrock 环境下只传递 Bedrock 原生 ID（如 "us.anthropic.*" 或 ARN 格式）。
+    // Anthropic 风格的 "claude-opus-4-6" 在 Bedrock 上无效，跳过让 CLI 使用默认模型。
     if (model && (!isBedrockAuth(effectiveEnv) || isBedrockModelId(model))) {
       args.push("--model", model);
     }
     if (effort) args.push("--effort", effort);
     if (maxTurns > 0) args.push("--max-turns", String(maxTurns));
-    // On resumed sessions the instructions are already in the session cache;
-    // re-injecting them via --append-system-prompt-file wastes 5-10K tokens
-    // per heartbeat and the Claude CLI may reject the combination outright.
+    // session 恢复时指令已缓存在 session 中，重新通过 --append-system-prompt-file 注入
+    // 会浪费 5-10K token/次，且 Claude CLI 可能拒绝同时使用 --resume 和该参数。
     if (attemptInstructionsFilePath && !resumeSessionId) {
       args.push("--append-system-prompt-file", attemptInstructionsFilePath);
     }

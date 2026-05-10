@@ -50,6 +50,9 @@ function parseEnvBindings(bindings: unknown): Record<string, unknown> {
   return env;
 }
 
+// 将 UI 表单值转换为 opencode_local 运行时配置。
+// timeoutSec=0（无超时，让 OpenCode 自然运行），graceSec=20 秒优雅关闭。
+// thinkingEffort 映射到 OpenCode 的 variant 参数。
 export function buildOpenCodeLocalConfig(v: CreateConfigValues): Record<string, unknown> {
   const ac: Record<string, unknown> = {};
   if (v.cwd) ac.cwd = v.cwd;

@@ -1,12 +1,16 @@
 import type { AdapterModelProfileDefinition } from "@paperclipai/adapter-utils";
 
+// Gemini CLI 本地适配器的类型标识和显示名称，用于注册和 UI 展示
 export const type = "gemini_local";
 export const label = "Gemini CLI (local)";
 
+// 沙箱模式下安装 Gemini CLI 的命令，确保远程执行环境有可用的 CLI
 export const SANDBOX_INSTALL_COMMAND = "npm install -g @google/gemini-cli";
 
+// 默认模型为 "auto"，让 Gemini CLI 自行选择最合适的模型
 export const DEFAULT_GEMINI_LOCAL_MODEL = "auto";
 
+// 预定义的 Gemini 模型列表，用户可在适配器配置中指定
 export const models = [
   { id: DEFAULT_GEMINI_LOCAL_MODEL, label: "Auto" },
   { id: "gemini-2.5-pro", label: "Gemini 2.5 Pro" },
@@ -16,6 +20,7 @@ export const models = [
   { id: "gemini-2.0-flash-lite", label: "Gemini 2.0 Flash Lite" },
 ];
 
+// 模型配置文件（modelProfiles）：提供预设的"经济型"配置，使用 Flash Lite 模型节省成本
 export const modelProfiles: AdapterModelProfileDefinition[] = [
   {
     key: "cheap",
@@ -28,6 +33,8 @@ export const modelProfiles: AdapterModelProfileDefinition[] = [
   },
 ];
 
+// 适配器配置文档：描述 gemini_local 的用途、核心字段和设计约束。
+// 帮助用户在创建 agent 时理解何时使用该适配器以及如何配置。
 export const agentConfigurationDoc = `# gemini_local agent configuration
 
 Adapter: gemini_local

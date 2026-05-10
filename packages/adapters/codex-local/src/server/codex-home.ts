@@ -3,6 +3,10 @@ import os from "node:os";
 import path from "node:path";
 import type { AdapterExecutionContext } from "@paperclipai/adapter-utils";
 
+// Codex Home 目录管理：Paperclip 为每个公司维护一个独立的托管 CODEX_HOME，
+// 从用户共享 Codex Home（~/.codex 或 $CODEX_HOME）种子文件。
+// 共享文件分为两类：auth.json 用软链接（凭证实时共享），
+// config 和 instructions 文件用复制（副本快照，避免配置漂移）。
 const TRUTHY_ENV_RE = /^(1|true|yes|on)$/i;
 const COPIED_SHARED_FILES = ["config.json", "config.toml", "instructions.md"] as const;
 const SYMLINKED_SHARED_FILES = ["auth.json"] as const;

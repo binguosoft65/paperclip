@@ -1,8 +1,14 @@
+// OpenClaw Gateway 适配器：通过 WebSocket 协议连接 OpenClaw Gateway。
+// 与本地 CLI 适配器不同，此适配器不直接运行进程，而是将任务委托给网关
+// 连接的远程 agent，并通过 WebSocket 事件流接收执行结果。
 export const type = "openclaw_gateway";
 export const label = "OpenClaw Gateway";
 
+// 模型由 OpenClaw Gateway 侧的 agent 决定，Paperclip 无需预配模型列表
 export const models: { id: string; label: string }[] = [];
 
+// 适配器配置文档：描述 openclaw_gateway 的 WebSocket 协议、认证方式、
+// session 路由策略和标准 outbound 载荷结构。
 export const agentConfigurationDoc = `# openclaw_gateway agent configuration
 
 Adapter: openclaw_gateway

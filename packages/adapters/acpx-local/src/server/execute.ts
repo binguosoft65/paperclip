@@ -50,11 +50,16 @@ import {
 } from "../index.js";
 
 const __moduleDir = path.dirname(fileURLToPath(import.meta.url));
+// wrapper 脚本和 env 文件的保留时间（15 分钟），超过此时间的旧文件会被清理
 const WRAPPER_CLEANUP_RETENTION_MS = 15 * 60 * 1000;
+// 用于跟踪 Paperclip 管理的 Codex skill 状态的 manifest 文件名
 const PAPERCLIP_MANAGED_CODEX_SKILLS_MANIFEST = ".paperclip-managed-skills.json";
 
 type AcpxRuntimeFactory = (options: AcpRuntimeOptions) => AcpRuntime;
 
+// ACPX Runtime 缓存条目：用于持久 session 的 warm handle 复用。
+// 同一 fingerprint（配置指纹）的 session 在 warmIdleMs 窗口内可被后续请求直接复用，
+// 避免每次重新启动 ACP 进程 + 重建 session 的开销。
 interface RuntimeCacheEntry {
   runtime: AcpRuntime;
   handle: AcpRuntimeHandle;
@@ -63,6 +68,7 @@ interface RuntimeCacheEntry {
   cleanupTimer?: NodeJS.Timeout;
 }
 
+// 依赖注入接口，方便单元测试时 mock ACPX runtime 和时间函数
 interface ExecuteDeps {
   createRuntime?: AcpxRuntimeFactory;
   now?: () => number;
@@ -96,6 +102,8 @@ interface AcpxPreparedRuntime {
 
 const defaultWarmHandles = new Map<string, RuntimeCacheEntry>();
 
+// 稳定的 JSON 序列化：按 key 排序后输出，保证相同对象产生相同字符串。
+// 用于生成配置指纹（fingerprint），判断 session 是否可复用。
 function stableJson(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(stableJson).join(",")}]`;
   if (value && typeof value === "object") {
@@ -107,16 +115,19 @@ function stableJson(value: unknown): string {
   return JSON.stringify(value);
 }
 
+// 对任意配置状态取 SHA-256 前 16 位 hex 作为指纹标识
 function shortHash(value: unknown): string {
   return createHash("sha256").update(stableJson(value)).digest("hex").slice(0, 16);
 }
 
+// Paperclip 实例默认根目录，用于存储状态、session 数据和 skill 文件
 function defaultPaperclipInstanceDir(): string {
   const home = process.env.PAPERCLIP_HOME?.trim() || path.join(os.homedir(), ".paperclip");
   const instanceId = process.env.PAPERCLIP_INSTANCE_ID?.trim() || "default";
   return path.join(home, "instances", instanceId);
 }
 
+// ACPX 本地适配器的 state 目录，按公司 + agent 隔离，避免多 agent 间状态冲突
 function defaultStateDir(companyId: string, agentId: string): string {
   return path.join(defaultPaperclipInstanceDir(), "companies", companyId, "acpx-local", "agents", agentId);
 }
@@ -129,6 +140,8 @@ function packageRootDir(): string {
   return path.resolve(__moduleDir, "../..");
 }
 
+// 解析内置 ACP agent 的可执行路径。acpx-local 将 claude-agent-acp 和 codex-acp
+// 作为直接依赖声明在 package.json 中，确保依赖版本确定性，不依赖全局安装。
 function resolveBuiltInAgentCommand(agent: string): string | null {
   const binName =
     agent === "claude"
@@ -153,6 +166,8 @@ async function ensureParentDir(target: string): Promise<void> {
   await fs.mkdir(path.dirname(target), { recursive: true });
 }
 
+// 原子写入：先写临时文件再 rename，避免写入过程中崩溃产生不完整文件。
+// 用于安全地写出 wrapper shell 脚本和 env 配置文件。
 async function writeFileAtomically(input: {
   target: string;
   contents: string;
@@ -204,6 +219,11 @@ async function ensureCopiedFile(target: string, source: string): Promise<void> {
   await fs.copyFile(source, target);
 }
 
+// 准备 Paperclip 托管的 Codex home 目录。策略：
+// 1. 从用户的 Codex home（源）软链接 auth.json（凭证共享，不复制）
+// 2. 复制 config 和 instructions 文件（不可变文件，需要快照）
+// 3. 托管目录位于 ~/.paperclip/instances/<id>/companies/<companyId>/codex-home/，
+//    实现按公司隔离，多个 agent 实例互不干扰
 async function prepareManagedCodexHome(input: {
   companyId: string;
   sourceHome: string;
@@ -496,6 +516,8 @@ function normalizeMode(config: Record<string, unknown>): "persistent" | "oneshot
   return asString(config.mode, DEFAULT_ACPX_LOCAL_MODE) === "oneshot" ? "oneshot" : "persistent";
 }
 
+// ACPX 权限模式归一化。"default" 映射为 approve-reads（只自动批准读操作），
+// 其他无法识别的值回落为 approve-all（ACPX 非交互运行必须自动批准所有请求）。
 function normalizePermissionMode(config: Record<string, unknown>): "approve-all" | "approve-reads" | "deny-all" {
   const value = asString(config.permissionMode, DEFAULT_ACPX_LOCAL_PERMISSION_MODE).trim();
   if (value === "approve-reads" || value === "deny-all") return value;
@@ -657,6 +679,9 @@ async function buildRuntime(input: {
   });
   await ensureAbsoluteDirectory(cwd, { createIfMissing: true });
 
+  // 工作区目录优先级：运行时上下文 workspaceCwd > 配置 cwd > 当前进程 cwd。
+  // workspaceSource 为 "agent_home" 时，如果用户显式配置了 cwd，则优先使用配置的 cwd
+  //（因为 agent_home 场景下 workspaceCwd 指向 agent 安装目录，不适合作为执行目录）。
   const acpxAgent = normalizeAgent(config);
   const mode = normalizeMode(config);
   const permissionMode = normalizePermissionMode(config);

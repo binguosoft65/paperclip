@@ -1,9 +1,14 @@
 import type { AdapterSessionCodec } from "@paperclipai/adapter-utils";
 
+// 辅助函数：提取非空字符串
 function readNonEmptyString(value: unknown): string | null {
   return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
 }
 
+// sessionCodec：Pi 会话编码器。
+// Pi 的 sessionId 是文件路径（~/.pi/paperclips/<timestamp>-<agentId>.jsonl），
+// 因此比 Gemini/OpenCode 多支持 "session" 字段名，但不保存 workspace 元数据
+// （Pi 的 session 文件格式与其他适配器不同）。
 export const sessionCodec: AdapterSessionCodec = {
   deserialize(raw: unknown) {
     if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return null;

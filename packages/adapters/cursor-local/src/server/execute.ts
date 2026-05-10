@@ -43,6 +43,9 @@ import {
   DEFAULT_PAPERCLIP_AGENT_PROMPT_TEMPLATE,
   joinPromptSections,
 } from "@paperclipai/adapter-utils/server-utils";
+// Cursor 适配器执行逻辑。与 claude/codex 适配器不同，Cursor 使用 "agent" CLI 命令
+// 而非 "cursor" 命令本身。通过 --yolo 绕过交互式信任提示（默认开启）。
+// 远程沙箱运行时有特殊的 PATH 处理和命令发现逻辑（见 remote-command.ts）。
 import { DEFAULT_CURSOR_LOCAL_MODEL, SANDBOX_INSTALL_COMMAND } from "../index.js";
 import { parseCursorJsonl, isCursorUnknownSessionError } from "./parse.js";
 import { prepareCursorSandboxCommand } from "./remote-command.js";
@@ -358,6 +361,8 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
     if (fromExtraArgs.length > 0) return fromExtraArgs;
     return asStringArray(config.args);
   })();
+  // 自动检测是否已包含信任绕过参数（--trust/--yolo/-f）。
+  // 默认开启 --yolo，因为 headless 模式下无法处理交互式信任弹窗。
   const autoTrustEnabled = !hasCursorTrustBypassArg(extraArgs);
   let restoreRemoteWorkspace: (() => Promise<void>) | null = null;
   let localSkillsDir: string | null = null;

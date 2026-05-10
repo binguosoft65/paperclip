@@ -5,6 +5,8 @@ import {
 } from "@paperclipai/adapter-utils/execution-target";
 import { ensurePathInEnv } from "@paperclipai/adapter-utils/server-utils";
 
+// Cursor 的 CLI 命令可能以 "agent" 或 "cursor-agent" 命名，取决于安装方式。
+// 远程沙箱环境（如 E2B）通常使用 ~/.local/bin/cursor-agent。
 const DEFAULT_CURSOR_COMMAND_BASENAMES = new Set(["agent", "cursor-agent"]);
 
 function commandBasename(command: string): string {
@@ -94,6 +96,9 @@ export type PreparedCursorSandboxCommand = {
   preferredCommandPath: string | null;
 };
 
+// 准备远程沙箱中 Cursor 的执行命令。Cursor 在 E2B 等沙箱环境中的安装路径
+// 与本地不同（通常 ~/.local/bin/cursor-agent），需要通过 SSH 探测实际路径。
+// 同时将 ~/.local/bin 加入 PATH，确保标准安装位置可被发现。
 export async function prepareCursorSandboxCommand(input: {
   runId: string;
   target: AdapterExecutionTarget | null | undefined;

@@ -188,6 +188,13 @@ async function buildOpenCodeSkillsDir(config: Record<string, unknown>): Promise<
   return target;
 }
 
+// OpenCode 本地适配器主执行函数。
+// 与 Gemini 的关键区别：
+// 1. 提示词通过 stdin 传递（而非 --prompt 参数）→ 需要 builtArgs 中不加 --prompt
+// 2. 模型必须是 provider/model 格式（如 openai/gpt-5.2-codex）
+// 3. 设置 OPENCODE_DISABLE_PROJECT_CONFIG=true 防止 pollute 工作目录
+// 4. 支持 dangerouslySkipPermissions 自动放行 external_directory 权限
+// 5. Skills 注入 ~/.claude/skills/（OpenCode 与 Claude 共享技能目录）
 export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExecutionResult> {
   const { runId, agent, runtime, config, context, onLog, onMeta, onSpawn, authToken } = ctx;
   const executionTarget = readAdapterExecutionTarget({

@@ -1,12 +1,19 @@
 import type { AdapterModelProfileDefinition } from "@paperclipai/adapter-utils";
 
+// OpenCode 本地适配器：运行 opencode CLI 作为 agent 运行时。
+// 使用 provider/model 格式路由模型（如 openai/gpt-5.2-codex），
+// 通过 --session 实现心跳恢复。
 export const type = "opencode_local";
 export const label = "OpenCode (local)";
 
+// 沙箱安装命令，用于远程执行环境安装 OpenCode CLI
 export const SANDBOX_INSTALL_COMMAND = "npm install -g opencode-ai";
 
+// 默认模型：OpenAI GPT-5.2 Codex，与 OpenCode 的默认值一致
 export const DEFAULT_OPENCODE_LOCAL_MODEL = "openai/gpt-5.2-codex";
 
+// 校验 OpenCode 模型 ID 格式：必须包含 "/" 且不能以 "/" 开头或结尾。
+// 格式约束来自 OpenCode CLI 的 provider/model 路由约定。
 export function isValidOpenCodeModelId(value: unknown): value is string {
   if (typeof value !== "string") return false;
   const trimmed = value.trim();
@@ -14,6 +21,7 @@ export function isValidOpenCodeModelId(value: unknown): value is string {
   return Boolean(trimmed) && slashIndex > 0 && slashIndex !== trimmed.length - 1;
 }
 
+// 预定义的 OpenCode 模型列表（Provider/Model 格式）
 export const models: Array<{ id: string; label: string }> = [
   { id: DEFAULT_OPENCODE_LOCAL_MODEL, label: DEFAULT_OPENCODE_LOCAL_MODEL },
   { id: "openai/gpt-5.4", label: "openai/gpt-5.4" },
@@ -22,6 +30,7 @@ export const models: Array<{ id: string; label: string }> = [
   { id: "openai/gpt-5.1-codex-mini", label: "openai/gpt-5.1-codex-mini" },
 ];
 
+// 经济型模型配置：使用 Codex mini 模型，variant=low 降低推理消耗
 export const modelProfiles: AdapterModelProfileDefinition[] = [
   {
     key: "cheap",
@@ -35,6 +44,8 @@ export const modelProfiles: AdapterModelProfileDefinition[] = [
   },
 ];
 
+// 适配器配置文档：描述 opencode_local 的用途、模型路由格式、
+// 权限控制策略和 session 恢复机制。
 export const agentConfigurationDoc = `# opencode_local agent configuration
 
 Adapter: opencode_local

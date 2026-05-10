@@ -1,29 +1,40 @@
 import type { AdapterModelProfileDefinition } from "@paperclipai/adapter-utils";
 
+// 适配器唯一标识，"codex_local" 对应 OpenAI Codex CLI exec 模式
 export const type = "codex_local";
+// 在 Paperclip UI 中显示的适配器名称
 export const label = "Codex (local)";
 
+// 沙箱安装命令：通过 npm 全局安装 Codex CLI
 export const SANDBOX_INSTALL_COMMAND = "npm install -g @openai/codex";
 
+// Codex CLI 的默认模型
 export const DEFAULT_CODEX_LOCAL_MODEL = "gpt-5.3-codex";
+// 默认绕过 approval 和 sandbox（Codex exec 模式下无交互界面）
 export const DEFAULT_CODEX_LOCAL_BYPASS_APPROVALS_AND_SANDBOX = true;
+// 支持 Codex Fast Mode 的模型白名单。Fast Mode 通过设置 service_tier="fast"
+// 和 features.fast_mode=true 来启用更低延迟的推理路径。
 export const CODEX_LOCAL_FAST_MODE_SUPPORTED_MODELS = ["gpt-5.4"] as const;
 
 function normalizeModelId(model: string | null | undefined): string {
   return typeof model === "string" ? model.trim() : "";
 }
 
+// 判断模型是否在适配器内置的已知模型列表中
 export function isCodexLocalKnownModel(model: string | null | undefined): boolean {
   const normalizedModel = normalizeModelId(model);
   if (!normalizedModel) return false;
   return models.some((entry) => entry.id === normalizedModel);
 }
 
+// 判断模型是否为用户自定义 ID（不在已知列表中的都算是手动模型）
 export function isCodexLocalManualModel(model: string | null | undefined): boolean {
   const normalizedModel = normalizeModelId(model);
   return Boolean(normalizedModel) && !isCodexLocalKnownModel(normalizedModel);
 }
 
+// Codex Fast Mode 支持性判断：手动模型 ID 默认支持 fast mode，
+// 内置模型只对白名单内的模型启用。
 export function isCodexLocalFastModeSupported(model: string | null | undefined): boolean {
   if (isCodexLocalManualModel(model)) return true;
   const normalizedModel = typeof model === "string" ? model.trim() : "";

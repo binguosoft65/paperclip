@@ -20,6 +20,8 @@ function asString(value: unknown): string | null {
   return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
 }
 
+// 确定 Gemini skills 的安装路径。优先使用配置中的 HOME 环境变量，
+// 这样远程执行或 HOME 覆盖时也能找到正确的技能目录。
 function resolveGeminiSkillsHome(config: Record<string, unknown>) {
   const env =
     typeof config.env === "object" && config.env !== null && !Array.isArray(config.env)
@@ -52,6 +54,8 @@ export async function listGeminiSkills(ctx: AdapterSkillContext): Promise<Adapte
   return buildGeminiSkillSnapshot(ctx.config);
 }
 
+// 同步 Gemini skills：根据 desiredSkills 列表，将需要的 skill 链接到 ~/.gemini/skills/，
+// 并移除不再需要的 skill 链接。始终保留 required 标记的技能。
 export async function syncGeminiSkills(
   ctx: AdapterSkillContext,
   desiredSkills: string[],

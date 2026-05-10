@@ -13,6 +13,8 @@ import {
 } from "@paperclipai/adapter-utils/server-utils";
 
 const require = createRequire(import.meta.url);
+// ACPX 要求 Node >=22.12.0（依赖 ACPX 运行时），而项目中其他适配器仅需 Node >=20。
+// 环境诊断时，如果版本不满足，会给出明确提示建议改用 claude_local 或 codex_local。
 const MIN_NODE_MAJOR = 22;
 const MIN_NODE_MINOR = 12;
 const MIN_NODE_PATCH = 0;

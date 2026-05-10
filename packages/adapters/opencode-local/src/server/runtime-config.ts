@@ -31,6 +31,12 @@ async function readJsonObject(filepath: string): Promise<Record<string, unknown>
   }
 }
 
+// 准备 OpenCode 运行时配置。
+// 当 dangerouslySkipPermissions 启用时：
+// 1. 复制 ~/.config/opencode/ 到临时目录
+// 2. 在配置中注入 permission.external_directory=allow
+// 3. 将 XDG_CONFIG_HOME 指向临时目录
+// 这样 headless 运行不会因为 external_directory 权限弹窗而卡住。
 export async function prepareOpenCodeRuntimeConfig(input: {
   env: Record<string, string>;
   config: Record<string, unknown>;
@@ -45,11 +51,9 @@ export async function prepareOpenCodeRuntimeConfig(input: {
     };
   }
 
-  // For remote execution targets the host XDG_CONFIG_HOME path is meaningless
-  // (and actively harmful — it leaks a macOS-only path into the remote Linux
-  // env). Callers that need to ship a runtime opencode config to the remote
-  // box do that via prepareAdapterExecutionTargetRuntime in execute.ts; this
-  // host-fs helper is local-only.
+  // 远程执行时，宿主机 XDG_CONFIG_HOME 路径对远程目标无意义。
+  // 需要发送运行时配置到远程盒子的调用方应使用 execute.ts 中的
+  // prepareAdapterExecutionTargetRuntime 来处理。
   if (input.targetIsRemote) {
     return {
       env: input.env,

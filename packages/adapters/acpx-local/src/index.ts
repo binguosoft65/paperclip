@@ -1,13 +1,23 @@
 import type { AdapterModel } from "@paperclipai/adapter-utils";
 
+// 适配器唯一标识，用于运行时派发和配置路由
 export const type = "acpx_local";
+// 在 Paperclip UI 中显示的名称
 export const label = "ACPX (local)";
 
+// ACPX 适配器通过 Agent Client Protocol (ACP) 封装多个底层 IDE/Agent，
+// 提供统一的 session 管理和运行时抽象。以下为各配置项的默认值。
+// 默认使用的 ACP agent（claude | codex | custom）
 export const DEFAULT_ACPX_LOCAL_AGENT = "claude";
+// 默认 session 模式：persistent 保留进程状态，oneshot 每次重建
 export const DEFAULT_ACPX_LOCAL_MODE = "persistent";
+// 默认权限模式：ACPX 请求自动批准（ACPX 非交互式运行，无法弹窗询问）
 export const DEFAULT_ACPX_LOCAL_PERMISSION_MODE = "approve-all";
+// 非交互式运行时的权限兜底策略：deny 拒绝，fail 报错终止
 export const DEFAULT_ACPX_LOCAL_NON_INTERACTIVE_PERMISSIONS = "deny";
+// 单次执行超时（秒），0 表示不限时
 export const DEFAULT_ACPX_LOCAL_TIMEOUT_SEC = 0;
+// 持久 session 的空闲保活窗口（毫秒），0 表示每次执行后立即关闭进程但保留 session 状态
 export const DEFAULT_ACPX_LOCAL_WARM_HANDLE_IDLE_MS = 0;
 
 export const acpxAgentOptions = [

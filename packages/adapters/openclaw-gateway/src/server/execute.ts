@@ -15,8 +15,10 @@ import {
 import crypto, { randomUUID } from "node:crypto";
 import { WebSocket } from "ws";
 
+// Session 路由策略：决定不同 run/lifecycle 如何重用会话
 type SessionKeyStrategy = "fixed" | "issue" | "run";
 
+// 唤醒载荷：Paperclip 上下文信息，传递给网关端的 agent
 type WakePayload = {
   runId: string;
   agentId: string;
@@ -30,6 +32,7 @@ type WakePayload = {
   issueIds: string[];
 };
 
+// 设备身份信息，用于网关 device auth 认证
 type GatewayDeviceIdentity = {
   deviceId: string;
   publicKeyRawBase64Url: string;
@@ -37,6 +40,7 @@ type GatewayDeviceIdentity = {
   source: "configured" | "ephemeral";
 };
 
+// WebSocket 帧类型定义：请求
 type GatewayRequestFrame = {
   type: "req";
   id: string;
@@ -44,6 +48,7 @@ type GatewayRequestFrame = {
   params?: unknown;
 };
 
+// WebSocket 帧类型定义：响应
 type GatewayResponseFrame = {
   type: "res";
   id: string;
@@ -55,6 +60,7 @@ type GatewayResponseFrame = {
   };
 };
 
+// WebSocket 帧类型定义：事件（服务端推送）
 type GatewayEventFrame = {
   type: "event";
   event: string;
@@ -62,6 +68,7 @@ type GatewayEventFrame = {
   seq?: number;
 };
 
+// 待处理的请求（用于请求-响应匹配）
 type PendingRequest = {
   resolve: (value: unknown) => void;
   reject: (err: Error) => void;
@@ -86,6 +93,7 @@ type GatewayClientRequestOptions = {
   expectFinal?: boolean;
 };
 
+// Gateway 协议版本，与 OpenClaw 服务端约定的兼容性版本号
 const PROTOCOL_VERSION = 3;
 const DEFAULT_SCOPES = ["operator.admin"];
 const DEFAULT_CLIENT_ID = "gateway-client";
@@ -93,6 +101,7 @@ const DEFAULT_CLIENT_MODE = "backend";
 const DEFAULT_CLIENT_VERSION = "paperclip";
 const DEFAULT_ROLE = "operator";
 
+// 敏感键检测正则：用于日志脱敏，防止认证凭据（token、password、API key 等）泄露到日志中
 const SENSITIVE_LOG_KEY_PATTERN =
   /(^|[_-])(auth|authorization|token|secret|password|api[_-]?key|private[_-]?key)([_-]|$)|^x-openclaw-(auth|token)$/i;
 
@@ -139,6 +148,9 @@ function prefixSessionKeyForAgent(sessionKey: string, agentId: string | null): s
   return `agent:${agentId}:${sessionKey}`;
 }
 
+// 解析 session key：根据策略（run/issue/fixed）生成唯一的网关 session key。
+// 这决定了同一 issue 的多次心跳是否能复用同一个网关 agent 会话。
+// 策略选择：issue（默认）= 同一 issue 共享会话；run = 每次 run 独立会话；fixed = 固定 key。
 export function resolveSessionKey(input: {
   strategy: SessionKeyStrategy;
   configuredSessionKey: string | null;
@@ -361,6 +373,9 @@ function buildPaperclipEnvForWake(ctx: AdapterExecutionContext, wakePayload: Wak
   return paperclipEnv;
 }
 
+// 构建唤醒文本：这是传递给网关 agent 的自然语言指令，包含 Paperclip 上下文、
+// Issue 信息、API 访问方式和标准工作流程。
+// 网关 adapter 的 agent 收到此文本后需要解析并执行 Issue 相关操作。
 function buildWakeText(
   payload: WakePayload,
   paperclipEnv: Record<string, string>,
@@ -648,6 +663,12 @@ function isEventFrame(value: unknown): value is GatewayEventFrame {
   return Boolean(record && record.type === "event" && typeof record.event === "string");
 }
 
+// Gateway WebSocket 客户端。
+// 职责：
+// 1. 管理 WebSocket 连接生命周期（connect/challenge/request/close）
+// 2. 处理请求-响应匹配（request → resolve/reject）
+// 3. 将事件帧分发给上层回调
+// 设计决定：challenge 在构造函数中创建 Promise，确保 onmessage 之前就准备好接收挑战响应
 class GatewayWsClient {
   private ws: WebSocket | null = null;
   private pending = new Map<string, PendingRequest>();
@@ -836,6 +857,9 @@ class GatewayWsClient {
   }
 }
 
+// 自动配对设备：当首次连接需要配对时，使用共享的 authToken/password
+// 自动调用 device.pair.list + device.pair.approve 完成注册。
+// 这避免了用户手动在 OpenClaw 端 approve 设备。
 async function autoApproveDevicePairing(params: {
   url: string;
   headers: Record<string, string>;
@@ -1048,8 +1072,16 @@ function extractResultText(value: unknown): string | null {
   return nonEmpty(record.text) ?? nonEmpty(record.summary) ?? null;
 }
 
+// OpenClaw Gateway 适配器主执行函数。
+// 与本地适配器的关键区别：
+// 1. 不直接执行进程，而是通过 WebSocket 将任务委托给网关 agent
+// 2. 使用网关协议（connect.challenge/agent/agent.wait）而非 CLI 调用
+// 3. 支持 device auth（Ed25519 签名）实现安全的设备身份认证
+// 4. session 由网关端管理，Paperclip 通过 sessionKey 路由
+// 5. 自动配对逻辑：首次连接时可通过共享凭据自动 approve 设备
 export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExecutionResult> {
   const urlValue = asString(ctx.config.url, "").trim();
+  // 必须提供 WebSocket URL，否则无法连接网关
   if (!urlValue) {
     return {
       exitCode: 1,
@@ -1071,6 +1103,7 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
     };
   }
 
+  // 只支持 ws:// 和 wss:// 协议
   if (parsedUrl.protocol !== "ws:" && parsedUrl.protocol !== "wss:") {
     return {
       exitCode: 1,
@@ -1182,10 +1215,15 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
     );
   }
 
+  // 首次连接自动配对开关。
+  // 启用后，如果网关返回 "pairing required" 错误且提供了 authToken/password，
+  // 适配器会自动调用 device.pair.list + device.pair.approve 完成配对，然后重试。
   const autoPairOnFirstConnect = parseBoolean(ctx.config.autoPairOnFirstConnect, true);
   let autoPairAttempted = false;
   let latestResultPayload: unknown = null;
 
+  // while(true) 循环支持自动配对后的重试：
+  // 配对成功后通过 continue 重新发起连接，最多重试一次
   while (true) {
     const trackedRunIds = new Set<string>([ctx.runId]);
     const assistantChunks: string[] = [];

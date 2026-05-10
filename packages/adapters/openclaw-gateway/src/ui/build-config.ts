@@ -12,6 +12,9 @@ function parseJsonObject(text: string): Record<string, unknown> | null {
   }
 }
 
+// 将 UI 表单值转换为 openclaw_gateway 运行时配置。
+// 默认 120 秒超时，sessionKeyStrategy=issue（同一 Issue 共享 session），
+// role=operator, scopes=["operator.admin"]。
 export function buildOpenClawGatewayConfig(v: CreateConfigValues): Record<string, unknown> {
   const ac: Record<string, unknown> = {};
   if (v.url) ac.url = v.url;

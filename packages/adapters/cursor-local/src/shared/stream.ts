@@ -1,3 +1,6 @@
+// Cursor CLI 的 stream-json 输出有时会将 stdout/stderr 前缀混在 JSON 行前。
+// 例如 "stdout: {"type":"text","text":"hello"}"。此函数解析并分离流标签，
+// 确保 JSON 内容被正确路由到对应的日志流。
 export function normalizeCursorStreamLine(rawLine: string): {
   stream: "stdout" | "stderr" | null;
   line: string;

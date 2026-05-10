@@ -1,3 +1,10 @@
+// Codex 本地适配器服务端导出模块。
+// execute: 核心执行逻辑，通过 subprocess 启动 Codex CLI exec 模式
+// ensureCodexSkillsInjected: 将 Paperclip skill 注入到 CODEX_HOME/skills/ 目录
+// listCodexSkills / syncCodexSkills: Paperclip 与 Codex skills 目录的同步管理
+// testEnvironment: 环境诊断，检查 CLI 可执行性、认证状态、hello probe
+// parseCodexJsonl / isCodexTransientUpstreamError / isCodexUnknownSessionError:
+//   Codex JSONL 输出解析、临时上游错误的识别、未知session错误的识别
 export { execute, ensureCodexSkillsInjected } from "./execute.js";
 export { listCodexSkills, syncCodexSkills } from "./skills.js";
 export { testEnvironment } from "./test.js";

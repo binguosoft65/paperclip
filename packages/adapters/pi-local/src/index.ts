@@ -1,14 +1,22 @@
 import type { AdapterModelProfileDefinition } from "@paperclipai/adapter-utils";
 
+// Pi 本地适配器：运行 Pi（AI 编码 agent）CLI。
+// 支持 provider/model 格式路由模型（如 xai/grok-4），
+// 通过 --session 实现心跳恢复。Pi 的工具集包括 read, bash, edit, write, grep, find, ls。
 export const type = "pi_local";
 export const label = "Pi (local)";
 
+// 沙箱安装命令
 export const SANDBOX_INSTALL_COMMAND = "npm install -g @mariozechner/pi-coding-agent";
 
+// Pi 的模型动态从 CLI 发现（pi --list-models），无需预定义
 export const models: Array<{ id: string; label: string }> = [];
 
+// Pi 暂无预设的模型配置文件模板
 export const modelProfiles: AdapterModelProfileDefinition[] = [];
 
+// 适配器配置文档：描述 pi_local 的用途、模型/Provider 路由格式、
+// 系统提示词扩展和 session 持久化路径。
 export const agentConfigurationDoc = `# pi_local agent configuration
 
 Adapter: pi_local

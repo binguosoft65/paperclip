@@ -1,10 +1,15 @@
 import type { AdapterModelProfileDefinition } from "@paperclipai/adapter-utils";
 
+// 适配器唯一标识，"claude_local" 对应 Claude Code --print 模式
 export const type = "claude_local";
+// 在 Paperclip UI 中显示的适配器名称
 export const label = "Claude Code (local)";
 
+// 沙箱安装命令：通过 npm 全局安装 Claude Code CLI
 export const SANDBOX_INSTALL_COMMAND = "npm install -g @anthropic-ai/claude-code";
 
+// Claude Code 支持的内置模型列表。注意 Bedrock 环境不使用此处声明的模型 ID，
+// Bedrock 需要 "us.anthropic.*" 格式的 ARN 类标识，在 execute.ts 中做了条件判断。
 export const models = [
   { id: "claude-opus-4-7", label: "Claude Opus 4.7" },
   { id: "claude-opus-4-6", label: "Claude Opus 4.6" },
@@ -14,6 +19,8 @@ export const models = [
   { id: "claude-haiku-4-5-20251001", label: "Claude Haiku 4.5" },
 ];
 
+// 预置的模型配置模板。agent 创建时可选择 "cheap" 等 profile，
+// 自动填入对应的 model/effort 配置，实现按场景调优而无需手动配置。
 export const modelProfiles: AdapterModelProfileDefinition[] = [
   {
     key: "cheap",
