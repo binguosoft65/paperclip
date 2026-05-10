@@ -23,6 +23,9 @@ import type {
   PluginEnvironmentValidationResult,
 } from "@paperclipai/plugin-sdk";
 
+// E2B 驱动配置的运行时类型定义
+// 与 Daytona 相比，E2B 配置更简洁：只有 template、apiKey、timeoutMs、reuseLease 四个字段
+// template 默认值为 "base"（基础 Ubuntu 镜像），用户可指定自定义模板
 interface E2bDriverConfig {
   template: string;
   apiKey: string | null;
@@ -30,6 +33,8 @@ interface E2bDriverConfig {
   reuseLease: boolean;
 }
 
+// 将用户提交的原始配置解析为强类型的 E2bDriverConfig
+// template 为空时默认使用 "base"，timeoutMs 非法时回退到 300 秒
 function parseDriverConfig(raw: Record<string, unknown>): E2bDriverConfig {
   const template = typeof raw.template === "string" && raw.template.trim().length > 0
     ? raw.template.trim()
@@ -43,6 +48,8 @@ function parseDriverConfig(raw: Record<string, unknown>): E2bDriverConfig {
   };
 }
 
+// API Key 解析策略：显式配置优先，环境变量作为兜底
+// 与 Daytona Provider 的策略保持一致，使用户体验统一
 function resolveApiKey(config: E2bDriverConfig): string {
   if (config.apiKey) {
     return config.apiKey;
@@ -54,6 +61,9 @@ function resolveApiKey(config: E2bDriverConfig): string {
   return envApiKey;
 }
 
+// 创建 E2B 沙箱实例：使用 Sandbox.create 静态方法
+// 传入 apiKey 和 timeoutMs 作为选项，同时在 metadata 中标注 provider 来源便于追踪
+// E2B 的 create 会异步等待沙箱就绪再返回，所以调用方不需要额外的轮询逻辑
 async function createSandbox(config: E2bDriverConfig): Promise<Sandbox> {
   const options = {
     apiKey: resolveApiKey(config),
@@ -65,10 +75,14 @@ async function createSandbox(config: E2bDriverConfig): Promise<Sandbox> {
   return await Sandbox.create(config.template, options);
 }
 
+// 统一错误消息格式，确保无论抛出什么类型都能拿到可读的字符串
 function formatErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+// 从 TimeoutError 中提取 stdout/stderr：E2B SDK 的 TimeoutError 可能有多种结构
+// 有时输出在 error 对象的顶层字段，有时在嵌套的 result 对象中
+// 这里做了两层查找以保证各种 SDK 版本兼容
 function readTimeoutStream(error: TimeoutError, key: "stdout" | "stderr"): string {
   const record = error as unknown as Record<string, unknown>;
   const direct = record[key];
@@ -78,6 +92,9 @@ function readTimeoutStream(error: TimeoutError, key: "stdout" | "stderr"): strin
   return typeof direct === "string" ? direct : "";
 }
 
+// 构建超时执行结果：将 TimeoutError 转换为 PluginEnvironmentExecuteResult
+// 保留 stdout 和 stderr，并将超时错误消息附加到 stderr 尾部
+// exitCode 设为 null 表示超时而非命令失败
 function buildTimeoutExecuteResult(error: TimeoutError): PluginEnvironmentExecuteResult {
   const stdout = readTimeoutStream(error, "stdout");
   const stderrOutput = readTimeoutStream(error, "stderr");
@@ -97,10 +114,13 @@ function buildTimeoutExecuteResult(error: TimeoutError): PluginEnvironmentExecut
   };
 }
 
+// 确保沙箱工作目录存在：使用 mkdir -p 创建目标目录，如果已存在则不会报错
 async function ensureSandboxWorkspace(sandbox: Sandbox, remoteCwd: string): Promise<void> {
   await sandbox.commands.run(`mkdir -p ${shellQuote(remoteCwd)}`);
 }
 
+// 解析沙箱内的工作目录：通过 pwd 获取当前路径，然后拼接 paperclip-workspace
+// 与 Daytona 实现不同，E2B 没有 getWorkDir 或 getUserHomeDir API，只能通过 shell 命令获取
 async function resolveSandboxWorkingDirectory(sandbox: Sandbox): Promise<string> {
   const result = await sandbox.commands.run("pwd");
   const cwd = result.stdout.trim();
@@ -109,6 +129,8 @@ async function resolveSandboxWorkingDirectory(sandbox: Sandbox): Promise<string>
   return remoteCwd;
 }
 
+// 连接已有沙箱：通过 providerLeaseId（即 E2B sandboxId）恢复与沙箱的连接
+// 用于 resumeLease 和 releaseLease 场景，避免重新创建沙箱
 async function connectSandbox(config: E2bDriverConfig, providerLeaseId: string): Promise<Sandbox> {
   return await Sandbox.connect(providerLeaseId, {
     apiKey: resolveApiKey(config),
@@ -116,6 +138,8 @@ async function connectSandbox(config: E2bDriverConfig, providerLeaseId: string):
   });
 }
 
+// 用于清理场景的连接：如果沙箱已不存在（SandboxNotFoundError），返回 null 而非报错
+// 避免在释放/销毁已过期或被外部删除的沙箱时抛出未处理异常
 async function connectForCleanup(config: E2bDriverConfig, providerLeaseId: string): Promise<Sandbox | null> {
   try {
     return await connectSandbox(config, providerLeaseId);
@@ -125,6 +149,8 @@ async function connectForCleanup(config: E2bDriverConfig, providerLeaseId: strin
   }
 }
 
+// 构建租赁元数据：与 Daytona Provider 结构类似，但 E2B 固定使用 bash 作为 shell
+// 包含沙箱 ID、域名、模板等关键信息，用于后续恢复和审计
 function leaseMetadata(input: {
   config: E2bDriverConfig;
   sandbox: Sandbox;
@@ -144,10 +170,13 @@ function leaseMetadata(input: {
   };
 }
 
+// Shell 参数安全引用：用单引号包裹并用 '"'"' 转义内部的单引号
+// 防止用户传入的文件名或命令参数含有空格、引号等特殊字符导致的注入问题
 function shellQuote(value: string) {
   return `'${value.replace(/'/g, `'"'"'`)}'`;
 }
 
+// 校验环境变量键名是否合法：必须符合 shell 标识符规范
 function isValidShellEnvKey(value: string) {
   return /^[A-Za-z_][A-Za-z0-9_]*$/.test(value);
 }
@@ -159,6 +188,10 @@ function isValidShellEnvKey(value: string) {
 // nvm shims, or anything else the template installs via .profile/.bashrc —
 // which makes the hello probe fail with `exec: <cli>: not found` even when
 // the binary is on disk.
+// 构建登录 shell 脚本：在执行用户命令前 source 常见的 profile 文件
+// E2B 的 commands.run 默认在非登录、非交互 shell 中运行，PATH 中缺少 npm-globals、nvm shims
+// 通过模拟登录 shell 的初始化流程，保证沙箱内所有 CLI 工具都可被解析到
+// 与 Daytona 的 buildLoginShellScript 逻辑一致，区别在于使用 exec 替换当前进程
 function buildLoginShellScript(input: {
   command: string;
   args: string[];
@@ -192,12 +225,18 @@ function buildLoginShellScript(input: {
   ].join(" && ");
 }
 
+// 尽力终止沙箱：如果 kill 失败，只打印警告而不抛出异常
+// 因为释放/销毁操作不应该因为清理失败而影响上层流程
 async function killSandboxBestEffort(sandbox: Sandbox, reason: string): Promise<void> {
   await sandbox.kill().catch((error) => {
     console.warn(`Failed to kill E2B sandbox during ${reason}: ${formatErrorMessage(error)}`);
   });
 }
 
+// 按复用策略释放沙箱：
+// - reuseLease=false: 直接 kill（彻底销毁）
+// - reuseLease=true: 先 pause（保留状态），pause 失败时 fallback 到 kill
+// pause 可以让沙箱的磁盘状态保留，后续 resume 时快速恢复，节省冷启动时间
 async function releaseSandboxBestEffort(sandbox: Sandbox, reuseLease: boolean): Promise<void> {
   if (!reuseLease) {
     await killSandboxBestEffort(sandbox, "lease release");
@@ -214,15 +253,22 @@ async function releaseSandboxBestEffort(sandbox: Sandbox, reuseLease: boolean): 
   }
 }
 
+// 将 E2B 驱动注册为 Paperclip 插件
+// 完整的沙箱生命周期：validateConfig -> probe -> acquireLease -> execute -> releaseLease -> destroyLease
+// 与 Daytona Provider 实现相同的 Plugin SDK 接口，可被上层无差别调度
 const plugin = definePlugin({
+  // setup 在 worker 启动时调用，用于初始化日志和资源
   async setup(ctx) {
     ctx.logger.info("E2B sandbox provider plugin ready");
   },
 
+  // 健康检查端点：Paperclip 控制平面会定期调用以确认 worker 存活
   async onHealth() {
     return { status: "ok", message: "E2B sandbox provider plugin healthy" };
   },
 
+  // 环境配置校验：在用户保存环境配置时被调用
+  // 校验 template 不能为空字符串、timeoutMs 必须在合法范围内
   async onEnvironmentValidateConfig(
     params: PluginEnvironmentValidateConfigParams,
   ): Promise<PluginEnvironmentValidationResult> {
@@ -246,6 +292,8 @@ const plugin = definePlugin({
     };
   },
 
+  // 环境探测：创建一个临时沙箱测试连通性，然后立即删除
+  // 用于验证 API Key、网络可达性、模板配置等是否有效
   async onEnvironmentProbe(
     params: PluginEnvironmentProbeParams,
   ): Promise<PluginEnvironmentProbeResult> {
@@ -287,6 +335,9 @@ const plugin = definePlugin({
     }
   },
 
+  // 获取租赁：在 Paperclip 需要执行代码时被调用
+  // 创建 E2B 沙箱、设置超时、建立工作目录，然后返回租赁句柄
+  // 如果任何步骤失败，确保已创建的沙箱被清理避免资源泄漏
   async onEnvironmentAcquireLease(
     params: PluginEnvironmentAcquireLeaseParams,
   ): Promise<PluginEnvironmentLease> {
@@ -306,6 +357,9 @@ const plugin = definePlugin({
     }
   },
 
+  // 恢复租赁：当 reuseLease=true 时，Paperclip 在后续运行中尝试复用之前的沙箱
+  // 通过 Sandbox.connect 连接已有沙箱，如果沙箱已不存在则标记为 expired
+  // E2B 不需要显式启动沙箱——connect 后沙箱自动可用
   async onEnvironmentResumeLease(
     params: PluginEnvironmentResumeLeaseParams,
   ): Promise<PluginEnvironmentLease> {
@@ -332,6 +386,8 @@ const plugin = definePlugin({
     }
   },
 
+  // 释放租赁：根据 reuseLease 策略决定是暂停沙箱（以便后续复用）还是直接终止
+  // 暂停失败时有 fallback 逻辑——尝试 kill，避免沙箱无限期残留
   async onEnvironmentReleaseLease(
     params: PluginEnvironmentReleaseLeaseParams,
   ): Promise<void> {
@@ -343,6 +399,7 @@ const plugin = definePlugin({
     await releaseSandboxBestEffort(sandbox, config.reuseLease);
   },
 
+  // 销毁租赁：强制终止沙箱，不保留任何状态
   async onEnvironmentDestroyLease(
     params: PluginEnvironmentDestroyLeaseParams,
   ): Promise<void> {
@@ -353,6 +410,8 @@ const plugin = definePlugin({
     await killSandboxBestEffort(sandbox, "lease destroy");
   },
 
+  // 实现工作空间：在 Paperclip 需要将代码同步到沙箱前被调用
+  // 确保沙箱内的目标目录存在，返回远程 cwd 供后续文件同步和命令执行使用
   async onEnvironmentRealizeWorkspace(
     params: PluginEnvironmentRealizeWorkspaceParams,
   ): Promise<PluginEnvironmentRealizeWorkspaceResult> {
@@ -377,6 +436,9 @@ const plugin = definePlugin({
     };
   },
 
+  // 执行命令：在已获取租赁的沙箱中运行用户命令
+  // 对于带有 stdin 的命令，采用"先写临时文件再重定向"的策略
+  // 避免使用 sendStdin 时竞态条件（快速退出的命令在 stdin 到达前就已结束）
   async onEnvironmentExecute(
     params: PluginEnvironmentExecuteParams,
   ): Promise<PluginEnvironmentExecuteResult> {

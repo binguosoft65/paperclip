@@ -16,11 +16,12 @@ import {
   writeLocalServiceRegistryRecord,
 } from "../server/src/services/local-service-supervisor.ts";
 
-// Keep these values local so the dev runner can boot from the server package's
-// tsx context without requiring workspace package resolution first.
+// 绑定模式枚举：loopback（仅本机）、lan（局域网）、tailnet（Tailscale）、custom（自定义主机）
+// 保持本地定义，这样 dev runner 无需等待 workspace 包解析即可从 server 包的 tsx 上下文启动
 const BIND_MODES = ["loopback", "lan", "tailnet", "custom"] as const;
 type BindMode = (typeof BIND_MODES)[number];
 
+// 启动前检查 git worktree 环境文件是否存在，缺失则引导用户先运行 worktree init
 const worktreeEnvBootstrap = bootstrapDevRunnerWorktreeEnv(repoRoot, process.env);
 if (worktreeEnvBootstrap.missingEnv) {
   console.error(
@@ -31,14 +32,20 @@ if (worktreeEnvBootstrap.missingEnv) {
 
 const mode = process.argv[2] === "watch" ? "watch" : "dev";
 const cliArgs = process.argv.slice(3);
+// 文件变更扫描间隔：1.5s 一次，兼顾实时性与 IO 开销
 const scanIntervalMs = 1500;
+// 自动重启轮询间隔：2.5s 检查一次是否需要热重启
 const autoRestartPollIntervalMs = 2500;
+// 给子进程 10s 优雅关闭，超时后 SIGKILL
 const gracefulShutdownTimeoutMs = 10_000;
+// 状态文件中 sample 路径数上限，避免文件过多时输出过大
 const changedPathSampleLimit = 5;
 const devServerStatusFilePath = path.join(repoRoot, ".paperclip", "dev-server-status.json");
+// dev 模式生成一个临时 token，用于健康检查的身份验证，防止外部随意触发重启
 const devServerStatusToken = mode === "dev" ? randomUUID() : null;
 const devServerStatusTokenHeader = "x-paperclip-dev-server-status-token";
 
+// 需要监听的后端源码目录——只包含运行时需要重启的模块，不包含 UI 等前端代码
 const watchedDirectories = [
   "cli",
   "scripts",
@@ -50,6 +57,7 @@ const watchedDirectories = [
   "packages/shared",
 ].map((relativePath) => path.join(repoRoot, relativePath));
 
+// 配置文件变更也需要触发重启
 const watchedFiles = [
   ".env",
   "package.json",
@@ -59,6 +67,7 @@ const watchedFiles = [
   "vitest.config.ts",
 ].map((relativePath) => path.join(repoRoot, relativePath));
 
+// 跳过构建产物和版本控制目录，避免无效变更触发不必要的重启
 const ignoredDirectoryNames = new Set([
   ".git",
   ".turbo",
@@ -69,6 +78,7 @@ const ignoredDirectoryNames = new Set([
   "ui-dist",
 ]);
 
+// 忽略 dev runner 自身写入的状态文件，避免写状态 -> 文件变更 -> 写状态的死循环
 const ignoredRelativePaths = new Set([
   ".paperclip/dev-server-status.json",
 ]);
@@ -81,8 +91,10 @@ const tailscaleAuthFlagNames = new Set([
 let tailscaleAuth = false;
 let bindMode: BindMode | null = null;
 let bindHost: string | null = null;
+// 非绑定相关的参数透传给子进程（如自定义 server 参数）
 const forwardedArgs: string[] = [];
 
+// 手动解析 CLI 参数，逐项消费，避免依赖外部解析库
 for (let index = 0; index < cliArgs.length; index += 1) {
   const arg = cliArgs[index];
   if (tailscaleAuthFlagNames.has(arg)) {
@@ -112,6 +124,7 @@ for (let index = 0; index < cliArgs.length; index += 1) {
   forwardedArgs.push(arg);
 }
 
+// 支持从 npm config（.npmrc）中读取绑定配置，方便 monorepo 内的统一设置
 if (process.env.npm_config_tailscale_auth === "true") {
   tailscaleAuth = true;
 }
@@ -124,28 +137,33 @@ if (!bindMode && process.env.npm_config_bind && BIND_MODES.includes(process.env.
 if (!bindHost && process.env.npm_config_bind_host) {
   bindHost = process.env.npm_config_bind_host;
 }
+// custom 模式必须显式指定主机地址，否则无法确定监听地址
 if (bindMode === "custom" && !bindHost) {
   console.error("[paperclip] --bind custom requires --bind-host <host>");
   process.exit(1);
 }
 
+// 构建子进程环境变量：标记 UI 开发中间件模式，让 server 以开发模式运行
 const env: NodeJS.ProcessEnv = {
   ...process.env,
   PAPERCLIP_UI_DEV_MIDDLEWARE: "true",
 };
 
+// dev 模式：启用状态文件、生成实例 token 用于健康检查鉴权，自动应用迁移
 if (mode === "dev") {
   env.PAPERCLIP_DEV_SERVER_STATUS_FILE = devServerStatusFilePath;
   env.PAPERCLIP_DEV_SERVER_STATUS_TOKEN = devServerStatusToken ?? "";
   env.PAPERCLIP_MIGRATION_AUTO_APPLY ??= "true";
 }
 
+// watch 模式：不需要实例 token（不写入状态文件），禁止交互式迁移提示，自动应用
 if (mode === "watch") {
   delete env.PAPERCLIP_DEV_SERVER_STATUS_TOKEN;
   env.PAPERCLIP_MIGRATION_PROMPT ??= "never";
   env.PAPERCLIP_MIGRATION_AUTO_APPLY ??= "true";
 }
 
+// 根据绑定模式设置部署环境和暴露策略
 if (tailscaleAuth || bindMode) {
   const effectiveBind = bindMode ?? "lan";
   if (tailscaleAuth) {
@@ -157,6 +175,7 @@ if (tailscaleAuth || bindMode) {
   } else {
     delete env.PAPERCLIP_BIND_HOST;
   }
+  // loopback 无需鉴权，相当于本地信任模式；其他绑定方式需要认证
   if (effectiveBind === "loopback" && !tailscaleAuth) {
     delete env.PAPERCLIP_DEPLOYMENT_MODE;
     delete env.PAPERCLIP_DEPLOYMENT_EXPOSURE;
@@ -171,6 +190,7 @@ if (tailscaleAuth || bindMode) {
     );
   }
 } else {
+  // 无绑定参数时清除环境变量回退到默认本地信任模式
   delete env.PAPERCLIP_BIND;
   delete env.PAPERCLIP_BIND_HOST;
   delete env.PAPERCLIP_DEPLOYMENT_MODE;

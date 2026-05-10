@@ -1,14 +1,23 @@
+// issue-graph-liveness: issue 依赖图的活性检测引擎
+// 核心逻辑：遍历 issue 的 blocking 关系链，检测"死锁"或"遗漏"状态
+// 发现的问题会生成 IssueLivenessFinding，后续由 recovery service 创建升级 issue
+
 import { buildIssueGraphLivenessIncidentKey } from "./origins.js";
 
+// 严重程度：warning 表示值得关注但暂不需要紧急干预，critical 表示需要立即创建恢复 issue
 export type IssueLivenessSeverity = "warning" | "critical";
 
+// 活性状态的枚举——每种状态对应一类需要恢复的场景
+// 设计原则：描述问题"是什么"，而不是"怎么修"，修复策略由上层决定
 export type IssueLivenessState =
-  | "blocked_by_unassigned_issue"
-  | "blocked_by_uninvokable_assignee"
-  | "blocked_by_cancelled_issue"
-  | "invalid_review_participant"
-  | "in_review_without_action_path";
+  | "blocked_by_unassigned_issue"       // 被阻塞的目标无 assignee
+  | "blocked_by_uninvokable_assignee"   // 被阻塞的目标的 assignee 状态不可调用
+  | "blocked_by_cancelled_issue"        // 被已取消的 issue 阻塞
+  | "invalid_review_participant"        // review 中的参与方无效
+  | "in_review_without_action_path";    // 处于 review 但无明确的下一步路径
 
+// issue 的完整输入结构，来自数据库查询的反序列化
+// 包含 issue 自身属性以及执行策略/状态等元信息，供活性检测引擎分析
 export interface IssueLivenessIssueInput {
   id: string;
   companyId: string;
@@ -18,14 +27,14 @@ export interface IssueLivenessIssueInput {
   projectId?: string | null;
   goalId?: string | null;
   parentId?: string | null;
-  assigneeAgentId?: string | null;
-  assigneeUserId?: string | null;
+  assigneeAgentId?: string | null;       // agent 指派人
+  assigneeUserId?: string | null;        // 人工用户指派人（有人则不由 agent 处理）
   createdByAgentId?: string | null;
   createdByUserId?: string | null;
-  executionPolicy?: Record<string, unknown> | null;
-  executionState?: Record<string, unknown> | null;
-  monitorNextCheckAt?: Date | string | null;
-  monitorAttemptCount?: number | null;
+  executionPolicy?: Record<string, unknown> | null;   // 执行策略（如监控配置）
+  executionState?: Record<string, unknown> | null;     // 执行运行时状态（如当前 review 参与方）
+  monitorNextCheckAt?: Date | string | null;           // 下次监控检查时间
+  monitorAttemptCount?: number | null;                 // 已尝试的监控次数（用于防无限重试）
 }
 
 export interface IssueLivenessRelationInput {

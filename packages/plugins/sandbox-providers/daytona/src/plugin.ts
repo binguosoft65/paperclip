@@ -1,3 +1,7 @@
+// Daytona 沙箱 Provider 插件：将 Daytona 远程沙箱注册为 Paperclip 执行环境。
+// 核心职责：沙箱生命周期管理（创建/启动/停止/删除/SSH 执行）、租约管理、
+// 工作空间代码同步（Git bundle 增量传输）、环境配置校验。
+// 支持 snapshot 恢复和 image 重建两种沙箱创建模式。
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { Daytona, DaytonaNotFoundError, DaytonaTimeoutError } from "@daytonaio/sdk";
@@ -26,6 +30,9 @@ import type {
   PluginEnvironmentValidationResult,
 } from "@paperclipai/plugin-sdk";
 
+// Daytona 驱动配置的运行时类型定义
+// 所有字段均从用户提交的原始 JSON 解析而来，parseDriverConfig 负责类型转换和默认值填充
+// 与 manifest 中的 configSchema 对应，但这里只保留运行时关心的字段
 interface DaytonaDriverConfig {
   apiKey: string | null;
   apiUrl: string | null;
@@ -44,6 +51,8 @@ interface DaytonaDriverConfig {
   reuseLease: boolean;
 }
 
+// 这些 helper 函数保证了用户输入经过严格的类型校验，避免运行时因非法值崩溃
+// 它们主动处理 null、空字符串、NaN 等边缘情况，返回 null 表示"未提供"
 function parseOptionalString(value: unknown): string | null {
   return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
 }
@@ -60,6 +69,8 @@ function parseOptionalNumber(value: unknown): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+// 将用户提交的原始配置（来自 JSON）转换为强类型的 DaytonaDriverConfig
+// 这里做了一层防御性编程：非法的 timeoutMs 会兜底到默认值，而不是直接崩溃
 function parseDriverConfig(raw: Record<string, unknown>): DaytonaDriverConfig {
   const timeoutMs = Number(raw.timeoutMs ?? 300_000);
   return {
@@ -81,6 +92,9 @@ function parseDriverConfig(raw: Record<string, unknown>): DaytonaDriverConfig {
   };
 }
 
+// API Key 解析策略：显式配置优先，环境变量作为兜底
+// 这样用户可以在 Paperclip 的环境配置中指定密钥，也可以利用 CI/CD 流水线的环境变量注入
+// 抛出清晰的错误消息有助于用户快速定位配置问题
 function resolveApiKey(config: DaytonaDriverConfig): string {
   if (config.apiKey) {
     return config.apiKey;
@@ -92,6 +106,8 @@ function resolveApiKey(config: DaytonaDriverConfig): string {
   return envApiKey;
 }
 
+// 创建 Daytona SDK 客户端实例，复用相同的配置模式
+// Daytona 客户端是线程安全的，每个请求都独立创建新实例以避免并发状态污染
 function createDaytonaClient(config: DaytonaDriverConfig): Daytona {
   const clientConfig: DaytonaConfig = {
     apiKey: resolveApiKey(config),
@@ -101,6 +117,8 @@ function createDaytonaClient(config: DaytonaDriverConfig): Daytona {
   return new Daytona(clientConfig);
 }
 
+// 按需构建资源规格对象：当用户没有指定任何资源限制时返回 undefined
+// 让 Daytona 使用其默认分配，避免传空值导致 SDK 报错
 function buildResources(config: DaytonaDriverConfig): Resources | undefined {
   if (config.cpu == null && config.memory == null && config.disk == null && config.gpu == null) {
     return undefined;
@@ -113,6 +131,9 @@ function buildResources(config: DaytonaDriverConfig): Resources | undefined {
   };
 }
 
+// 根据配置决定沙箱是从镜像还是快照创建
+// image 和 snapshot 互斥（已在 validateConfig 中校验），但这里仍然做了防御性判断
+// 使用 image 时可以同时指定资源规格，用 snapshot 时资源由快照决定
 function buildCreateParams(
   config: DaytonaDriverConfig,
   labels: Record<string, string>,
@@ -137,6 +158,9 @@ function buildCreateParams(
   };
 }
 
+// 给 Daytona 沙箱打上 Paperclip 元数据标签
+// 这些标签用于在 Daytona 仪表盘和 API 层面识别沙箱归属，便于审计和清理
+// reuseLease 标签让运维人员可以区分哪些沙箱是"用完即删"的
 function buildSandboxLabels(input: {
   companyId: string;
   environmentId: string;
@@ -152,20 +176,26 @@ function buildSandboxLabels(input: {
   };
 }
 
+// 毫秒转秒（Daytona SDK 的 API 以秒为单位），至少为 1 秒
+// 使用 Math.ceil 保证如果用户设置了很小的值也不会截断为 0
 function toTimeoutSeconds(timeoutMs: number): number {
   return Math.max(1, Math.ceil(timeoutMs / 1000));
 }
 
+// 运行时超时解析：允许单次执行请求覆盖全局超时设置
+// 返回值必须为正整数，若传入非法值则回退到配置中的默认值
 function resolveTimeoutMs(paramsTimeoutMs: number | undefined, config: DaytonaDriverConfig): number {
   return paramsTimeoutMs != null && Number.isFinite(paramsTimeoutMs) && paramsTimeoutMs > 0
     ? Math.trunc(paramsTimeoutMs)
     : config.timeoutMs;
 }
 
+// 统一错误消息格式，确保无论抛出什么类型都能拿到可读的字符串
 function formatErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+// 使用 URL 构造函数做 URL 合法性校验，比正则表达式更可靠
 function isValidUrl(value: string): boolean {
   try {
     new URL(value);
@@ -175,6 +205,9 @@ function isValidUrl(value: string): boolean {
   }
 }
 
+// 确保沙箱处于已启动状态，用于租赁恢复场景
+// 如果沙箱处于错误状态且可恢复则尝试 recover，否则直接抛错
+// 避免在已停止的沙箱上执行命令时收到含糊的 Daytona API 错误
 async function ensureSandboxStarted(sandbox: Sandbox, timeoutSeconds: number): Promise<void> {
   if (sandbox.state === "started") return;
   if (sandbox.state === "error") {
@@ -187,6 +220,9 @@ async function ensureSandboxStarted(sandbox: Sandbox, timeoutSeconds: number): P
   await sandbox.start(timeoutSeconds);
 }
 
+// 解析沙箱内的工作目录：优先使用 Daytona 的工作目录，然后是用户 home 目录，最后是硬编码兜底
+// 统一创建 paperclip-workspace 子目录，确保执行命令时有一个一致的 workspace 路径
+// 不同 Sandbox 镜像的工作目录可能不同，此函数做了三层 fallback
 async function resolveSandboxWorkingDirectory(sandbox: Sandbox): Promise<string> {
   const root = (await sandbox.getWorkDir())?.trim()
     || (await sandbox.getUserHomeDir())?.trim()
@@ -196,6 +232,9 @@ async function resolveSandboxWorkingDirectory(sandbox: Sandbox): Promise<string>
   return remoteCwd;
 }
 
+// 检测沙箱内可用的 shell 类型
+// 在沙箱内运行探测命令判断 bash 是否可用，兜底到 sh
+// 这个信息后续被用来决定构建登录脚本时是否可以利用 bash 特有的特性
 async function detectSandboxShellCommand(sandbox: Sandbox, timeoutSeconds: number): Promise<"bash" | "sh"> {
   try {
     const result = await sandbox.process.executeCommand(
@@ -210,6 +249,9 @@ async function detectSandboxShellCommand(sandbox: Sandbox, timeoutSeconds: numbe
   }
 }
 
+// 构建租赁元数据：包含沙箱标识、配置快照和执行环境信息
+// 这些元数据会被持久化在 Paperclip 的租赁记录中，用于后续恢复操作（resume）时重建上下文
+// resumedLease 字段让上层区分这是新创建还是恢复的沙箱
 function leaseMetadata(input: {
   config: DaytonaDriverConfig;
   sandbox: Sandbox;
@@ -233,10 +275,14 @@ function leaseMetadata(input: {
   };
 }
 
+// Shell 参数安全引用：用单引号包裹并用 '"'"' 转义内部的单引号
+// 防止用户传入文件名或命令参数中含有空格、引号等特殊字符导致的注入或解析错误
 function shellQuote(value: string): string {
   return `'${value.replace(/'/g, `'"'"'`)}'`;
 }
 
+// 校验环境变量键名是否合法：必须符合 shell 标识符规范
+// 防止通过 env 注入非法键名导致 shell 脚本执行失败
 function isValidShellEnvKey(value: string): boolean {
   return /^[A-Za-z_][A-Za-z0-9_]*$/.test(value);
 }
@@ -246,6 +292,9 @@ function isValidShellEnvKey(value: string): boolean {
 // interactive shell would. Without this, adapter probes can fail to resolve
 // CLIs that are installed via profile-driven PATH mutations inside the
 // sandbox image.
+// 构建登录 shell 脚本：在执行用户命令前 source 常见的 profile 文件
+// Daytona 的 executeCommand 默认在非登录、非交互 shell 中运行，PATH 中缺少 nvm 等工具
+// 通过模拟登录 shell 的初始化流程，保证沙箱内所有 CLI 工具都可被解析到
 function buildLoginShellScript(input: {
   command: string;
   args: string[];
@@ -333,6 +382,10 @@ async function getSandboxOrNull(config: DaytonaDriverConfig, sandboxId: string):
 // `executeCommand` returns combined stdout+stderr in `result`. We surface that
 // as `stdout` and leave `stderr` empty; callers that grep for error messages
 // still see them in `stdout`.
+// 单次命令执行：使用 Daytona 的 process.executeCommand 而非 session API
+// session API（createSession + executeSessionCommand）在命令以 exec 结尾时会无限挂起
+// 复现测试确认 executeCommand 可在 ~600ms 内返回，而 executeSessionCommand 超时
+// 因此采用类似 e2b 的 commands.run 模式，保持两个 Provider 的行为一致
 async function executeOneShot(
   sandbox: Sandbox,
   params: PluginEnvironmentExecuteParams,
@@ -384,15 +437,24 @@ async function executeOneShot(
   }
 }
 
+// 将 Daytona 驱动注册为 Paperclip 插件
+// definePlugin 是 Plugin SDK 提供的工厂函数，负责生命周期管理和类型推导
+// 完整的沙箱生命周期：validateConfig -> probe -> acquireLease -> execute -> releaseLease -> destroyLease
 const plugin = definePlugin({
+  // setup 在 worker 启动时调用，用于初始化日志和资源
+  // 这里没有需要异步初始化的资源，仅打印就绪消息
   async setup(ctx) {
     ctx.logger.info("Daytona sandbox provider plugin ready");
   },
 
+  // 健康检查端点：Paperclip 控制平面会定期调用以确认 worker 存活
   async onHealth() {
     return { status: "ok", message: "Daytona sandbox provider plugin healthy" };
   },
 
+  // 环境配置校验：在用户保存环境配置时被调用
+  // 返回详细的错误列表让前端可以逐个字段提示用户修改
+  // 这在实际创建沙箱之前就拦截了无效配置，减少 API 调用浪费
   async onEnvironmentValidateConfig(
     params: PluginEnvironmentValidateConfigParams,
   ): Promise<PluginEnvironmentValidationResult> {
@@ -447,6 +509,9 @@ const plugin = definePlugin({
     };
   },
 
+  // 环境探测：创建一个临时沙箱测试连通性，然后立即删除
+  // 用于验证 API Key、网络可达性、模板配置等是否有效
+  // 探测结果包含沙箱的基础信息，让用户确认环境正常后再开始使用
   async onEnvironmentProbe(
     params: PluginEnvironmentProbeParams,
   ): Promise<PluginEnvironmentProbeResult> {
@@ -491,6 +556,9 @@ const plugin = definePlugin({
     }
   },
 
+  // 获取租赁：在 Paperclip 需要执行代码时被调用
+  // 创建 Daytona 沙箱、建立工作目录、检测 shell 类型，然后返回租赁句柄
+  // 如果任何步骤失败，确保已创建的沙箱被清理（delete）避免资源泄漏
   async onEnvironmentAcquireLease(
     params: PluginEnvironmentAcquireLeaseParams,
   ): Promise<PluginEnvironmentLease> {
@@ -509,6 +577,9 @@ const plugin = definePlugin({
     }
   },
 
+  // 恢复租赁：当 reuseLease=true 时，Paperclip 在后续运行中尝试复用之前的沙箱
+  // 先通过 providerLeaseId 查找已有沙箱，如果不存在则标记为 expired（让上层重新 acquire）
+  // 如果沙箱存在但处于停止状态，调用 ensureSandboxStarted 重新启动
   async onEnvironmentResumeLease(
     params: PluginEnvironmentResumeLeaseParams,
   ): Promise<PluginEnvironmentLease> {
@@ -532,6 +603,8 @@ const plugin = definePlugin({
     }
   },
 
+  // 释放租赁：根据 reuseLease 策略决定是停止沙箱（以便后续复用）还是直接删除
+  // 停止失败时有 fallback 逻辑——尝试删除沙箱，避免沙箱无限期残留
   async onEnvironmentReleaseLease(
     params: PluginEnvironmentReleaseLeaseParams,
   ): Promise<void> {
@@ -561,6 +634,8 @@ const plugin = definePlugin({
     await sandbox.delete(toTimeoutSeconds(config.timeoutMs));
   },
 
+  // 销毁租赁：强制删除沙箱，不保留任何状态
+  // 与 releaseLease 不同，destroy 没有"保留"选项——无论 reuseLease 为何值都直接删除
   async onEnvironmentDestroyLease(
     params: PluginEnvironmentDestroyLeaseParams,
   ): Promise<void> {
@@ -571,6 +646,8 @@ const plugin = definePlugin({
     await sandbox.delete(toTimeoutSeconds(config.timeoutMs));
   },
 
+  // 实现工作空间：在 Paperclip 需要将代码同步到沙箱前被调用
+  // 确保沙箱内的目标目录存在，返回远程 cwd 供后续文件同步和命令执行使用
   async onEnvironmentRealizeWorkspace(
     params: PluginEnvironmentRealizeWorkspaceParams,
   ): Promise<PluginEnvironmentRealizeWorkspaceResult> {
@@ -596,6 +673,8 @@ const plugin = definePlugin({
     };
   },
 
+  // 执行命令：在已获取租赁的沙箱中运行用户命令
+  // 需要先恢复沙箱到 started 状态再执行，防止在停止的沙箱上调用 executeCommand 报错
   async onEnvironmentExecute(
     params: PluginEnvironmentExecuteParams,
   ): Promise<PluginEnvironmentExecuteResult> {

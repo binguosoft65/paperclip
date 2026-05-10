@@ -1,8 +1,11 @@
 import type { PaperclipPluginManifestV1 } from "@paperclipai/plugin-sdk";
 
+// 插件唯一标识和版本号，id 采用反向域名风格避免冲突
 const PLUGIN_ID = "paperclip.daytona-sandbox-provider";
 const PLUGIN_VERSION = "0.1.0";
 
+// 声明 Daytona 沙箱 Provider 插件的元信息，包括它实现的配置 schema
+// Paperclip 插件系统通过此 manifest 在加载前即可校验环境配置的正确性
 const manifest: PaperclipPluginManifestV1 = {
   id: PLUGIN_ID,
   apiVersion: 1,
@@ -23,6 +26,8 @@ const manifest: PaperclipPluginManifestV1 = {
       displayName: "Daytona Sandbox",
       description:
         "Provisions Daytona sandboxes with configurable image or snapshot selection, startup timeouts, and lease reuse.",
+      // configSchema 定义了用户在前端填写环境配置时的表单结构
+      // 使用 JSON Schema 格式，Plugin SDK 会自动生成对应的 UI 控件
       configSchema: {
         type: "object",
         properties: {

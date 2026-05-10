@@ -1,3 +1,7 @@
+// HTTP 日志中间件：基于 pino 实现双输出——
+// 1. stdout（pino-pretty，彩色，info 级别）：开发人员即时查看
+// 2. server.log 文件（pino-pretty，无彩色，debug 级别）：持久化审计
+// Authorization 头自动脱敏，防止密钥泄露到日志
 import path from "node:path";
 import fs from "node:fs";
 import pino from "pino";
@@ -6,6 +10,7 @@ import { readConfigFile } from "../config-file.js";
 import { resolveDefaultLogsDir, resolveHomeAwarePath } from "../home-paths.js";
 import { shouldSilenceHttpSuccessLog } from "./http-log-policy.js";
 
+// 日志目录优先级：PAPERCLIP_LOG_DIR 环境变量 > config.json 中的 logging.logDir > 默认实例目录
 function resolveServerLogDir(): string {
   const envOverride = process.env.PAPERCLIP_LOG_DIR?.trim();
   if (envOverride) return resolveHomeAwarePath(envOverride);

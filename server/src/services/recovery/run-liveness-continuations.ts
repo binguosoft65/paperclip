@@ -1,3 +1,7 @@
+// run-liveness-continuations: 运行活性续作决策引擎
+// 当一次 run 结束后没有产生具体进展（如 plan_only、empty_response），
+// 此模块判断是否应该排队一次"续作唤醒"让 Agent 再试一次。
+// 关键防护：最大尝试次数限制 + 幂等键防止重复唤醒
 import { and, eq, inArray } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
 import { agentWakeupRequests, agents, heartbeatRuns, issues } from "@paperclipai/db";
