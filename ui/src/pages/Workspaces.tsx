@@ -23,6 +23,7 @@ type ProjectWorkspaceGroup = {
   runningServiceCount: number;
 };
 
+// 按项目分组工作区：按运行中服务数降序排列，然后按更新时间排序
 function buildProjectWorkspaceGroups(input: {
   projects: Project[];
   issues: Issue[];
@@ -80,6 +81,7 @@ export function Workspaces() {
     queryKey: queryKeys.instance.experimentalSettings,
     queryFn: () => instanceSettingsApi.getExperimental(),
   });
+  // 工作区总览页仅在启用隔离工作区功能时可用，否则跳转到 issue 列表
   const isolatedWorkspacesEnabled = experimentalSettingsQuery.data?.enableIsolatedWorkspaces === true;
 
   const { data: projects = [], isLoading: projectsLoading, error: projectsError } = useQuery({
@@ -104,6 +106,7 @@ export function Workspaces() {
     enabled: Boolean(selectedCompanyId && isolatedWorkspacesEnabled),
   });
 
+  // 设置面包屑导航
   useEffect(() => {
     setBreadcrumbs([{ label: t("workspaces.title") }]);
   }, [setBreadcrumbs, t]);

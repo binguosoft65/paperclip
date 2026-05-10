@@ -25,6 +25,7 @@ import { DraftInput } from "./agent-config-primitives";
 import { InlineEditor } from "./InlineEditor";
 import { EnvVarEditor } from "./EnvVarEditor";
 
+// 项目状态选项：backlog（积压）、planned（已计划）、in_progress（进行中）、completed（已完成）、cancelled（已取消）
 const PROJECT_STATUSES = [
   { value: "backlog", label: "Backlog" },
   { value: "planned", label: "Planned" },
@@ -58,6 +59,7 @@ export type ProjectConfigFieldKey =
   | "execution_workspace_provision_command"
   | "execution_workspace_teardown_command";
 
+// 根据字段和渲染模式决定保存指示器的显示行为
 function SaveIndicator({ state }: { state: ProjectFieldSaveState }) {
   if (state === "saving") {
     return (
@@ -275,6 +277,7 @@ export function ProjectProperties({ project, onUpdate, onFieldUpdate, getFieldSa
     enabled: !!selectedCompanyId && environmentsEnabled,
   });
 
+  // 合并链接的目标 ID：新格式 goalIds 优先，兼容旧版单 goalId
   const linkedGoalIds = project.goalIds.length > 0
     ? project.goalIds
     : project.goalId
@@ -366,6 +369,7 @@ export function ProjectProperties({ project, onUpdate, onFieldUpdate, getFieldSa
     setGoalOpen(false);
   };
 
+  // 构建执行工作区策略更新 patch：保留现有策略字段，只覆盖传入的变更
   const updateExecutionWorkspacePolicy = (patch: Record<string, unknown>) => {
     if (!onUpdate && !onFieldUpdate) return;
     return {
@@ -477,6 +481,7 @@ export function ProjectProperties({ project, onUpdate, onFieldUpdate, getFieldSa
     persistCodebase({ repoUrl });
   };
 
+  // 清空本地路径或仓库 URL：确认弹窗后清除，对应的工作区数据也会同步更新
   const clearLocalWorkspace = () => {
     const confirmed = window.confirm(
       codebase.repoUrl
@@ -487,6 +492,7 @@ export function ProjectProperties({ project, onUpdate, onFieldUpdate, getFieldSa
     persistCodebase({ cwd: null });
   };
 
+  // 清空仓库 URL：如果还有本地路径则保留工作区只清理 repo 信息，否则删除整个工作区
   const clearRepoWorkspace = () => {
     const hasLocalFolder = Boolean(codebase.localFolder);
     const confirmed = window.confirm(

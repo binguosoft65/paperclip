@@ -40,6 +40,7 @@ export function approvalRoutes(
   const secretsSvc = secretService(db);
   const strictSecretsMode = process.env.PAPERCLIP_SECRETS_STRICT_MODE === "true";
 
+  // 检查当前请求用户是否有权限访问指定审批（公司级访问控制 + 存在性校验）
   async function requireApprovalAccess(req: Request, id: string) {
     const approval = await svc.getById(id);
     if (!approval) {
@@ -68,6 +69,11 @@ export function approvalRoutes(
     res.json(redactApprovalPayload(approval));
   });
 
+  // 创建审批请求。
+  // 边界情况处理：
+  // - issueIds 去重，防止同一个 Issue 被关联多次
+  // - hire_agent 类型的 payload 需要经过 secrets 脱敏处理（将 API key 等敏感信息转为加密存储引用）
+  // - 自动提取请求者身份：如果是 Agent 发起的，记录 requestedByAgentId；如果是用户发起的，记录 requestedByUserId
   router.post("/companies/:companyId/approvals", validate(createApprovalSchema), async (req, res) => {
     const companyId = req.params.companyId as string;
     assertCompanyAccess(req, companyId);
@@ -133,6 +139,10 @@ export function approvalRoutes(
     res.json(issues);
   });
 
+  // 批准审批：仅 Board 成员可操作。
+  // 审批通过后，如果请求者是 Agent，会触发唤醒（wakeup）机制——向对应 Agent 发送心跳信号，
+  // 通知其审批结果。唤醒失败不会中断审批流程，仅记录日志（非致命错误），
+  // 因为 Agent 后续仍可通过轮询获知状态变更。
   router.post("/approvals/:id/approve", validate(resolveApprovalSchema), async (req, res) => {
     assertBoard(req);
     const id = req.params.id as string;
@@ -229,6 +239,8 @@ export function approvalRoutes(
     res.json(redactApprovalPayload(approval));
   });
 
+  // 驳回审批：仅 Board 成员可操作。驳回后不会唤醒请求者 Agent（不同于批准流程），
+  // 因为驳回意味着终止，不需要 Agent 继续处理。
   router.post("/approvals/:id/reject", validate(resolveApprovalSchema), async (req, res) => {
     assertBoard(req);
     const id = req.params.id as string;
@@ -254,6 +266,8 @@ export function approvalRoutes(
     res.json(redactApprovalPayload(approval));
   });
 
+  // 要求修改：Board 成员对 pending 状态的审批提出修改意见，
+  // 审批状态变更为 revision_requested，待发起方修改后重新提交。
   router.post(
     "/approvals/:id/request-revision",
     validate(requestApprovalRevisionSchema),
@@ -281,6 +295,10 @@ export function approvalRoutes(
     },
   );
 
+  // 重新提交审批：仅限发起该审批的 Agent 或同一公司的用户操作。
+  // 权限约束：如果请求者是 Agent，必须与审批的 requestedByAgentId 一致，
+  // 防止一个 Agent 篡改另一个 Agent 的审批请求。
+  // 用户（Board 成员）可以替 Agent 重新提交。
   router.post("/approvals/:id/resubmit", validate(resubmitApprovalSchema), async (req, res) => {
     const id = req.params.id as string;
     const existing = await svc.getById(id);

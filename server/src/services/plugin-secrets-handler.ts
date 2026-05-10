@@ -185,7 +185,10 @@ export interface PluginSecretsService {
  * @param options - Database connection and plugin identity
  * @returns A `PluginSecretsService` suitable for `HostServices.secrets`
  */
-/** Simple sliding-window rate limiter for secret resolution attempts. */
+/** 滑动窗口限流器，用于限制密钥解析请求的频率。
+ * 每个密钥（由 key 标识）在给定的时间窗口内最多允许 maxAttempts 次尝试。
+ * 旧的时间戳会从数组中移除以避免内存泄漏。
+ * 此限流器的目的是防止恶意插件通过 secretRef UUID 枚举来暴力破解密钥。 */
 function createRateLimiter(maxAttempts: number, windowMs: number) {
   const attempts = new Map<string, number[]>();
 
@@ -208,19 +211,24 @@ export function createPluginSecretsHandler(
   const { db, pluginId } = options;
   const registry = pluginRegistryService(db);
 
-  // Rate limit: max 30 resolution attempts per plugin per minute
+  // 速率限制：每个插件每分钟最多 30 次密钥解析请求。
+  // 这个限制基于典型使用模式——一个 Agent 触发一个插件任务通常只解析 1~5 个密钥。
+  // 30/min 足够正常使用，同时防止暴力枚举。
   const rateLimiter = createRateLimiter(30, 60_000);
 
+  // 允许的密钥引用缓存。缓存有效期为 30 秒。
+  // 缓存的是从插件配置中提取的 UUID 集合——这个集合在大多数情况下不会频繁变更。
+  // 缓存设计：如果插件调用了 resolve() 但配置被更新了，最多延迟 30 秒即可获知新的密钥引用。
   let cachedAllowedRefs: Set<string> | null = null;
   let cachedAllowedRefsExpiry = 0;
-  const CONFIG_CACHE_TTL_MS = 30_000; // 30 seconds, matches event bus TTL
+  const CONFIG_CACHE_TTL_MS = 30_000; // 30 秒，与事件总线 TTL 一致
 
   return {
     async resolve(params: PluginSecretsResolveParams): Promise<string> {
       const { secretRef } = params;
 
       // ---------------------------------------------------------------
-      // 0. Rate limiting — prevent brute-force UUID enumeration
+      // 0. 限流——防止恶意插件暴力枚举 UUID
       // ---------------------------------------------------------------
       if (!rateLimiter.check(pluginId)) {
         const err = new Error("Rate limit exceeded for secret resolution");
@@ -229,7 +237,7 @@ export function createPluginSecretsHandler(
       }
 
       // ---------------------------------------------------------------
-      // 1. Validate the ref format
+      // 1. 校验参数格式——空字符串和非 UUID 格式直接拒绝
       // ---------------------------------------------------------------
       if (!secretRef || typeof secretRef !== "string" || secretRef.trim().length === 0) {
         throw invalidSecretRef(secretRef ?? "<empty>");
@@ -242,7 +250,10 @@ export function createPluginSecretsHandler(
       }
 
       // ---------------------------------------------------------------
-      // 1b. Scope check — only allow secrets referenced in this plugin's config
+      // 1b. 作用域检查——只允许解析插件配置中声明的密钥引用
+      //     这是能力（capability）门控的关键环节。
+      //     如果插件请求的 secretRef 不在其配置中，返回 "not found"
+      //     而不是 "permission denied"，以避免泄露密钥的存在性信息。
       // ---------------------------------------------------------------
       const now = Date.now();
       if (!cachedAllowedRefs || now > cachedAllowedRefsExpiry) {
@@ -262,12 +273,12 @@ export function createPluginSecretsHandler(
       }
 
       if (!cachedAllowedRefs.has(trimmedRef)) {
-        // Return "not found" to avoid leaking whether the secret exists
+        // 返回 "not found" 而非 "permission denied"——防止攻击者枚举哪些 UUID 存在
         throw secretNotFound(trimmedRef);
       }
 
       // ---------------------------------------------------------------
-      // 2. Look up the secret record by UUID
+      // 2. 按 UUID 查询密钥元数据
       // ---------------------------------------------------------------
       const secret = await db
         .select()
@@ -280,7 +291,10 @@ export function createPluginSecretsHandler(
       }
 
       // ---------------------------------------------------------------
-      // 3. Fetch the latest version's material
+      // 3. 获取最新版本的存储材料
+      //     插件始终解析最新版本——不支持固定版本号。
+      //     这是设计选择：插件通常运行周期短（几分钟），
+      //     轮换期间版本切换的窗口很窄，使用 latest 最合理。
       // ---------------------------------------------------------------
       const versionRow = await db
         .select()
@@ -298,7 +312,9 @@ export function createPluginSecretsHandler(
       }
 
       // ---------------------------------------------------------------
-      // 4. Resolve through the appropriate secret provider
+      // 4. 透过对应的 SecretProvider 解析明文
+      //     解析后的值直接返回给插件工作进程。
+      //     注意：该值不会被日志记录或持久化（参见 PLUGIN_SPEC.md §22）。
       // ---------------------------------------------------------------
       const provider = getSecretProvider(secret.provider as SecretProvider);
       const resolved = await provider.resolveVersion({

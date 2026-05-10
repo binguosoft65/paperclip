@@ -37,6 +37,7 @@ type WorkspaceFormState = {
 type ProjectWorkspaceSourceType = ProjectWorkspace["sourceType"];
 type ProjectWorkspaceVisibility = ProjectWorkspace["visibility"];
 
+// 工作区来源类型选项：本地路径、非 git 路径、远程 git 仓库、远程管理
 const SOURCE_TYPE_OPTIONS: Array<{ value: ProjectWorkspaceSourceType; label: string; description: string }> = [
   { value: "local_path", label: "Local git checkout", description: "A local path Paperclip can use directly." },
   { value: "non_git_path", label: "Local non-git path", description: "A local folder without git semantics." },
@@ -49,6 +50,7 @@ const VISIBILITY_OPTIONS: Array<{ value: ProjectWorkspaceVisibility; label: stri
   { value: "advanced", label: "Advanced" },
 ];
 
+// 仅允许 http/https 协议的 URL 作为安全链接（防止 javascript: 等协议注入）
 function isSafeExternalUrl(value: string | null | undefined) {
   if (!value) return false;
   try {
@@ -72,6 +74,7 @@ function formatJson(value: Record<string, unknown> | null | undefined) {
   return JSON.stringify(value, null, 2);
 }
 
+// 将工作区对象转换为表单状态：JSON 字段格式化展示
 function formStateFromWorkspace(workspace: ProjectWorkspace): WorkspaceFormState {
   return {
     name: workspace.name,
@@ -247,6 +250,7 @@ export function ProjectWorkspaceDetail() {
     [project, routeWorkspaceId],
   );
   const canonicalProjectRef = project ? projectRouteRef(project) : routeProjectRef;
+  // 通过 JSON 序列化比较判断表单是否有未保存变更
   const initialState = useMemo(() => (workspace ? formStateFromWorkspace(workspace) : null), [workspace]);
   const isDirty = Boolean(form && initialState && JSON.stringify(form) !== JSON.stringify(initialState));
 
@@ -343,6 +347,7 @@ export function ProjectWorkspaceDetail() {
     return <p className="text-sm text-muted-foreground">{t("projectWorkspace.notFound")}</p>;
   }
 
+  // 工作区命令执行前提：必须有本地路径；运行时服务还需要配置文件
   const canRunWorkspaceCommands = Boolean(workspace.cwd);
   const canStartRuntimeServices = Boolean(workspace.runtimeConfig?.workspaceRuntime) && canRunWorkspaceCommands;
   const runtimeControlSections = buildWorkspaceRuntimeControlSections({

@@ -149,6 +149,8 @@ export function ApprovalDetail() {
 
   const payload = approval.payload as Record<string, unknown>;
   const linkedAgentId = typeof payload.agentId === "string" ? payload.agentId : null;
+  // 只有 pending 和 revision_requested 状态的审批才允许操作（批准/驳回/要求修改）。
+  // 已批准/已驳回的审批只读展示，不可重新操作。
   const isActionable = approval.status === "pending" || approval.status === "revision_requested";
   const isBudgetApproval = approval.type === "budget_override_required";
   const TypeIcon = typeIcon[approval.type] ?? defaultTypeIcon;
@@ -284,11 +286,17 @@ export function ApprovalDetail() {
               </Button>
             </>
           )}
+          {/* budget_override_required 类型的审批不能在详情页直接批准/驳回，
+              因为预算超支需要先在成本管理页面调整预算策略，调整后系统自动重新评估。
+              这里展示引导文字引导用户跳转到 /costs 页面处理。 */}
           {isBudgetApproval && approval.status === "pending" && (
             <p className="text-sm text-muted-foreground">
               <Trans i18nKey="approvals.resolveBudgetStop" t={t} components={{ link: <Link to="/costs" className="underline underline-offset-2" /> }} />
             </p>
           )}
+          {/* 审批修改循环：pending → revision_requested → resubmit → pending
+              requestRevision：Board 要求发起方修改内容，状态改为 revision_requested
+              resubmit：发起方修改完成后重新提交，状态回到 pending 重新等待审批 */}
           {approval.status === "pending" && (
             <Button
               size="sm"
@@ -309,6 +317,9 @@ export function ApprovalDetail() {
               {t("approvals.markResubmitted")}
             </Button>
           )}
+          {/* hire_agent 被驳回后的额外清理入口：驳回时虽然在服务层已 terminate Agent，
+              但用户可能还需要确认删除该 Agent 记录。此按钮使用 window.confirm 二次确认
+              防止误操作，删除后页面跳转回审批列表。 */}
           {approval.status === "rejected" && approval.type === "hire_agent" && linkedAgentId && (
             <Button
               size="sm"

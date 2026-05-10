@@ -32,7 +32,7 @@ import { Tabs } from "@/components/ui/tabs";
 import { PluginLauncherOutlet } from "@/plugins/launchers";
 import { PluginSlotMount, PluginSlotOutlet, usePluginSlots } from "@/plugins/slots";
 
-/* ── Top-level tab types ── */
+/* ── 顶层选项卡类型：基础选项卡 + 插件注册的动态选项卡 ── */
 
 type ProjectBaseTab = "overview" | "list" | "plugin-operations" | "workspaces" | "configuration" | "budget";
 type ProjectPluginTab = `plugin:${string}`;
@@ -56,7 +56,7 @@ function resolveProjectTab(pathname: string, projectId: string): ProjectTab | nu
   return null;
 }
 
-/* ── Overview tab content ── */
+/* ── 概览选项卡内容：内联编辑描述、状态徽标、目标日期 ── */
 
 function OverviewContent({
   project,
@@ -99,7 +99,7 @@ function OverviewContent({
   );
 }
 
-/* ── Color picker popover ── */
+/* ── 颜色选择弹窗：点击外部区域自动关闭 ── */
 
 function ColorPicker({
   currentColor,
@@ -157,7 +157,7 @@ function ColorPicker({
   );
 }
 
-/* ── List (issues) tab content ── */
+/* ── Issue 列表选项卡 ── */
 
 function ProjectIssuesList({ projectId, companyId }: { projectId: string; companyId: string }) {
   const queryClient = useQueryClient();
@@ -273,7 +273,7 @@ function ProjectPluginOperationsList({
   );
 }
 
-/* ── Main project page ── */
+/* ── 主项目页面 ── */
 
 export function ProjectDetail() {
   const { companyPrefix, projectId, filter } = useParams<{
@@ -299,7 +299,9 @@ export function ProjectDetail() {
   }, [companies, companyPrefix]);
   const lookupCompanyId = routeCompanyId ?? selectedCompanyId ?? undefined;
   const canFetchProject = routeProjectRef.length > 0 && (isUuidLike(routeProjectRef) || Boolean(lookupCompanyId));
+  // 根据 URL 路径解析当前选项卡：支持 overview/configuration/budget/issues/plugin-operations/workspaces
   const activeRouteTab = routeProjectRef ? resolveProjectTab(location.pathname, routeProjectRef) : null;
+  // 首次访问时通过 localStorage 恢复用户上次浏览的选项卡
   const pluginTabFromSearch = useMemo(() => {
     const tab = new URLSearchParams(location.search).get("tab");
     return isProjectPluginTab(tab) ? tab : null;
@@ -336,6 +338,7 @@ export function ProjectDetail() {
     [pluginDetailSlots],
   );
   const activePluginTab = pluginTabItems.find((item) => item.value === activeTab) ?? null;
+  // 实验性功能：隔离工作区（isolated workspaces）开关，由实例设置控制
   const isolatedWorkspacesEnabled = experimentalSettingsQuery.data?.enableIsolatedWorkspaces === true;
   const workspaceTabProjectId = project?.id ?? null;
   const { data: workspaceTabIssues = [], isLoading: isWorkspaceTabIssuesLoading, error: workspaceTabIssuesError } = useQuery({
@@ -370,6 +373,7 @@ export function ProjectDetail() {
     (!isolatedWorkspacesEnabled || (!isWorkspaceTabIssuesLoading && !isWorkspaceTabExecutionWorkspacesLoading));
   const workspaceTabError = (workspaceTabIssuesError ?? workspaceTabExecutionWorkspacesError) as Error | null;
 
+  // 自动同步 companyId：当访问的项目属于不同公司时自动切换上下文
   useEffect(() => {
     if (!project?.companyId || project.companyId === selectedCompanyId) return;
     setSelectedCompanyId(project.companyId, { source: "route_sync" });
@@ -389,6 +393,7 @@ export function ProjectDetail() {
     onSuccess: invalidateProject,
   });
 
+  // 归档/取消归档项目：归档时跳转到首页，取消归档后停留在详情页
   const archiveProject = useMutation({
     mutationFn: (archived: boolean) =>
       projectsApi.update(
@@ -421,6 +426,7 @@ export function ProjectDetail() {
     },
   });
 
+  // 每 30 秒轮询预算概览，保持预算信息的实时性
   const { data: budgetOverview } = useQuery({
     queryKey: queryKeys.budgets.overview(resolvedCompanyId ?? "__none__"),
     queryFn: () => budgetsApi.overview(resolvedCompanyId!),
@@ -611,8 +617,8 @@ export function ProjectDetail() {
   if (error) return <p className="text-sm text-destructive">{error.message}</p>;
   if (!project) return null;
 
+  // 缓存当前选项卡到 localStorage，下次访问项目时恢复上次浏览位置
   const handleTabChange = (tab: ProjectTab) => {
-    // Cache the active tab per project
     if (project?.id) {
       try { localStorage.setItem(`paperclip:project-tab:${project.id}`, tab); } catch {}
     }

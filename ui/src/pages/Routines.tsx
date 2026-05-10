@@ -50,12 +50,17 @@ import type { RoutineListItem, RoutineVariable } from "@paperclipai/shared";
 const concurrencyPolicies = ["coalesce_if_active", "always_enqueue", "skip_if_active"];
 const catchUpPolicies = ["skip_missed", "enqueue_missed_with_cap"];
 
+// 自动调整 textarea 高度以适应内容
 function autoResizeTextarea(element: HTMLTextAreaElement | null) {
   if (!element) return;
   element.style.height = "auto";
   element.style.height = `${element.scrollHeight}px`;
 }
 
+// Routines 列表页的多维交互状态：
+// - 排序：按更新时间/创建时间/标题/最后运行时间
+// - 分组：不分组/按项目/按执行 agent
+// - 折叠状态：分组模式下每个组的折叠/展开状态保存在 localStorage 中持久化
 type RoutinesTab = "routines" | "runs";
 type RoutineGroupBy = "none" | "project" | "assignee";
 type RoutineSortField = "updated" | "created" | "title" | "lastRun";
@@ -123,6 +128,10 @@ function buildRoutineMutationPayload(input: {
   };
 }
 
+// 将 routine 列表按项目或 agent 分组。
+// 无 project 的 routine 归入 "__no_project"，
+// 无 assignee 的归入 "__unassigned"，
+// 分组名依次使用 i18n 翻译、英文默认值
 export function buildRoutineGroups(
   routines: RoutineListItem[],
   groupByValue: RoutineGroupBy,
@@ -208,6 +217,7 @@ export function Routines() {
   const titleInputRef = useRef<HTMLTextAreaElement | null>(null);
   const assigneeSelectorRef = useRef<HTMLButtonElement | null>(null);
   const projectSelectorRef = useRef<HTMLButtonElement | null>(null);
+  // 创建 routine 的草稿状态：包括标题、描述、所属项目、执行 agent、优先级、并发策略等
   const [runningRoutineId, setRunningRoutineId] = useState<string | null>(null);
   const [statusMutationRoutineId, setStatusMutationRoutineId] = useState<string | null>(null);
   const [runDialogRoutine, setRunDialogRoutine] = useState<RoutineListItem | null>(null);

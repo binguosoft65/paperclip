@@ -33,6 +33,7 @@ import type { Project } from "@paperclipai/shared";
 
 type ProjectSidebarSlot = ReturnType<typeof usePluginSlots>["slots"][number];
 
+// 可拖拽排序的项目侧边栏项：支持拖拽改变顺序，拖动过程中阻止导航
 function SortableProjectItem({
   activeProjectRef,
   companyId,
@@ -148,6 +149,7 @@ export function SidebarProjects() {
 
   const currentUserId = session?.user?.id ?? session?.session?.userId ?? null;
 
+  // 过滤已归档项目：侧边栏只显示非归档项目
   const visibleProjects = useMemo(
     () => (projects ?? []).filter((project: Project) => !project.archivedAt),
     [projects],
@@ -161,12 +163,13 @@ export function SidebarProjects() {
   const projectMatch = location.pathname.match(/^\/(?:[^/]+\/)?projects\/([^/]+)/);
   const activeProjectRef = projectMatch?.[1] ?? null;
   const sensors = useSensors(
-    // Project reordering is intentionally desktop-only; touch should remain tap/scroll behavior.
+    // 项目拖拽排序仅在桌面端启用，触屏设备保持点击/滚动行为避免误操作
     useSensor(MouseSensor, {
       activationConstraint: { distance: 8 },
     }),
   );
 
+  // 拖拽排序完成时更新持久化顺序；不在排序中则不处理
   const handleDragEnd = useCallback(
     (event: DragEndEvent) => {
       const { active, over } = event;

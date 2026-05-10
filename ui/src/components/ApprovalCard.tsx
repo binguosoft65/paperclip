@@ -15,6 +15,8 @@ import type { Approval, Agent } from "@paperclipai/shared";
 import { cn } from "@/lib/utils";
 import { useTranslation } from "react-i18next";
 
+// 状态到图标的映射：颜色传递语义——绿色=通过，红色=驳回，琥珀色=需修改，黄色=待审批
+// 用 Clock 表示 pending/revision_requested，暗示"需要等待决策"
 function statusIcon(status: string) {
   if (status === "approved") return <CheckCircle2 className="h-3.5 w-3.5 text-green-600 dark:text-green-400" />;
   if (status === "rejected") return <XCircle className="h-3.5 w-3.5 text-red-600 dark:text-red-400" />;
@@ -47,6 +49,10 @@ export function ApprovalCard({
   const Icon = typeIcon[approval.type] ?? defaultTypeIcon;
   const kindLabel = typeLabel[approval.type] ?? approval.type;
   const subject = approvalSubject(payload);
+  // 是否显式批准/驳回按钮：
+  // 1. 父组件必须提供了 onApprove/onReject 回调（列表页会注入，详情页直接渲染按钮不依赖此判断）
+  // 2. 预算超支审批不可直接在审批页面一键操作，需去成本页面调整
+  // 3. 只有 pending/revision_requested 状态才允许操作
   const showResolutionButtons =
     Boolean(onApprove && onReject) &&
     approval.type !== "budget_override_required" &&

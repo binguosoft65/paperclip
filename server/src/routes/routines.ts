@@ -26,6 +26,7 @@ export function routineRoutes(
   });
   const access = accessService(db);
 
+	// 仅 board 类型 actor 或拥有 tasks:assign 权限的用户可分配任务给 agent
   async function assertBoardCanAssignTasks(req: Request, companyId: string) {
     assertCompanyAccess(req, companyId);
     if (req.actor.type !== "board") return;
@@ -36,6 +37,7 @@ export function routineRoutes(
     }
   }
 
+	// agent 只能管理分配给自己的 routine，不可越权操作其他 agent 的 routine
   function assertCanManageCompanyRoutine(req: Request, companyId: string, assigneeAgentId?: string | null) {
     assertCompanyAccess(req, companyId);
     if (req.actor.type === "board") return;
@@ -45,6 +47,7 @@ export function routineRoutes(
     }
   }
 
+	// 检查已有 routine 的管理权限：board 全权，agent 只能操作自己的
   async function assertCanManageExistingRoutine(req: Request, routineId: string) {
     const routine = await svc.get(routineId);
     if (!routine) return null;

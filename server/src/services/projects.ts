@@ -33,6 +33,7 @@ import { resolveManagedProjectWorkspaceDir } from "../home-paths.js";
 type ProjectRow = typeof projects.$inferSelect;
 type ProjectWorkspaceRow = typeof projectWorkspaces.$inferSelect;
 type WorkspaceRuntimeServiceRow = typeof workspaceRuntimeServices.$inferSelect;
+// 哨兵值：当工作区仅配置了 git 仓库但未指定本地路径时，数据库用该值占位，查询时自动转为 null
 const REPO_ONLY_CWD_SENTINEL = "/__paperclip_repo_only__";
 type CreateWorkspaceInput = {
   name?: string | null;
@@ -73,7 +74,7 @@ interface ResolveProjectNameOptions {
   excludeProjectId?: string | null;
 }
 
-/** Batch-load goal refs for a set of projects. */
+/** 批量加载项目关联的目标：一次查询 project_goals 联表 + goals 表，减少 N+1 问题 */
 async function attachGoals(db: Db, rows: ProjectRow[]): Promise<ProjectWithGoals[]> {
   if (rows.length === 0) return [];
 
@@ -173,6 +174,7 @@ function toWorkspace(
   };
 }
 
+// 从仓库 URL 中提取仓库名（如 https://github.com/org/repo.git -> repo），用于 Paperclip 托管目录命名
 function deriveRepoNameFromRepoUrl(repoUrl: string | null): string | null {
   const raw = readNonEmptyString(repoUrl);
   if (!raw) return null;
@@ -211,10 +213,11 @@ function deriveProjectCodebase(input: {
     localFolder,
     managedFolder,
     effectiveLocalFolder: localFolder ?? managedFolder,
-    origin: localFolder ? "local_folder" : "managed_checkout",
+    origin: localFolder ? "local_folder" : "managed_checkout", // 标识代码库来源：用户本地路径 vs Paperclip 托管检出
   };
 }
 
+// 选择主工作区：优先使用 isPrimary 标记，若没有显式标记则取第一个（按创建时间排序后最早的）
 function pickPrimaryWorkspace(
   rows: ProjectWorkspaceRow[],
   runtimeServicesByWorkspaceId?: Map<string, WorkspaceRuntimeService[]>,
@@ -225,7 +228,7 @@ function pickPrimaryWorkspace(
   return toWorkspace(primary, runtimeServicesByWorkspaceId?.get(primary.id) ?? []);
 }
 
-/** Batch-load workspace refs for a set of projects. */
+/** 批量加载项目的工作区、运行时服务和插件托管资源：在一次批量查询中完成所有关联数据加载 */
 async function attachWorkspaces(db: Db, rows: ProjectWithGoals[]): Promise<ProjectWithGoals[]> {
   if (rows.length === 0) return [];
 
@@ -315,12 +318,12 @@ async function attachWorkspaces(db: Db, rows: ProjectWithGoals[]): Promise<Proje
   });
 }
 
-/** Sync the project_goals join table for a single project. */
+/** 同步项目-目标的关联关系：全量替换策略（先删后插），避免逐条 diff */
 async function syncGoalLinks(db: Db, projectId: string, companyId: string, goalIds: string[]) {
-  // Delete existing links
+  // 删除旧的关联记录
   await db.delete(projectGoals).where(eq(projectGoals.projectId, projectId));
 
-  // Insert new links
+  // 插入新的关联记录
   if (goalIds.length > 0) {
     await db.insert(projectGoals).values(
       goalIds.map((goalId) => ({ projectId, goalId, companyId })),
@@ -328,7 +331,7 @@ async function syncGoalLinks(db: Db, projectId: string, companyId: string, goalI
   }
 }
 
-/** Resolve goalIds from input, handling the legacy goalId field. */
+/** 解析目标 ID 列表：兼容旧版单一 goalId 字段，新版使用 goalIds 数组，undefined 表示不修改 */
 function resolveGoalIds(data: { goalIds?: string[]; goalId?: string | null }): string[] | undefined {
   if (data.goalIds !== undefined) return data.goalIds;
   if (data.goalId !== undefined) {
@@ -343,6 +346,7 @@ function readNonEmptyString(value: unknown): string | null {
   return trimmed.length > 0 ? trimmed : null;
 }
 
+// 归一化工作区路径：空值或哨兵值均转为 null，确保领域层使用一致的语义
 function normalizeWorkspaceCwd(value: unknown): string | null {
   const cwd = readNonEmptyString(value);
   if (!cwd) return null;
@@ -367,6 +371,7 @@ function deriveNameFromRepoUrl(repoUrl: string): string {
   }
 }
 
+// 推导工作区名称：显式名称 > 本地目录名 > 仓库名 > 默认值 "Workspace"
 function deriveWorkspaceName(input: {
   name?: string | null;
   cwd?: string | null;
@@ -402,7 +407,7 @@ export function resolveProjectNameForUniqueShortname(
 ): string {
   const requestedShortname = normalizeProjectUrlKey(requestedName);
   if (!requestedShortname) return requestedName;
-  // Non-ASCII names get a UUID suffix in deriveProjectUrlKey, making slugs inherently unique.
+  // 非 ASCII 名称在 deriveProjectUrlKey 中已有 UUID 后缀保证唯一性，无需进一步处理
   if (hasNonAsciiContent(requestedName)) return requestedName;
 
   const usedShortnames = new Set(
@@ -421,7 +426,7 @@ export function resolveProjectNameForUniqueShortname(
     }
   }
 
-  // Fallback guard for pathological naming collisions.
+  // 最终兜底：极端冲突情况下使用时间戳后缀保证唯一
   return `${requestedName} ${Date.now()}`;
 }
 
@@ -463,7 +468,7 @@ export function projectService(db: Db) {
     const { goalIds: inputGoalIds, ...projectData } = data;
     const ids = resolveGoalIds({ goalIds: inputGoalIds, goalId: projectData.goalId });
 
-    // Auto-assign a color from the palette if none provided
+    // 未指定颜色时自动分配：优先使用未用过的颜色，颜色用完后退化为取模轮转
     if (!projectData.color) {
       const existing = await db.select({ color: projects.color }).from(projects).where(eq(projects.companyId, companyId));
       const usedColors = new Set(existing.map((r) => r.color).filter(Boolean));
@@ -477,7 +482,7 @@ export function projectService(db: Db) {
       .where(eq(projects.companyId, companyId));
     projectData.name = resolveProjectNameForUniqueShortname(projectData.name, existingProjects);
 
-    // Also write goalId to the legacy column (first goal or null)
+    // 同时写入旧版 goalId 列（取第一个目标），保持向后兼容
     const legacyGoalId = ids && ids.length > 0 ? ids[0] : projectData.goalId ?? null;
 
     const row = await db
@@ -530,6 +535,7 @@ export function projectService(db: Db) {
 
     getById: getProjectById,
 
+    // 通过插件声明解析/创建托管项目：实现插件的 project 资源声明式生命周期管理
     resolveManagedProject: async (input: {
       companyId: string;
       pluginId: string;
@@ -719,7 +725,7 @@ export function projectService(db: Db) {
         }
       }
 
-      // Keep legacy goalId column in sync
+      // 保持旧版 goalId 列同步：更新时根据 goalIds 数组重新设置 goalId 列
       const updates: Partial<typeof projects.$inferInsert> = {
         ...projectData,
         updatedAt: new Date(),
@@ -745,6 +751,7 @@ export function projectService(db: Db) {
       return enriched ?? null;
     },
 
+    // 清空环境中选：当环境被删除时，将所有引用该环境的项目策略重置为 null
     clearExecutionWorkspaceEnvironmentSelection: async (companyId: string, environmentId: string) => {
       const rows = await db
         .select({
@@ -806,6 +813,7 @@ export function projectService(db: Db) {
       );
     },
 
+    // 创建工作区：自动推导 sourceType 和名称，校验远程管理工作区的必填字段
     createWorkspace: async (
       projectId: string,
       data: CreateWorkspaceInput,
@@ -819,8 +827,10 @@ export function projectService(db: Db) {
 
       const cwd = normalizeWorkspaceCwd(data.cwd);
       const repoUrl = readNonEmptyString(data.repoUrl);
+      // sourceType 未指定时根据已有信息推导：优先 git_repo > local_path > remote_managed
       const sourceType = readNonEmptyString(data.sourceType) ?? (repoUrl ? "git_repo" : cwd ? "local_path" : "remote_managed");
       const remoteWorkspaceRef = readNonEmptyString(data.remoteWorkspaceRef);
+      // 远程管理工作区必须有 remoteWorkspaceRef 或 repoUrl，否则无法确定工作区位置
       if (sourceType === "remote_managed") {
         if (!remoteWorkspaceRef && !repoUrl) return null;
       } else if (!cwd && !repoUrl) {
@@ -840,8 +850,10 @@ export function projectService(db: Db) {
         .then((rows) => rows);
 
       const shouldBePrimary = data.isPrimary === true || existing.length === 0;
+      // 事务中完成主工作区切换 + 创建：确保 isPrimary 互斥约束不因并发而破坏
       const created = await db.transaction(async (tx) => {
         if (shouldBePrimary) {
+          // 先将所有工作区设为非主，再将新工作区设为唯一主工作区
           await tx
             .update(projectWorkspaces)
             .set({ isPrimary: false, updatedAt: new Date() })
@@ -887,6 +899,7 @@ export function projectService(db: Db) {
       return created ? toWorkspace(created) : null;
     },
 
+    // 更新工作区：支持部分字段更新、主工作区切换、数据完整性约束校验
     updateWorkspace: async (
       projectId: string,
       workspaceId: string,
@@ -920,6 +933,7 @@ export function projectService(db: Db) {
         data.remoteWorkspaceRef !== undefined
           ? readNonEmptyString(data.remoteWorkspaceRef)
           : readNonEmptyString(existing.remoteWorkspaceRef);
+      // 校验 sourceType 约束：远程管理必须有引用，其他类型必须至少有一个路径/仓库
       if (nextSourceType === "remote_managed") {
         if (!nextRemoteWorkspaceRef && !nextRepoUrl) return null;
       } else if (!nextCwd && !nextRepoUrl) {
@@ -930,6 +944,7 @@ export function projectService(db: Db) {
         updatedAt: new Date(),
       };
       if (data.name !== undefined) patch.name = deriveWorkspaceName({ name: data.name, cwd: nextCwd, repoUrl: nextRepoUrl });
+      // cwd 或 repoUrl 变化时自动重推名称，避免名称与路径脱节
       if (data.name === undefined && (data.cwd !== undefined || data.repoUrl !== undefined)) {
         patch.name = deriveWorkspaceName({ cwd: nextCwd, repoUrl: nextRepoUrl });
       }
@@ -947,6 +962,7 @@ export function projectService(db: Db) {
       if (data.remoteWorkspaceRef !== undefined) patch.remoteWorkspaceRef = nextRemoteWorkspaceRef;
       if (data.sharedWorkspaceKey !== undefined) patch.sharedWorkspaceKey = readNonEmptyString(data.sharedWorkspaceKey);
       if (data.metadata !== undefined || data.runtimeConfig !== undefined) {
+        // 合并运行时配置到 metadata 中，避免覆盖其他已有元数据
         patch.metadata =
           data.runtimeConfig !== undefined
             ? mergeProjectWorkspaceRuntimeConfig(
@@ -958,8 +974,10 @@ export function projectService(db: Db) {
             : data.metadata;
       }
 
+      // 事务中处理主工作区切换：保证 isPrimary 互斥且始终存在一个主工作区
       const updated = await db.transaction(async (tx) => {
         if (data.isPrimary === true) {
+          // 先将所有工作区设为非主，再单独设置目标工作区为主
           await tx
             .update(projectWorkspaces)
             .set({ isPrimary: false, updatedAt: new Date() })
@@ -996,6 +1014,7 @@ export function projectService(db: Db) {
           )
           .then((rows) => rows[0] ?? null);
 
+        // 当前工作区不再是主工作区且项目无主工作区时，自动推选最早创建的工作区为主
         if (!hasPrimary) {
           const nextPrimaryCandidate = await tx
             .select({ id: projectWorkspaces.id })
@@ -1039,6 +1058,7 @@ export function projectService(db: Db) {
       return updated ? toWorkspace(updated) : null;
     },
 
+    // 删除工作区：若被删除的是主工作区，自动将最早创建的其他工作区递补为主工作区
     removeWorkspace: async (projectId: string, workspaceId: string): Promise<ProjectWorkspace | null> => {
       const existing = await db
         .select()
@@ -1060,8 +1080,10 @@ export function projectService(db: Db) {
           .then((rows) => rows[0] ?? null);
         if (!row) return null;
 
+        // 非主工作区直接删除，不需要处理递补逻辑
         if (!row.isPrimary) return row;
 
+        // 查找最早创建的工作区作为新的主工作区
         const next = await tx
           .select()
           .from(projectWorkspaces)
@@ -1089,6 +1111,7 @@ export function projectService(db: Db) {
       return removed ? toWorkspace(removed) : null;
     },
 
+    // 根据引用解析项目：优先 UUID 匹配，其次短名称匹配；多个同名短名称返回 ambiguous
     resolveByReference: async (companyId: string, reference: string) => {
       const raw = reference.trim();
       if (raw.length === 0) {

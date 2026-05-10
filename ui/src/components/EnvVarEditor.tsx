@@ -55,6 +55,12 @@ function toRows(rec: Record<string, EnvBinding> | null | undefined): Row[] {
   return [...entries, { key: "", source: "plain", plainValue: "", secretId: "" }];
 }
 
+// 环境变量编辑器：允许用户为 Agent 或 Project 配置环境变量。
+// 每行包含三个部分：
+// 1. 变量名（key）
+// 2. 来源选择：明文（plain）或密钥引用（secret）
+// 3. 对应的值或已存储的密钥
+// 支持 "密封"（seal）操作——将明文值自动转为密钥引用，提高安全性。
 export function EnvVarEditor({
   value,
   secrets,
@@ -84,6 +90,10 @@ export function EnvVarEditor({
     }
   }, [value]);
 
+  // 将 Row 数组序列化为 Record<string, EnvBinding> 并向上传递。
+  // 如果所有行都为空（无 key），传递 undefined 表示未设置任何环境变量。
+  // 注意：secret_ref 行的 secretId 为空时会自动降级为 plain 类型——这是一种容错设计，
+  // 防止用户选择了 "Secret" 来源但未选择具体密钥时产生无效的绑定。
   function emit(nextRows: Row[]) {
     const rec: Record<string, EnvBinding> = {};
     for (const row of nextRows) {
@@ -103,6 +113,8 @@ export function EnvVarEditor({
     onChange(Object.keys(rec).length > 0 ? rec : undefined);
   }
 
+  // 更新某一行后，如果最后一行已被填写，自动追加一个空行以便用户继续添加新变量。
+  // 这是典型的"自动追加行"交互模式——用户在最后一行输入时无需手动点击"添加行"按钮。
   function updateRow(index: number, patch: Partial<Row>) {
     const withPatch = rows.map((row, rowIndex) => (rowIndex === index ? { ...row, ...patch } : row));
     if (
@@ -139,6 +151,10 @@ export function EnvVarEditor({
       .slice(0, 64);
   }
 
+  // "密封"操作：将一行的明文值转为密钥引用。
+  // 流程：弹出命名对话框 -> 调用 API 创建密钥 -> 将行切换为 secret_ref 模式。
+  // 这种"一键转密钥"的设计降低了用户使用密钥管理的门槛——用户可以先快速输入明文，
+  // 后续再通过密封操作提升安全性，而无需预先切换到密钥管理页面创建密钥。
   async function sealRow(index: number) {
     const row = rows[index];
     if (!row) return;

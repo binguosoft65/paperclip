@@ -58,10 +58,15 @@ import { queueIssueAssignmentWakeup, type IssueAssignmentWakeupDeps } from "./is
 import { logActivity } from "./activity-log.js";
 import type { PluginWorkerManager } from "./plugin-worker-manager.js";
 
+// 非终态的 issue 状态集合，用于判断是否存在活跃的 routine execution issue
 const OPEN_ISSUE_STATUSES = ["backlog", "todo", "in_progress", "in_review", "blocked"];
+// 有活跃 heartbeat run 的状态集合，用于判断 execution 是否还在运行
 const LIVE_HEARTBEAT_RUN_STATUSES = ["queued", "running", "scheduled_retry"];
+// 终态 issue 状态，达到这些状态后 routine run 标记为已完成或失败
 const TERMINAL_ISSUE_STATUSES = new Set(["done", "cancelled"]);
+// 追赶策略的最大执行次数上限，防止积压过多导致资源耗尽
 const MAX_CATCH_UP_RUNS = 25;
+// 每个 routine 保留的最大 revision 数量，超出部分会被裁剪
 const MAX_ROUTINE_REVISIONS = 100;
 const WEEKDAY_INDEX: Record<string, number> = {
   Sun: 0,
@@ -81,6 +86,7 @@ interface RoutineTriggerSecretRestoreMaterial extends RoutineTriggerSecretMateri
   triggerId: string;
 }
 
+// 验证时区字符串是否合法，依赖 Intl 引擎的时区数据库
 function assertTimeZone(timeZone: string) {
   try {
     new Intl.DateTimeFormat("en-US", { timeZone }).format(new Date());
@@ -89,12 +95,15 @@ function assertTimeZone(timeZone: string) {
   }
 }
 
+// 将时间截断到分钟粒度（秒和毫秒归零），用于 cron 匹配的精度基准
 function floorToMinute(date: Date) {
   const copy = new Date(date.getTime());
   copy.setUTCSeconds(0, 0);
   return copy;
 }
 
+// 将 Date 按照目标时区拆解为分钟级组件（年/月/日/时/分/星期），
+// 用于 cron 表达式在指定时区下的匹配判断
 function getZonedMinuteParts(date: Date, timeZone: string) {
   const formatter = new Intl.DateTimeFormat("en-US", {
     timeZone,
@@ -122,6 +131,9 @@ function getZonedMinuteParts(date: Date, timeZone: string) {
   };
 }
 
+// 判断某个时间点是否匹配 cron 表达式（在指定时区下）。
+// 核心思路：先将 UTC Date 转换到目标时区的"年/月/日/时/分/周几"，
+// 再与 cron 表达式的各字段进行匹配。
 function matchesCronMinute(expression: string, timeZone: string, date: Date) {
   const cron = parseCron(expression);
   const parts = getZonedMinuteParts(date, timeZone);
@@ -134,6 +146,11 @@ function matchesCronMinute(expression: string, timeZone: string, date: Date) {
   );
 }
 
+// 计算在指定时区下，after 之后的下一个 cron 触发时间。
+// 搜索窗口为 5 年（366*24*60*5 分钟），超时返回 null 防止死循环。
+// 与 nextCronTick (cron.ts) 不同，此函数知道时区：
+// 先将 cursor 视为 UTC 时间，再用 matchesCronMinute 按目标时区匹配。
+// 两层循环：外层分钟步进，内层 matchesCronMinute 做时区转换匹配。
 function nextCronTickInTimeZone(expression: string, timeZone: string, after: Date) {
   const trimmed = expression.trim();
   assertTimeZone(timeZone);
@@ -154,6 +171,7 @@ function nextCronTickInTimeZone(expression: string, timeZone: string, after: Dat
   return null;
 }
 
+// 将 run 状态映射为人类可读的描述文本，用于 trigger 的 lastResult 字段
 function nextResultText(status: string, issueId?: string | null) {
   if (status === "issue_created" && issueId) return `Created execution issue ${issueId}`;
   if (status === "coalesced") return "Coalesced into an existing live execution issue";
@@ -163,6 +181,7 @@ function nextResultText(status: string, issueId?: string | null) {
   return status;
 }
 
+// 归一化 Webhook 时间戳到毫秒：Unix 秒数（10 位）乘以 1000，毫秒数（13 位）直接使用
 function normalizeWebhookTimestampMs(rawTimestamp: string) {
   const parsed = Number(rawTimestamp);
   if (!Number.isFinite(parsed)) return null;
@@ -173,6 +192,7 @@ function isPlainRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+// 将各种输入形式（true/"true"/"yes"/"1"/1 等）归一化为 boolean
 function parseBooleanVariableValue(name: string, raw: unknown) {
   if (typeof raw === "boolean") return raw;
   if (typeof raw === "number" && (raw === 0 || raw === 1)) return raw === 1;
@@ -184,6 +204,7 @@ function parseBooleanVariableValue(name: string, raw: unknown) {
   throw unprocessable(`Variable "${name}" must be a boolean`);
 }
 
+// 将输入解析为 number，同时支持字符串形式的数字
 function parseNumberVariableValue(name: string, raw: unknown) {
   if (typeof raw === "number" && Number.isFinite(raw)) return raw;
   if (typeof raw === "string" && raw.trim().length > 0) {
@@ -193,6 +214,7 @@ function parseNumberVariableValue(name: string, raw: unknown) {
   throw unprocessable(`Variable "${name}" must be a number`);
 }
 
+// 根据变量定义的类型对输入值做类型转换和校验
 function normalizeRoutineVariableValue(variable: RoutineVariable, raw: unknown): string | number | boolean | null {
   if (raw == null) return null;
   if (variable.type === "boolean") return parseBooleanVariableValue(variable.name, raw);
@@ -235,6 +257,8 @@ function sanitizeRoutineVariableInputs(
   }));
 }
 
+// 定时触发的 routine 的所有 required 变量必须有默认值，
+// 因为 schedule trigger 没有人工交互环节来填写变量值
 function assertScheduleCompatibleVariables(variables: RoutineVariable[]) {
   const missingDefaults = variables
     .filter((variable) => variable.required)
@@ -257,6 +281,8 @@ function statusRequiresDefaultAgent(status: string) {
   return status === "active";
 }
 
+// 创建时若指定了 active 但没有默认 agent，自动降级为 paused，
+// 防止一个没有执行主体的 routine 进入活跃状态
 function normalizeDraftRoutineStatus(status: string, assigneeAgentId: string | null | undefined) {
   if (statusRequiresDefaultAgent(status) && !assigneeAgentId) {
     return "paused";
@@ -270,6 +296,9 @@ function assertRoutineCanEnable(status: string, assigneeAgentId: string | null |
   }
 }
 
+// 从三种来源合并变量输入：trigger payload 中的顶级字段、payload.variables 嵌套对象、显式传入的 variables 参数。
+// Webhook source 直接将 payload 顶级字段视为变量值（例如 GitHub webhook 的 action/issue 等字段可被模板引用）。
+// 优先级：显式 variables > payload.variables > payload 顶级字段
 function collectProvidedRoutineVariables(
   source: "schedule" | "manual" | "api" | "webhook",
   payload: Record<string, unknown> | null | undefined,
@@ -285,6 +314,11 @@ function collectProvidedRoutineVariables(
   return provided;
 }
 
+// 解析 routine 变量最终值，优先级规则：
+// 1. automaticVariables（系统自动注入，如 workspace branch）优先级最高
+// 2. 用户提供的变量值（payload/variables 参数）次之
+// 3. 变量定义的 defaultValue 作为兜底
+// 缺少 required 变量时抛异常
 function resolveRoutineVariableValues(
   variables: RoutineVariable[],
   input: {
@@ -356,6 +390,9 @@ function normalizeRoutineDispatchFingerprintValue(value: unknown): unknown {
   return String(value);
 }
 
+// 基于触发 payload、project、agent、workspace 等信息创建 dispatch fingerprint。
+// fingerprint 用于并发控制中的去重判断：
+// 相同 fingerprint 的请求被视为"相同内容"，根据 concurrencyPolicy 决定是合并还是跳过
 function createRoutineDispatchFingerprint(input: {
   payload: Record<string, unknown> | null;
   projectId: string | null;
@@ -370,6 +407,8 @@ function createRoutineDispatchFingerprint(input: {
   return crypto.createHash("sha256").update(canonical).digest("hex");
 }
 
+// 从插件管理的 routine 配置中读取 issue 模板（surfaceVisibility/originId/billingCode），
+// 用于控制创建的 execution issue 归属哪个 origin（routine_execution 或 plugin_operation）
 function readManagedRoutineIssueTemplate(defaultsJson: Record<string, unknown> | null | undefined) {
   const value = defaultsJson?.issueTemplate;
   if (!isPlainRecord(value)) return null;
@@ -380,11 +419,14 @@ function readManagedRoutineIssueTemplate(defaultsJson: Record<string, unknown> |
   };
 }
 
+// 判断 routine 的标题或描述中是否引用了 workspace_branch 变量，
+// 如果是，dispatch 时需要从 execution workspace 获取分支名并自动注入
 function routineUsesWorkspaceBranch(routine: typeof routines.$inferSelect) {
   return (routine.variables ?? []).some((variable) => variable.name === WORKSPACE_BRANCH_ROUTINE_VARIABLE)
     || extractRoutineVariableNames([routine.title, routine.description]).includes(WORKSPACE_BRANCH_ROUTINE_VARIABLE);
 }
 
+// 将 routines 表行数据提取为快照中的 routine 部分（记录当时的所有字段值）
 function routineRevisionSnapshotRoutine(routine: RoutineRow): RoutineRevisionSnapshotV1["routine"] {
   return {
     id: routine.id,
@@ -403,6 +445,7 @@ function routineRevisionSnapshotRoutine(routine: RoutineRow): RoutineRevisionSna
   };
 }
 
+// 将 routineTriggers 表行数据提取为快照中的 trigger 部分
 function routineRevisionSnapshotTrigger(trigger: RoutineTriggerRow): RoutineRevisionSnapshotV1["triggers"][number] {
   return {
     id: trigger.id,
@@ -417,6 +460,9 @@ function routineRevisionSnapshotTrigger(trigger: RoutineTriggerRow): RoutineRevi
   };
 }
 
+// 构建当前 routine 及其所有 trigger 的快照。
+// 每次 routine 或 trigger 变更都会创建一个新的 revision 快照，
+// 用于版本历史回溯和回滚操作
 async function buildRoutineRevisionSnapshot(
   executor: Db,
   routine: RoutineRow,
@@ -1059,11 +1105,15 @@ export function routineService(
     executionWorkspaceSettings?: Record<string, unknown> | null;
     actor?: Actor;
   }) {
+    // 使用显式传入的 project/agent，若无则降级为 routine 配置的默认值
     const projectId = input.projectId ?? input.routine.projectId ?? null;
     const assigneeAgentId = input.assigneeAgentId ?? input.routine.assigneeAgentId ?? null;
     if (!assigneeAgentId) {
       throw unprocessable("Default agent required");
     }
+    // 自动变量：系统注入而非用户提供的变量值。
+    // 当前仅支持 workspace_branch——从 execution workspace 读取分支名，
+    // 前提是 routine 模板中确实引用了该变量
     const automaticVariables: Record<string, string | number | boolean> = {};
     if (input.executionWorkspaceId && routineUsesWorkspaceBranch(input.routine)) {
       const workspace = await db
@@ -1109,12 +1159,14 @@ export function routineService(
       title,
       description,
     });
+    // 事务执行：用 SELECT FOR UPDATE 锁定 routine 行，防止并发触发导致重复执行
     const run = await db.transaction(async (tx) => {
       const txDb = tx as unknown as Db;
       await tx.execute(
         sql`select id from ${routines} where ${routines.id} = ${input.routine.id} and ${routines.companyId} = ${input.routine.companyId} for update`,
       );
 
+	// 幂等性检查：相同 idempotencyKey 的请求返回已有 run 记录，不重复执行
       if (input.idempotencyKey) {
         const existing = await txDb
           .select()
@@ -1134,6 +1186,7 @@ export function routineService(
         if (existing) return existing;
       }
 
+	// 记录触发时间 —— 同时用于 cron 的 nextRunAt 计算基准
       const triggeredAt = new Date();
       const manualRunnerUserId = input.source === "manual" ? input.actor?.userId ?? null : null;
       const [createdRun] = await txDb
@@ -1155,12 +1208,19 @@ export function routineService(
         ? nextCronTickInTimeZone(input.trigger.cronExpression, input.trigger.timezone, triggeredAt)
         : undefined;
 
+	// 并发控制核心逻辑：
+	// 1. 查找是否存在同一 routine 的活跃 execution issue
+	// 2. 根据 concurrencyPolicy 决定行为：
+	//    - coalesce_if_active（默认）：合并到已有 issue
+	//    - skip_if_active：跳过本次触发
+	//    - always_enqueue：忽略已有 issue，总是新创建
       let createdIssue: Awaited<ReturnType<typeof issueSvc.create>> | null = null;
       try {
         const activeIssue = await findLiveExecutionIssue(input.routine, txDb, dispatchFingerprint, {
           kind: issueOriginKind,
           id: issueOriginId,
         });
+	// 存在活跃 issue 且策略不允许 always_enqueue → 执行合并或跳过
         if (activeIssue && input.routine.concurrencyPolicy !== "always_enqueue") {
           const status = input.routine.concurrencyPolicy === "skip_if_active" ? "skipped" : "coalesced";
           if (manualRunnerUserId) {
@@ -1188,6 +1248,8 @@ export function routineService(
           return updated ?? createdRun;
         }
 
+	// 创建新的 execution issue，包含变量插值后的标题和描述，
+	// 以及 workspace/fingerprint 等信息用于后续关联
         try {
           createdIssue = await issueSvc.create(input.routine.companyId, {
             projectId,
@@ -1210,6 +1272,9 @@ export function routineService(
             executionWorkspaceSettings: input.executionWorkspaceSettings ?? null,
           });
         } catch (error) {
+	// PostgreSQL unique constraint violation: issues_open_routine_execution_uq，
+	// 意味着同一个 origin (routine) 已有一个打开的 execution issue。
+	// 这是数据库层面的兜底并发控制，与 findLiveExecutionIssue 的检测形成双重保障
           const isOpenExecutionConflict =
             !!error &&
             typeof error === "object" &&
@@ -2053,6 +2118,11 @@ export function routineService(
       if (!routine) throw notFound("Routine not found");
       if (!trigger.enabled || routine.status !== "active") throw conflict("Routine trigger is not active");
 
+	// Webhook 签名验证：根据 trigger 配置的 signingMode 选择验证方式。
+	// - none: 不验证签名，仅靠 publicId（URL 中的 secret token）做鉴权
+	// - github_hmac: GitHub/Sentry 风格的 HMAC-SHA256 签名，验证 X-Hub-Signature-256 头
+	// - bearer: Bearer Token 验证（Authorization 头）
+	// - hmac_sha256（默认）：带时间戳的 HMAC-SHA256 签名，支持防重放攻击
       if (trigger.signingMode === "none") {
         // No authentication — the publicId in the URL acts as a shared secret.
       } else if (trigger.signingMode === "github_hmac") {
@@ -2061,6 +2131,7 @@ export function routineService(
         // Accept X-Hub-Signature-256 (GitHub/Sentry) or fall back to the
         // generic X-Paperclip-Signature header so operators can use github_hmac
         // mode with either header convention.
+        // 注意：timingSafeEqual 用于防止时序攻击
         const providedSignature = (input.hubSignatureHeader ?? input.signatureHeader)?.trim() ?? "";
         if (!providedSignature) throw unauthorized();
         const expectedHmac = crypto
@@ -2095,6 +2166,7 @@ export function routineService(
         if (!providedSignature || !providedTimestamp) throw unauthorized();
         const tsMillis = normalizeWebhookTimestampMs(providedTimestamp);
         if (tsMillis == null) throw unauthorized();
+	// replayWindowSec 防重放窗口：超出窗口的请求（默认 5 分钟）被视为重放攻击拒绝
         const replayWindowSec = trigger.replayWindowSec ?? 300;
         if (Math.abs(Date.now() - tsMillis) > replayWindowSec * 1000) {
           throw unauthorized();
@@ -2195,6 +2267,13 @@ export function routineService(
       }));
     },
 
+	// tickScheduledTriggers — scheduler 定时轮询入口。
+	// 查找所有满足条件的 due trigger：
+	//   - kind = schedule
+	//   - enabled = true
+	//   - 关联 routine 为 active 状态
+	//   - nextRunAt <= now
+	// 按 nextRunAt 升序排队，避免老任务被新任务无限延迟
     tickScheduledTriggers: async (now: Date = new Date()) => {
       const due = await db
         .select({
@@ -2221,6 +2300,10 @@ export function routineService(
         let runCount = 1;
         let claimedNextRunAt = nextCronTickInTimeZone(row.trigger.cronExpression, row.trigger.timezone, now);
 
+	// 追赶策略：enqueue_missed_with_cap 表示从上次计划触发时间开始，
+	// 逐个 tick 向前追赶，最多 MAX_CATCH_UP_RUNS（25）次。
+	// 每次 dispatch 创建一个独立的 execution issue，适合需要"补执行"的场景。
+	// skip_missed（默认策略）则什么也不做，只计算下一次正常触发时间
         if (row.routine.catchUpPolicy === "enqueue_missed_with_cap") {
           let cursor: Date | null = row.trigger.nextRunAt;
           runCount = 0;
@@ -2231,6 +2314,8 @@ export function routineService(
           }
         }
 
+	// Compare-and-swap: 只有 nextRunAt 未被其他 scheduler 实例更新时才算"认领"成功。
+	// 这是分布式环境下的乐观锁，防止多个 scheduler 同时触发同一个 trigger
         const claimed = await db
           .update(routineTriggers)
           .set({

@@ -21,6 +21,7 @@ function readServiceStates(value: unknown): ProjectWorkspaceRuntimeConfig["servi
   return Object.fromEntries(entries) as ProjectWorkspaceRuntimeConfig["serviceStates"];
 }
 
+// 从 metadata 中安全读取并校验运行时配置：确保 desiredState 和 serviceStates 为合法值，非法值视为 null
 export function readProjectWorkspaceRuntimeConfig(
   metadata: Record<string, unknown> | null | undefined,
 ): ProjectWorkspaceRuntimeConfig | null {
@@ -37,6 +38,7 @@ export function readProjectWorkspaceRuntimeConfig(
   return hasConfig ? config : null;
 }
 
+// 合并运行时配置到 metadata 中：patch 为 null 时删除整个 runtimeConfig 字段，否则按字段合并保留旧值
 export function mergeProjectWorkspaceRuntimeConfig(
   metadata: Record<string, unknown> | null | undefined,
   patch: Partial<ProjectWorkspaceRuntimeConfig> | null,

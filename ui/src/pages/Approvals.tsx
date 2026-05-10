@@ -24,6 +24,8 @@ export function Approvals() {
   const navigate = useNavigate();
   const location = useLocation();
   const pathSegment = location.pathname.split("/").pop() ?? "pending";
+  // statusFilter 控制 Tab 切换："all" 显示全部，"pending"（默认）仅显示待处理项。
+  // revision_requested 状态在业务上仍属于"待处理"，因此归入 pending 分类。
   const statusFilter: StatusFilter = pathSegment === "all" ? "all" : "pending";
   const [actionError, setActionError] = useState<string | null>(null);
 
@@ -66,12 +68,15 @@ export function Approvals() {
     },
   });
 
+  // 按 Tab 过滤：pending Tab 同时包含 pending 和 revision_requested（"待审批"与"待重新提交"均属待处理）。
+  // 按创建时间倒序排列，让最新审批优先展示。
   const filtered = (data ?? [])
     .filter(
       (a) => statusFilter === "all" || a.status === "pending" || a.status === "revision_requested",
     )
     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
+  // 待处理计数同样包含 revision_requested，与 Tab 过滤逻辑保持一致
   const pendingCount = (data ?? []).filter(
     (a) => a.status === "pending" || a.status === "revision_requested",
   ).length;

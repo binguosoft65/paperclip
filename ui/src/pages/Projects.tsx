@@ -29,11 +29,13 @@ export function Projects() {
     queryFn: () => projectsApi.list(selectedCompanyId!),
     enabled: !!selectedCompanyId,
   });
+  // 过滤已归档项目：项目列表页默认只显示非归档项目，已归档的在单独入口查看
   const projects = useMemo(
     () => (allProjects ?? []).filter((p) => !p.archivedAt),
     [allProjects],
   );
 
+  // 未选择公司时提示用户选择，确保 API 调用有必填的 companyId
   if (!selectedCompanyId) {
     return <EmptyState icon={Hexagon} message={t("projects.noCompany")} />;
   }

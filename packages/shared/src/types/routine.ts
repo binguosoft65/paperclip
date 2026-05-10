@@ -2,6 +2,21 @@
  * 常规模板（Routine）实体类型及相关类型定义。
  * Routine 是一种可定时执行的任务模板，支持变量替换、
  * 多种触发方式（定时/Webhook/API）、并发策略和版本快照。
+ *
+ * ## 生命周期
+ * draft（草稿）→ active（活跃）↔ paused（暂停）→ archived（归档）
+ * - 创建时若无默认 agent 则自动设为 paused
+ * - 只有 active 状态才会被 scheduler 轮询触发
+ * - archived 状态不可逆（暂不提供 unarchive）
+ *
+ * ## 并发策略
+ * - coalesce_if_active：有活跃 execution issue 时合并到已有 issue
+ * - skip_if_active：有活跃 issue 时跳过本次触发
+ * - always_enqueue：总是创建新的 execution issue
+ *
+ * ## 追赶策略
+ * - skip_missed：错过的时间窗口直接跳过
+ * - enqueue_missed_with_cap：最多追赶 25 次
  */
 
 import type {

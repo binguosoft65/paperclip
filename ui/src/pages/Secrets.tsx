@@ -75,6 +75,9 @@ import { cn } from "../lib/utils";
 import { PageTabBar } from "../components/PageTabBar";
 import { ImportFromVaultDialog } from "./secrets/ImportFromVaultDialog";
 
+// 密钥创建模式：
+// - "managed": Paperclip 托管值，Provider 负责写入和轮换
+// - "external": 仅关联外部 Provider 中已存在的密钥，Paperclip 只读
 type CreateMode = "managed" | "external";
 type SecretsTab = "secrets" | "vaults";
 
@@ -97,6 +100,7 @@ type ProviderVaultForm = {
   secretPathPrefix: string;
 };
 
+// Provider 在 UI 中的固定显示顺序。gcp_secret_manager 和 vault 排在最后因为它们当前是 "coming_soon" 状态。
 const PROVIDER_ORDER: SecretProvider[] = [
   "local_encrypted",
   "aws_secrets_manager",
@@ -104,6 +108,7 @@ const PROVIDER_ORDER: SecretProvider[] = [
   "vault",
 ];
 
+// GCP Secret Manager 和 HashiCorp Vault 尚未完全实现 Provider 模块，标记为 coming_soon 禁止实际读写。
 function defaultProviderVaultStatus(provider: SecretProvider): SecretProviderConfigStatus {
   return provider === "gcp_secret_manager" || provider === "vault" ? "coming_soon" : "ready";
 }
@@ -379,6 +384,8 @@ export function Secrets() {
     setBreadcrumbs([{ label: "Secrets" }]);
   }, [setBreadcrumbs]);
 
+  // 密钥列表查询——每次页面激活或切换公司时刷新。
+  // 启用 __disabled__ 密钥前缀是为了在未选择公司时禁用查询。
   const secretsQuery = useQuery({
     queryKey: selectedCompanyId
       ? queryKeys.secrets.list(selectedCompanyId)
@@ -387,6 +394,8 @@ export function Secrets() {
     enabled: Boolean(selectedCompanyId),
   });
 
+  // Provider 描述信息（如 local_encrypted、aws_secrets_manager 等）在部署期间基本不变，
+  // 所以使用 5 分钟的 staleTime 减少不必要的网络请求。
   const providersQuery = useQuery({
     queryKey: selectedCompanyId
       ? queryKeys.secrets.providers(selectedCompanyId)
@@ -396,6 +405,8 @@ export function Secrets() {
     staleTime: 5 * 60_000,
   });
 
+  // Provider 健康检查：每 60 秒自动轮询，不重试。
+  // 因为网络波动导致的失败不代表 Provider 不可用——用户可手动重试。
   const providerHealthQuery = useQuery({
     queryKey: selectedCompanyId
       ? ["secret-provider-health", selectedCompanyId]
@@ -693,6 +704,8 @@ export function Secrets() {
     },
   });
 
+  // 当当前选择的 Provider 被阻塞（如未配置或健康检查失败）时，自动切换到下一个可用 Provider。
+  // 这提高了用户体验——用户无需手动排查哪个 Provider 可用。
   useEffect(() => {
     if (!createOpen || providers.length === 0) return;
     const currentBlockReason = getCreateProviderBlockReason(

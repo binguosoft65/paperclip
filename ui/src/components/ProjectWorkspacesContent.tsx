@@ -27,6 +27,7 @@ export function ProjectWorkspacesContent({
     name: string;
     status: ExecutionWorkspace["status"];
   } | null>(null);
+  // 控制工作区运行时（start/stop/restart）：区分项目工作区和执行工作区调用不同的 API
   const controlWorkspaceRuntime = useMutation({
     mutationFn: async (input: {
       key: string;
@@ -56,6 +57,7 @@ export function ProjectWorkspacesContent({
   }
 
   const activeSummaries = summaries.filter((summary) => summary.executionWorkspaceStatus !== "cleanup_failed");
+  // 分离清理失败的工作区：在独立的"需要关注"区域展示，方便用户排查
   const cleanupFailedSummaries = summaries.filter((summary) => summary.executionWorkspaceStatus === "cleanup_failed");
 
   return (

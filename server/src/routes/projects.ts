@@ -35,7 +35,9 @@ import { assertEnvironmentSelectionForCompany } from "./environment-selection.js
 import { environmentService } from "../services/environments.js";
 import { secretService } from "../services/secrets.js";
 
+// 256KB 输出上限：防止极端情况下工作区命令输出撑爆内存，同时保留足够调试信息
 const WORKSPACE_CONTROL_OUTPUT_MAX_CHARS = 256 * 1024;
+// 共享工作区禁止普通 agent 执行 stop/restart，避免误操作影响其他用户的运行时服务
 const SHARED_WORKSPACE_STOP_AND_RESTART_ACTIONS = new Set(["stop", "restart"]);
 
 export function projectRoutes(db: Db) {
@@ -46,6 +48,7 @@ export function projectRoutes(db: Db) {
   const strictSecretsMode = process.env.PAPERCLIP_SECRETS_STRICT_MODE === "true";
   const environmentsSvc = environmentService(db);
 
+  // 校验项目执行环境选择：仅允许 local/ssh/sandbox 三种驱动，排除云 IDE 等不可直接执行的环境
   async function assertProjectEnvironmentSelection(companyId: string, environmentId: string | null | undefined) {
     if (environmentId === undefined || environmentId === null) return;
     await assertEnvironmentSelectionForCompany(environmentsSvc, companyId, environmentId, {
@@ -53,6 +56,7 @@ export function projectRoutes(db: Db) {
     });
   }
 
+  // 从执行策略中提取 environmentId：undefined 表示字段不存在（保持旧值），null 表示显式清空
   function readProjectPolicyEnvironmentId(policy: unknown): string | null | undefined {
     if (!policy || typeof policy !== "object" || !("environmentId" in policy)) {
       return undefined;
@@ -61,6 +65,7 @@ export function projectRoutes(db: Db) {
     return typeof environmentId === "string" || environmentId === null ? environmentId : undefined;
   }
 
+  // 解析项目引用的公司 ID：优先使用查询参数显式指定；agent 请求时自动注入所属公司，避免客户端遗漏
   async function resolveCompanyIdForProjectReference(req: Request) {
     const companyIdQuery = req.query.companyId;
     const requestedCompanyId =
@@ -77,6 +82,7 @@ export function projectRoutes(db: Db) {
     return null;
   }
 
+  // 项目引用归一化：UUID 直接通过，短名称（shortname）则在公司范围内解析，冲突时要求客户端改用 ID
   async function normalizeProjectReference(req: Request, rawId: string) {
     if (isUuidLike(rawId)) return rawId;
     const companyId = await resolveCompanyIdForProjectReference(req);
@@ -97,6 +103,7 @@ export function projectRoutes(db: Db) {
     }
   });
 
+  // 列出公司下所有项目（含工作区、目标、插件托管信息），用于侧边栏和项目列表页
   router.get("/companies/:companyId/projects", async (req, res) => {
     const companyId = req.params.companyId as string;
     assertCompanyAccess(req, companyId);
@@ -104,6 +111,7 @@ export function projectRoutes(db: Db) {
     res.json(result);
   });
 
+  // 获取单个项目详情（含工作区、运行时服务、代码库信息），支持 UUID 或短名称引用
   router.get("/projects/:id", async (req, res) => {
     const id = req.params.id as string;
     const project = await svc.getById(id);
@@ -115,6 +123,7 @@ export function projectRoutes(db: Db) {
     res.json(project);
   });
 
+  // 创建项目：支持一次性创建工作区（内联 workspace 字段）、环境变量持久化归一、环境选择校验
   router.post("/companies/:companyId/projects", validate(createProjectSchema), async (req, res) => {
     const companyId = req.params.companyId as string;
     assertCompanyAccess(req, companyId);
@@ -127,6 +136,7 @@ export function projectRoutes(db: Db) {
       companyId,
       readProjectPolicyEnvironmentId(projectData.executionWorkspacePolicy),
     );
+    // 校验命令变更权限：防止非授权 agent 修改主机关执行命令
     assertNoAgentHostWorkspaceCommandMutation(
       req,
       [
@@ -146,12 +156,14 @@ export function projectRoutes(db: Db) {
     if (workspace) {
       const createdWorkspace = await svc.createWorkspace(project.id, workspace);
       if (!createdWorkspace) {
+        // 工作区创建失败时回滚项目，保证原子性
         await svc.remove(project.id);
         res.status(422).json({ error: "Invalid project workspace payload" });
         return;
       }
       createdWorkspaceId = createdWorkspace.id;
     }
+    // 内联创建了工作区时需要重新查询以获取完整的工作区运行时配置
     const hydratedProject = workspace ? await svc.getById(project.id) : project;
 
     const actor = getActorInfo(req);
@@ -176,6 +188,7 @@ export function projectRoutes(db: Db) {
     res.status(201).json(hydratedProject ?? project);
   });
 
+  // 更新项目：支持部分字段更新，archivedAt 字符串转 Date，环境变量重新归一
   router.patch("/projects/:id", validate(updateProjectSchema), async (req, res) => {
     const id = req.params.id as string;
     const existing = await svc.getById(id);
@@ -193,6 +206,7 @@ export function projectRoutes(db: Db) {
       existing.companyId,
       readProjectPolicyEnvironmentId(body.executionWorkspacePolicy),
     );
+    // 客户端传来的是 ISO 字符串，转为 Date 以便数据库兼容
     if (typeof body.archivedAt === "string") {
       body.archivedAt = new Date(body.archivedAt);
     }
@@ -229,6 +243,7 @@ export function projectRoutes(db: Db) {
     res.json(project);
   });
 
+  // 获取项目下所有工作区列表（含运行时服务状态），用于工作区管理面板
   router.get("/projects/:id/workspaces", async (req, res) => {
     const id = req.params.id as string;
     const existing = await svc.getById(id);
@@ -241,6 +256,7 @@ export function projectRoutes(db: Db) {
     res.json(workspaces);
   });
 
+  // 为项目创建工作区：自动推导 sourceType、名称，校验远程管理场景的必填字段
   router.post("/projects/:id/workspaces", validate(createProjectWorkspaceSchema), async (req, res) => {
     const id = req.params.id as string;
     const existing = await svc.getById(id);
@@ -279,6 +295,7 @@ export function projectRoutes(db: Db) {
     res.status(201).json(workspace);
   });
 
+  // 更新工作区：支持修改路径、仓库、命令、运行时配置；需校验 sourceType 约束（远程必须至少有一个引用）
   router.patch(
     "/projects/:id/workspaces/:workspaceId",
     validate(updateProjectWorkspaceSchema),
@@ -325,10 +342,12 @@ export function projectRoutes(db: Db) {
     },
   );
 
+  // 工作区运行时命令处理（start/stop/restart/run）：统一入口处理服务和作业的生命周期管理
   async function handleProjectWorkspaceRuntimeCommand(req: Request, res: Response) {
     const id = req.params.id as string;
     const workspaceId = req.params.workspaceId as string;
     const action = String(req.params.action ?? "").trim().toLowerCase();
+    // 仅支持四种操作，防止路由任意字符串被当作命令执行
     if (action !== "start" && action !== "stop" && action !== "restart" && action !== "run") {
       res.status(404).json({ error: "Workspace command action not found" });
       return;
@@ -347,6 +366,7 @@ export function projectRoutes(db: Db) {
       return;
     }
 
+    // 共享工作区中的 agent 不可执行 stop/restart，防止一个 agent 的操作影响其他 agent 的运行时
     const isSharedWorkspace = Boolean(workspace.sharedWorkspaceKey);
     if (
       req.actor.type === "agent"
@@ -368,6 +388,7 @@ export function projectRoutes(db: Db) {
     }
 
     const runtimeConfig = workspace.runtimeConfig?.workspaceRuntime ?? null;
+    // 解析目标命令和运行时服务：workspaceCommandId 用于指定作业或服务，runtimeServiceId 用于精确控制某个已启动的服务
     const target = req.body as { workspaceCommandId?: string | null; runtimeServiceId?: string | null; serviceIndex?: number | null };
     const configuredServices = runtimeConfig ? listConfiguredRuntimeServiceEntries({ workspaceRuntime: runtimeConfig }) : [];
     const workspaceCommand = runtimeConfig
@@ -381,6 +402,7 @@ export function projectRoutes(db: Db) {
       res.status(404).json({ error: "Runtime service not found for this project workspace" });
       return;
     }
+    // 命令未指定 runtimeServiceId 时，尝试从运行时服务列表中自动匹配
     const matchedRuntimeService =
       workspaceCommand?.kind === "service" && !target.runtimeServiceId
         ? matchWorkspaceRuntimeServiceToCommand(workspaceCommand, workspace.runtimeServices ?? [])
@@ -398,6 +420,7 @@ export function projectRoutes(db: Db) {
       res.status(422).json({ error: "Selected runtime service is not defined in this project workspace runtime config" });
       return;
     }
+    // 作业和服务的操作类型严格分离：作业只能 run，服务只能 start/restart/stop
     if (workspaceCommand?.kind === "job" && action !== "run") {
       res.status(422).json({ error: `Workspace job "${workspaceCommand.name}" can only be run` });
       return;
@@ -410,6 +433,7 @@ export function projectRoutes(db: Db) {
       res.status(422).json({ error: "Select a workspace job to run" });
       return;
     }
+    // start/restart 需要运行时配置定义，否则无法知道启动什么
     if ((action === "start" || action === "restart") && !runtimeConfig) {
       res.status(422).json({ error: "Project workspace has no workspace command configuration" });
       return;
@@ -603,6 +627,7 @@ export function projectRoutes(db: Db) {
   router.post("/projects/:id/workspaces/:workspaceId/runtime-services/:action", validate(workspaceRuntimeControlTargetSchema), handleProjectWorkspaceRuntimeCommand);
   router.post("/projects/:id/workspaces/:workspaceId/runtime-commands/:action", validate(workspaceRuntimeControlTargetSchema), handleProjectWorkspaceRuntimeCommand);
 
+  // 删除工作区：若删除的是主工作区，自动将最早创建的其他工作区设为主工作区
   router.delete("/projects/:id/workspaces/:workspaceId", async (req, res) => {
     const id = req.params.id as string;
     const workspaceId = req.params.workspaceId as string;
@@ -636,6 +661,7 @@ export function projectRoutes(db: Db) {
     res.json(workspace);
   });
 
+  // 删除项目：硬删除，非软删除；需要前置清理关联资源（工作区、目标关联等由外键级联处理）
   router.delete("/projects/:id", async (req, res) => {
     const id = req.params.id as string;
     const existing = await svc.getById(id);

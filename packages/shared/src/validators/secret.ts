@@ -6,13 +6,15 @@ export const envBindingPlainSchema = z.object({
   value: z.string(),
 });
 
+// secretId 校验为 UUID 格式——这是系统内部标识，不支持 ARN 或其他外部 ID。
 export const envBindingSecretRefSchema = z.object({
   type: z.literal("secret_ref"),
   secretId: z.string().uuid(),
   version: z.union([z.literal("latest"), z.number().int().positive()]).optional(),
 });
 
-// Backward-compatible union that accepts legacy inline values.
+// 向后兼容：接受旧版直接将字符串作为值的做法。
+// 同时支持新版显式类型标注的两种格式，保证新旧数据格式无缝过渡。
 export const envBindingSchema = z.union([
   z.string(),
   envBindingPlainSchema,
@@ -21,6 +23,10 @@ export const envBindingSchema = z.union([
 
 export const envConfigSchema = z.record(envBindingSchema);
 
+// 创建密钥的校验规则：
+// - name、value 必填（min(1) 确保非空）
+// - provider 可选，不传时使用服务端默认值
+// - 托管模式（paperclip_managed）禁止设置 externalRef——外部引用和管理模式互斥
 export const createSecretSchema = z
   .object({
     name: z.string().min(1),
@@ -55,6 +61,9 @@ export const updateSecretSchema = z.object({
 
 export type UpdateSecret = z.infer<typeof updateSecretSchema>;
 
+// Vault 地址校验：必须是 HTTP/HTTPS 的 origin-only URL。
+// transform 用于统一格式（去除多余路径、查询参数等），
+// refine 用于最终确认格式合法。
 const vaultOriginUrl = z
   .string()
   .trim()
@@ -90,12 +99,18 @@ const vaultOriginUrl = z
     { message: "Must be an origin-only HTTP(S) URL with no path, query, hash, or credentials" },
   );
 
+// Provider 配置的 Schema：每个 Provider 有自己的配置结构。
+// 为什么用 discriminatedUnion 而不是 union？
+// 因为 discriminatedUnion 根据 "provider" 字段的值自动选择对应的 schema，
+// 提供更好的类型推断和更清晰的错误消息。
+
 const localProviderConfigSchema = z.object({
+  // 本地加密 Provider 不需要特殊配置，仅需要一个确认备份的标记。
   backupReminderAcknowledged: z.boolean().optional(),
 });
 
 const awsProviderConfigSchema = z.object({
-  region: z.string().min(1),
+  region: z.string().min(1), // 必填
   namespace: z.string().min(1).optional(),
   secretNamePrefix: z.string().optional(),
 });
@@ -130,6 +145,7 @@ export const updateSecretProviderConfigSchema = z.union([
 export const remoteSecretImportPreviewSchema = z.object({
   providerConfigId: z.string().uuid(),
   query: z.string().optional(),
+  // 分页大小限制：1~100，默认 50。避免单次请求加载过多外部密钥。
   pageSize: z.number().int().min(1).max(100).default(50),
 });
 
@@ -141,6 +157,7 @@ const remoteImportSecretSchema = z.object({
   providerMetadata: z.record(z.unknown()).optional(),
 });
 
+// 批量导入限制：一次最多导入 100 个密钥，防止超时。
 export const remoteSecretImportSchema = z.object({
   providerConfigId: z.string().uuid(),
   secrets: z.array(remoteImportSecretSchema).min(1).max(100),

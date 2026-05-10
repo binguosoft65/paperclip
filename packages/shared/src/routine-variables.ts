@@ -3,11 +3,17 @@
  * 支持在模板字符串中使用 {{ variableName }} 语法引用变量，
  * 内置变量（date/timestamp）无需在常规变量列表中定义，
  * 其他变量需在 Routine 的 variables 字段中声明。
+ *
+ * ## 设计原则
+ * - 内置变量（date/timestamp）自动填充，不计入变量列表，不可被覆盖
+ * - 插件 workspace branch 变量也是自动填充，但由 dispatchRoutineRun 注入
+ * - syncRoutineVariablesWithTemplate 保持模板与变量定义双向同步：
+ *   模板中删除 {{var}} → 变量定义自动移除；模板中新增 → 自动添加定义
  */
 
 import type { RoutineVariable } from "./types/routine.js";
 
-/** 匹配 {{ variableName }} 语法 */
+/** 匹配 {{ variableName }} 语法，变量名必须以字母开头，后可跟字母数字下划线 */
 const ROUTINE_VARIABLE_MATCHER = /\{\{\s*([A-Za-z][A-Za-z0-9_]*)\s*\}\}/g;
 type RoutineTemplateInput = string | null | undefined | Array<string | null | undefined>;
 

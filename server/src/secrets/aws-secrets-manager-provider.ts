@@ -15,13 +15,23 @@ import type {
 } from "./types.js";
 import { SecretProviderClientError } from "./types.js";
 
+// AWS Secrets Manager Provider 的存储材料标识。用于 DB 中区分不同 Provider 的存储格式。
 const AWS_SECRETS_MANAGER_SCHEME = "aws_secrets_manager_v1";
+// 默认的 AWS Secret 名称前缀和拥有者标签
 const DEFAULT_PREFIX = "paperclip";
 const DEFAULT_OWNER_TAG = "paperclip";
+// AWS 默认版本阶段标记为 AWSCURRENT。Paperclip 在轮换时先写入 PAPERCLIP_PENDING 阶段，
+// 后续由独立协调流程将新版本标记为 AWSCURRENT 并移除旧版本的 AWSCURRENT。
+// 这种"两阶段提交"设计防止轮换过程中的竞态条件——消费者在过渡期间仍然可以获取旧值。
 const DEFAULT_VERSION_STAGE = "AWSCURRENT";
 const PAPERCLIP_PENDING_VERSION_STAGE = "PAPERCLIP_PENDING";
+// AWS Secrets Manager 删除密钥时默认有 30 天恢复窗口。
 const DEFAULT_DELETE_RECOVERY_WINDOW_DAYS = 30;
+// AWS API 请求超时设置：30 秒。AWS Secrets Manager 的 API 延迟通常在 200ms~2s 之间，
+// 30 秒的超时足以应对大多数情况，同时避免长时间挂起服务器线程。
 const AWS_SECRETS_MANAGER_REQUEST_TIMEOUT_MS = 30_000;
+// AWS 凭证缓存 TTL：5 分钟。避免每次解析密钥都去拉取 STS 凭证。
+// 对于使用 IAM 角色的部署，凭证有效期通常为 6~15 小时，5 分钟缓存是一个合理的刷新周期。
 const AWS_CREDENTIAL_CACHE_TTL_MS = 5 * 60_000;
 const AWS_CREDENTIAL_EXPIRATION_SKEW_MS = 60_000;
 const AWS_RUNTIME_CREDENTIAL_WARNING =
@@ -29,6 +39,10 @@ const AWS_RUNTIME_CREDENTIAL_WARNING =
 const AWS_CREDENTIAL_CUSTODY_WARNING =
   "Do not store AWS root credentials or long-lived IAM user access keys in Paperclip company_secrets; the AWS provider bootstrap belongs in deployment infrastructure, the process environment, an AWS profile, or the orchestrator secret store.";
 
+// AWS Secrets Manager 存储材料。区分两种来源：
+// - managed: Paperclip 创建和管理的密钥（Paperclip 拥有写入权限）
+// - external_reference: 仅引用已有的 AWS Secret（Paperclip 只读，不负责轮换）
+// 这种区分对于删除/归档时的行为选择至关重要——managed 会被级联删除，external_reference 则不会。
 interface AwsSecretsManagerMaterial extends StoredSecretVersionMaterial {
   scheme: typeof AWS_SECRETS_MANAGER_SCHEME;
   secretId: string;
@@ -36,6 +50,9 @@ interface AwsSecretsManagerMaterial extends StoredSecretVersionMaterial {
   source: "managed" | "external_reference";
 }
 
+// AWS Secrets Manager Provider 的运行时配置。
+// region 和 deploymentId 是必填项，其余字段有合理的默认值。
+// kmsKeyId 可为 null——不指定时使用 AWS 默认的 aws/secretsmanager KMS 密钥。
 interface AwsSecretsManagerConfig {
   region: string;
   endpoint: string;
@@ -79,6 +96,9 @@ interface CachedAwsCredentialProvider {
 
 type ManagedSecretNamespaceContext = Pick<SecretProviderWriteContext, "companyId" | "secretKey">;
 
+// 进程级 AWS 凭证缓存（区域 -> 凭证提供者）。
+// 使用 Map 而不是全局变量的原因是：不同区域可能有不同的 IAM 角色配置。
+// 注意：这是进程级缓存，不在不同进程或服务器间共享。
 const awsCredentialProviders = new Map<string, CachedAwsCredentialProvider>();
 
 interface AwsSecretsManagerGateway {
@@ -156,6 +176,11 @@ function canonicalHeaderValue(value: string) {
   return value.trim().replace(/\s+/g, " ");
 }
 
+// 手动实现 AWS Signature V4 签名算法。
+// 选择手动实现而不是使用 @aws-sdk/client-secrets-manager 的原因：
+// 1. 减少依赖体积和版本管理负担
+// 2. Secrets Manager API 调用频率低，没必要拉取完整的 SDK 客户端
+// 3. 该实现遵循 AWS SigV4 规范（https://docs.aws.amazon.com/general/latest/gr/sigv4_signing.html）
 function signAwsSecretsManagerRequest(input: {
   endpoint: URL;
   region: string;
@@ -210,12 +235,17 @@ function signAwsSecretsManagerRequest(input: {
   };
 }
 
+// 通过 AWS SDK 默认凭证链加载凭证，附带区域级别的缓存。
+// 使用 S3Client 作为凭证提供者的"载具"来访问 AWS SDK 的默认凭证链，
+// 这是一个实现细节——我们没有真的调用 S3 API。
+// 缓存策略：凭证过期时间取"缓存 TTL（5 分钟）"和"凭证实际过期时间减 60 秒偏移"两者中较小值，
+// 确保在凭证即将过期前提前刷新，避免因时钟偏差导致使用过期凭证。
 async function loadAwsCredentials(region: string): Promise<AwsCredentialIdentity> {
   const now = Date.now();
   let cached = awsCredentialProviders.get(region);
   if (!cached) {
-    // S3Client is only used as a carrier for the AWS SDK default credential provider chain.
-    // No S3 API calls are made here; switch to defaultProvider({ region }) if we add that dependency.
+    // S3Client 仅作为获取 AWS SDK 默认凭证链的工具。
+    // 如果你添加了需实际使用 S3 的功能，应切换到 defaultProvider({ region })。
     cached = {
       client: new S3Client({ region }),
       credentials: null,
@@ -432,6 +462,10 @@ function sanitizePathSegment(input: string) {
     .replace(/^\/+|\/+$/g, "");
 }
 
+// 构造 AWS Secret 的托管名称。命名空间为：
+// {prefix}/{deploymentId}/{companyId}/{secretKey}
+// 这种层级命名确保不同部署和公司间的密钥不会冲突。
+// 同时支持在 AWS Console 中通过前缀快速过滤和搜索。
 function buildManagedSecretName(
   config: AwsSecretsManagerConfig,
   context: ManagedSecretNamespaceContext | undefined,
@@ -466,6 +500,9 @@ function extractAwsSecretName(externalRef: string) {
   return arnMatch?.[1] ?? trimmed;
 }
 
+// 检查某个 externalRef 是否指向本上下文的托管密钥。
+// AWS Secrets Manager 在创建密钥时会自动追加 6 字符随机后缀，
+// 所以正则中匹配 optional 的 `-[A-Za-z0-9]{6}` 后缀。
 function isManagedSecretRefForContext(
   config: AwsSecretsManagerConfig,
   context: ManagedSecretNamespaceContext | undefined,
@@ -649,6 +686,11 @@ function normalizeAwsError(operation: string, error: unknown): never {
   });
 }
 
+// AWS Secrets Manager 的低级 HTTP JSON 客户端。
+// 所有 API 调用经过统一的 call 方法路由，此方法负责：
+// 1. SigV4 签名 2. 超时控制 3. 错误分类和脱敏
+// 错误消息中的 AWS 原始错误码和消息被分类为业务友好的错误码，
+// 避免将 AWS 内部错误信息直接暴露给前端。
 class AwsSecretsManagerJsonGateway implements AwsSecretsManagerGateway {
   private readonly endpoint: URL;
 
@@ -726,6 +768,8 @@ class AwsSecretsManagerJsonGateway implements AwsSecretsManagerGateway {
     }>("ListSecrets", input);
   }
 
+  // 统一的 AWS API 调用入口。使用原生 fetch API（而非 axios 或其他 HTTP 客户端），
+  // 因为 fetch 是 Node 18+ 内置 API，无需额外依赖。超时使用 AbortSignal.timeout 实现。
   private async call<T>(operation: string, payload: Record<string, unknown>): Promise<T> {
     const body = JSON.stringify(payload);
     const credentials = await loadAwsCredentials(this.config.region);
@@ -796,6 +840,9 @@ export function createAwsSecretsManagerProvider(
     return { ok: true, warnings };
   }
 
+  // 健康检查：验证 AWS 配置的完整性，包括区域、部署 ID、KMS 密钥和凭证源。
+  // 发现配置缺陷时返回 "warn" 状态（而非 "error"），因为部分功能（如本地开发）可能不需要完整配置。
+  // 注意检测到环境变量中的静态凭证时会发出警告——生产环境应使用 IAM 角色而非静态密钥。
   async function healthCheck(
     input?: {
       deploymentMode?: DeploymentMode;
@@ -887,6 +934,8 @@ export function createAwsSecretsManagerProvider(
       return configuredAwsSecretsManagerDescriptor();
     },
     validateConfig,
+    // 在 AWS Secrets Manager 中创建新的托管密钥。
+    // 使用 buildManagedSecretId 生成结构化名称，并附带 Paperclip 标签用于追踪和过滤。
     async createSecret(input) {
       const config = resolveConfig(input.providerConfig);
       const gateway = resolveGateway(config);
@@ -916,6 +965,9 @@ export function createAwsSecretsManagerProvider(
         normalizeAwsError("createSecret", error);
       }
     },
+    // 创建新版本：通过 PutSecretValue 写入 AWS Secrets Manager。
+    // 新版本标记为 PAPERCLIP_PENDING_VERSION_STAGE，后续由协调流程推进为 AWSCURRENT。
+    // 这种设计允许批量轮换后一次性切换版本，而不是逐个切换造成中间状态不一致。
     async createVersion(input) {
       const config = resolveConfig(input.providerConfig);
       const gateway = resolveGateway(config);
@@ -944,11 +996,16 @@ export function createAwsSecretsManagerProvider(
         normalizeAwsError("createVersion", error);
       }
     },
+    // 链接外部密钥：仅存储引用元数据，不实际写入 AWS。
+    // 调用前检查该 externalRef 是否误指向了 Paperclip 托管的命名空间——防止循环引用。
     async linkExternalSecret(input) {
       const config = resolveConfig(input.providerConfig);
       assertNotManagedNamespaceExternalRef(config, input.externalRef);
       return createExternalReferenceMaterial(input.externalRef, input.providerVersionRef ?? null);
     },
+    // 从 AWS Secrets Manager 远程列出密钥。支持分页和全文搜索过滤。
+    // 结果仅包含元数据（名称、ARN、标签），不包含实际 SecretString 内容。
+    // 这个接口主要用于 "导入外部密钥" 功能，让用户可以从 AWS 控制台的密钥列表中挑选要引用的密钥。
     async listRemoteSecrets(input): Promise<RemoteSecretListResult> {
       const config = resolveConfig(input.providerConfig);
       const gateway = resolveGateway(config);
@@ -983,6 +1040,9 @@ export function createAwsSecretsManagerProvider(
         normalizeAwsError("listSecrets", error);
       }
     },
+    // 解析秘钥值：从 AWS Secrets Manager 读取实际 SecretString。
+    // 对于 managed 密钥，使用 resolveManagedSecretRef 重新确认正确的 SecretId 路径；
+    // 对于 external_reference 密钥，直接使用存储的 secretId。
     async resolveVersion(input) {
       const config = resolveConfig(input.providerConfig);
       const gateway = resolveGateway(config);
@@ -1011,6 +1071,10 @@ export function createAwsSecretsManagerProvider(
         normalizeAwsError("resolveVersion", error);
       }
     },
+    // 删除或归档密钥。仅对 managed 来源的密钥产生实际操作：
+    // - archive 模式：移除 PAPERCLIP_PENDING 阶段标记，保留 AWSCURRENT 版本不受影响
+    // - 删除模式：调用 DeleteSecret，默认 30 天可恢复窗口
+    // external_reference 来源的密钥在此处不执行任何 AWS 操作——Paperclip 只删除自己的元数据。
     async deleteOrArchive(input) {
       const material =
         input.material && typeof input.material === "object"

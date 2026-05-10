@@ -44,6 +44,7 @@ export type BudgetServiceHooks = {
   cancelWorkForScope?: (scope: BudgetEnforcementScope) => Promise<void>;
 };
 
+// 计算当前 UTC 月份的时间窗口（当月 1 日 00:00:00 至下月 1 日 00:00:00）
 function currentUtcMonthWindow(now = new Date()) {
   const year = now.getUTCFullYear();
   const month = now.getUTCMonth();
@@ -52,6 +53,7 @@ function currentUtcMonthWindow(now = new Date()) {
   return { start, end };
 }
 
+// 根据窗口类型解析起止时间：lifetime 使用极值范围，calendar_month_utc 则为当前月
 function resolveWindow(windowKind: BudgetWindowKind, now = new Date()) {
   if (windowKind === "lifetime") {
     return {
@@ -62,6 +64,7 @@ function resolveWindow(windowKind: BudgetWindowKind, now = new Date()) {
   return currentUtcMonthWindow(now);
 }
 
+// 根据观测金额判断预算状态：超过上限为 hard_stop，超过警告百分比为 warning，否则 ok
 function budgetStatusFromObserved(
   observedAmount: number,
   amount: number,
@@ -73,11 +76,13 @@ function budgetStatusFromObserved(
   return "ok";
 }
 
+// 范围名为空时使用 scopeType 作为显示名称
 function normalizeScopeName(scopeType: BudgetScopeType, name: string) {
   if (scopeType === "company") return name;
   return name.trim().length > 0 ? name : scopeType;
 }
 
+// 解析预算作用域的基本信息（名称、暂停状态、暂停原因），支持 company/agent/project 三种级别
 async function resolveScopeRecord(db: Db, scopeType: BudgetScopeType, scopeId: string): Promise<ScopeRecord> {
   if (scopeType === "company") {
     const row = await db
@@ -139,6 +144,7 @@ async function resolveScopeRecord(db: Db, scopeType: BudgetScopeType, scopeId: s
   };
 }
 
+// 计算策略的实际已用金额：仅支持 billed_cents 指标，按作用域和窗口过滤费用事件
 async function computeObservedAmount(
   db: Db,
   policy: Pick<PolicyRow, "companyId" | "scopeType" | "scopeId" | "windowKind" | "metric">,
@@ -210,6 +216,7 @@ async function markApprovalStatus(
 }
 
 export function budgetService(db: Db, hooks: BudgetServiceHooks = {}) {
+  // 暂停作用域（agent/project/company）：agent 仅暂停可运行状态，避免重复暂停已停机的 agent
   async function pauseScopeForBudget(policy: PolicyRow) {
     const now = new Date();
     if (policy.scopeType === "agent") {
@@ -250,6 +257,7 @@ export function budgetService(db: Db, hooks: BudgetServiceHooks = {}) {
 
   async function pauseAndCancelScopeForBudget(policy: PolicyRow) {
     await pauseScopeForBudget(policy);
+    // 通过钩子取消进行中的工作，确保预算超限后立即停止资源消耗
     await hooks.cancelWorkForScope?.({
       companyId: policy.companyId,
       scopeType: policy.scopeType as BudgetScopeType,
@@ -260,6 +268,7 @@ export function budgetService(db: Db, hooks: BudgetServiceHooks = {}) {
   async function resumeScopeFromBudget(policy: PolicyRow) {
     const now = new Date();
     if (policy.scopeType === "agent") {
+      // 仅恢复因 budget 暂停的 agent，手动暂停的不自动恢复
       await db
         .update(agents)
         .set({
@@ -273,6 +282,7 @@ export function budgetService(db: Db, hooks: BudgetServiceHooks = {}) {
     }
 
     if (policy.scopeType === "project") {
+      // 仅恢复因 budget 暂停的项目
       await db
         .update(projects)
         .set({
@@ -284,6 +294,7 @@ export function budgetService(db: Db, hooks: BudgetServiceHooks = {}) {
       return;
     }
 
+    // 公司级别恢复
     await db
       .update(companies)
       .set({
@@ -514,6 +525,7 @@ export function budgetService(db: Db, hooks: BudgetServiceHooks = {}) {
       }
 
       const metric = input.metric ?? "billed_cents";
+      // 项目级预算默认使用 lifetime 窗口（累计总消耗），公司和 agent 级使用月度窗口
       const windowKind = input.windowKind ?? (input.scopeType === "project" ? "lifetime" : "calendar_month_utc");
       const amount = Math.max(0, Math.floor(input.amount));
       const nextIsActive = amount > 0 && (input.isActive ?? true);
@@ -566,6 +578,7 @@ export function budgetService(db: Db, hooks: BudgetServiceHooks = {}) {
           .returning()
           .then((rows) => rows[0]);
 
+      // 同步公司级的月度预算到 companies 表，供快速查询和外部展示
       if (input.scopeType === "company" && windowKind === "calendar_month_utc") {
         await db
           .update(companies)
@@ -576,6 +589,7 @@ export function budgetService(db: Db, hooks: BudgetServiceHooks = {}) {
           .where(eq(companies.id, input.scopeId));
       }
 
+      // 同步 agent 级月度预算到 agents 表
       if (input.scopeType === "agent" && windowKind === "calendar_month_utc") {
         await db
           .update(agents)
@@ -588,10 +602,12 @@ export function budgetService(db: Db, hooks: BudgetServiceHooks = {}) {
 
       if (amount > 0) {
         const observedAmount = await computeObservedAmount(db, row);
+        // 当前用量低于预算上限则恢复作用域并清除 incident
         if (observedAmount < amount) {
           await resumeScopeFromBudget(row);
           await resolveOpenIncidentsForPolicy(row.id, actorUserId ? "approved" : null, actorUserId);
         } else {
+          // 用量已达或超过上限：触发告警和硬性停止（如需）
           const softThreshold = Math.ceil((row.amount * row.warnPercent) / 100);
           if (row.notifyEnabled && observedAmount >= softThreshold) {
             await createIncidentIfNeeded(row, "soft", observedAmount);
@@ -603,6 +619,7 @@ export function budgetService(db: Db, hooks: BudgetServiceHooks = {}) {
           }
         }
       } else {
+        // 金额为 0 表示取消预算限制，恢复作用域并清除 incident
         await resumeScopeFromBudget(row);
         await resolveOpenIncidentsForPolicy(row.id, actorUserId ? "approved" : null, actorUserId);
       }
@@ -644,6 +661,7 @@ export function budgetService(db: Db, hooks: BudgetServiceHooks = {}) {
       };
     },
 
+    // 评估费用事件：遍历所有有效策略，触发 soft/hard threshold 告警、暂停作用域、取消进行中的工作
     evaluateCostEvent: async (event: typeof costEvents.$inferSelect) => {
       const candidatePolicies = await db
         .select()
@@ -713,6 +731,7 @@ export function budgetService(db: Db, hooks: BudgetServiceHooks = {}) {
       }
     },
 
+    // 获取调用阻止原因：按公司 > agent > project 优先级检查预算硬停止是否已触发
     getInvocationBlock: async (
       companyId: string,
       agentId: string,

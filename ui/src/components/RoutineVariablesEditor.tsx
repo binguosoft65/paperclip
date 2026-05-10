@@ -22,6 +22,8 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 
+// 变量类型列表，用于编辑器中的类型选择下拉框。
+// text/textarea：字符串输入；number：数字输入；boolean：开关选择；select：预定义选项列表
 const variableTypes: RoutineVariable["type"][] = ["text", "textarea", "number", "boolean", "select"];
 
 function serializeVariables(value: RoutineVariable[]) {
@@ -55,6 +57,10 @@ export function RoutineVariablesEditor({
   onChange: (value: RoutineVariable[]) => void;
 }) {
   const [open, setOpen] = useState(true);
+  // 保持变量列表与模板中 {{variable}} 占位符双向同步：
+  // 模板新增占位符 → 自动添加变量定义
+  // 模板删除占位符 → 自动移除对应变量定义
+  // 通过 serializeVariables JSON 比较来检测变化，避免不必要的 onChange 调用
   const syncedVariables = useMemo(
     () => syncRoutineVariablesWithTemplate([title, description], value),
     [description, title, value],

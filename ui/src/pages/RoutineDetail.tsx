@@ -83,16 +83,19 @@ type SecretMessage = {
   }>;
 };
 
+// 自动调整 textarea 高度以适应内容
 function autoResizeTextarea(element: HTMLTextAreaElement | null) {
   if (!element) return;
   element.style.height = "auto";
   element.style.height = `${element.scrollHeight}px`;
 }
 
+// 校验 URL tab 参数是否合法
 function isRoutineTab(value: string | null): value is RoutineTab {
   return value !== null && routineTabs.includes(value as RoutineTab);
 }
 
+// 从 URL search 参数中读取当前 tab（默认 tab 为 triggers）
 function getRoutineTabFromSearch(search: string): RoutineTab {
   const tab = new URLSearchParams(search).get("tab");
   return isRoutineTab(tab) ? tab : "triggers";
@@ -136,6 +139,9 @@ function buildRoutineMutationPayload(input: {
   };
 }
 
+// Trigger 编辑器：用于查看和编辑 routine 的单个 trigger。
+// 支持 schedule 类型（cron 表达式编辑）和 webhook 类型（签名模式/防重放窗口）。
+// 父组件通过 onSave/onRotate/onDelete 回调处理保存/轮换密钥/删除操作
 function TriggerEditor({
   trigger,
   onSave,
@@ -273,8 +279,10 @@ export function RoutineDetail() {
   const descriptionEditorRef = useRef<MarkdownEditorRef>(null);
   const assigneeSelectorRef = useRef<HTMLButtonElement | null>(null);
   const projectSelectorRef = useRef<HTMLButtonElement | null>(null);
+  // secretMessage 用于展示新建/轮换 webhook trigger 后的密钥信息（一次性显示，刷新后消失）
   const [secretMessage, setSecretMessage] = useState<SecretMessage | null>(null);
   const [advancedOpen, setAdvancedOpen] = useState(false);
+  // saveConflict 标记并发更新冲突：当 baseRevisionId 不匹配时触发，提示用户重新加载
   const [saveConflict, setSaveConflict] = useState(false);
   const [runVariablesOpen, setRunVariablesOpen] = useState(false);
   const [newTrigger, setNewTrigger] = useState({
@@ -837,6 +845,8 @@ export function RoutineDetail() {
         </div>
       )}
 
+      {/* 并发更新冲突提示：另一个用户或 agent 先于当前用户保存了修改，
+          当前用户的 baseRevisionId 已失效。需要重新加载最新版本再编辑 */}
       {/* Save conflict banner */}
       {saveConflict && (
         <div className="rounded-md border border-amber-500/30 bg-amber-500/5 px-4 py-3 text-sm">

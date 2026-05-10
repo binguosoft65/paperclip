@@ -6,6 +6,9 @@ import { ChevronDown, ChevronRight } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { t as i18nt } from "../i18n";
 
+// 预设调度选项，覆盖最常见的定时场景。
+// 每个预设对应一个标准 cron 表达式模板，
+// custom 模式允许用户直接输入任意 cron 表达式
 type SchedulePreset = "every_minute" | "every_hour" | "every_day" | "weekdays" | "weekly" | "monthly" | "custom";
 
 const PRESETS: { value: SchedulePreset; label: string }[] = [
@@ -43,6 +46,9 @@ const DAYS_OF_MONTH = Array.from({ length: 31 }, (_, i) => ({
   label: String(i + 1),
 }));
 
+// 将 cron 表达式逆向解析为预设模式 + 参数。
+// 例如 "0 10 * * 1-5" → { preset: "weekdays", hour: "10", minute: "0" }。
+// 无法匹配预设模式的视为 custom，保留原始表达式
 function parseCronToPreset(cron: string): {
   preset: SchedulePreset;
   hour: string;
@@ -96,6 +102,7 @@ function parseCronToPreset(cron: string): {
   return { preset: "custom", ...defaults };
 }
 
+// 将预设模式 + 参数组合为 cron 表达式
 function buildCron(preset: SchedulePreset, hour: string, minute: string, dayOfWeek: string, dayOfMonth: string): string {
   switch (preset) {
     case "every_minute":

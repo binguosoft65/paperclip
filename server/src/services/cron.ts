@@ -21,6 +21,14 @@
  *   - `N,M,...`  — list of values, ranges, or steps
  *
  * @module
+ *
+ * ## 业务说明
+ * 此解析器用于 Routine 的定时触发器（schedule trigger）。
+ * 与系统级 cron（Linux crontab）不同，此处需要支持时区感知：
+ * nextCronTick 按 UTC 计算，而 routines.ts 中的 nextCronTickInTimeZone
+ * 先用 Intl.DateTimeFormat 将时间转换到指定时区再匹配 cron 表达式。
+ * 这种"先转时区再匹配"的设计确保用户配置的"10:00 AM Asia/Shanghai"
+ * 在不同 DST 下始终在当地时间的 10:00 触发。
  */
 
 // ---------------------------------------------------------------------------

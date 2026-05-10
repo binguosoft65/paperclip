@@ -57,6 +57,9 @@ function statusTone(status: CompanySecret["status"]): string {
   }
 }
 
+// 密钥绑定选择器：在下拉列表中列出可用的密钥供用户选择，可配置版本选择器。
+// 默认只显示 active（启用）状态的密钥，因为 disabled/archived 的密钥不应被新建的绑定引用。
+// 支持内联创建密钥——用户可在选择器中直接创建并绑定，无需切换到 Secrets 管理页。
 export function SecretBindingPicker({
   value,
   onChange,
