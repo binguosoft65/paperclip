@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useTranslation } from "react-i18next";
 import type {
   CompanyPortabilityCollisionStrategy,
   CompanyPortabilityFileEntry,
@@ -184,16 +185,18 @@ function ImportPreviewPane({
   allFiles,
   action,
   renamedTo,
+  t,
 }: {
   selectedFile: string | null;
   content: CompanyPortabilityFileEntry | null;
   allFiles: Record<string, CompanyPortabilityFileEntry>;
   action: string | null;
   renamedTo: string | null;
+  t?: (key: string, opts?: Record<string, unknown>) => string;
 }) {
   if (!selectedFile || content === null) {
     return (
-      <EmptyState icon={Package} message="Select a file to preview its contents." />
+      <EmptyState icon={Package} message={t ? t("import.selectFile") : "Select a file to preview its contents."} />
     );
   }
 
@@ -255,7 +258,7 @@ function ImportPreviewPane({
           </pre>
         ) : (
           <div className="rounded-lg border border-border bg-accent/10 px-4 py-3 text-sm text-muted-foreground">
-            Binary asset preview is not available for this file type.
+            {t ? t("import.binaryNoPreview") : "Binary asset preview is not available for this file type."}
           </div>
         )}
       </div>
@@ -395,6 +398,7 @@ function ConflictResolutionList({
   onRename,
   onToggleSkip,
   onToggleConfirm,
+  t,
 }: {
   conflicts: ConflictItem[];
   nameOverrides: Record<string, string>;
@@ -403,6 +407,7 @@ function ConflictResolutionList({
   onRename: (slug: string, newName: string) => void;
   onToggleSkip: (slug: string, filePath: string | null) => void;
   onToggleConfirm: (slug: string) => void;
+  t: (key: string, opts?: Record<string, unknown>) => string;
 }) {
   if (conflicts.length === 0) return null;
 
@@ -411,10 +416,10 @@ function ConflictResolutionList({
       <div className="rounded-md border border-border">
         <div className="flex items-center gap-2 border-b border-border px-4 py-2.5">
           <h3 className="text-sm font-medium">
-            Renames
+            {t("import.conflictRenames")}
           </h3>
           <span className="text-xs text-muted-foreground">
-            {conflicts.length} item{conflicts.length === 1 ? "" : "s"}
+            {t("import.conflictCount", { count: conflicts.length, plural: conflicts.length === 1 ? t("import.conflictItemSingular") : t("import.conflictItemPlural") })}
           </span>
         </div>
         <div className="divide-y divide-border">
@@ -442,7 +447,7 @@ function ConflictResolutionList({
                   )}
                   onClick={() => onToggleSkip(item.slug, item.filePath)}
                 >
-                  {isSkipped ? "skipped" : "skip"}
+                  {isSkipped ? t("import.skipped") : t("import.skip")}
                 </button>
 
                 <span className={cn(
@@ -495,10 +500,10 @@ function ConflictResolutionList({
                     {isConfirmed ? (
                       <>
                         <Check className="h-3 w-3" />
-                        confirmed
+                        {t("import.confirmed")}
                       </>
                     ) : (
-                      "confirm rename"
+                      t("import.confirmRename")
                     )}
                   </button>
                 )}
@@ -534,6 +539,7 @@ function AdapterPickerList({
   onChangeAdapter,
   onToggleExpand,
   onChangeConfig,
+  t,
 }: {
   agents: AdapterPickerItem[];
   adapterOverrides: Record<string, string>;
@@ -542,6 +548,7 @@ function AdapterPickerList({
   onChangeAdapter: (slug: string, adapterType: string) => void;
   onToggleExpand: (slug: string) => void;
   onChangeConfig: (slug: string, patch: Partial<CreateConfigValues>) => void;
+  t: (key: string, opts?: Record<string, unknown>) => string;
 }) {
   if (agents.length === 0) return null;
 
@@ -549,9 +556,9 @@ function AdapterPickerList({
     <div className="mx-5 mt-3">
       <div className="rounded-md border border-border">
         <div className="flex items-center gap-2 border-b border-border px-4 py-2.5">
-          <h3 className="text-sm font-medium">Adapters</h3>
+          <h3 className="text-sm font-medium">{t("import.adaptersTitle")}</h3>
           <span className="text-xs text-muted-foreground">
-            {agents.length} agent{agents.length === 1 ? "" : "s"}
+            {t("import.adapterAgentCount", { count: agents.length, plural: agents.length === 1 ? t("import.adapterAgentSingular") : t("import.adapterAgentPlural") })}
           </span>
         </div>
         <div className="divide-y divide-border">
@@ -595,7 +602,7 @@ function AdapterPickerList({
                     onClick={() => onToggleExpand(agent.slug)}
                   >
                     <ChevronRight className={cn("h-3 w-3 transition-transform", isExpanded && "rotate-90")} />
-                    configure adapter
+                    {t("import.configureAdapter")}
                   </button>
                 </div>
                 {isExpanded && (
@@ -645,6 +652,7 @@ async function readLocalPackageZip(file: File): Promise<{
 // ── Main page ─────────────────────────────────────────────────────────
 
 export function CompanyImport() {
+  const { t } = useTranslation(["company", "common"]);
   const {
     selectedCompanyId,
     selectedCompany,
@@ -703,13 +711,10 @@ export function CompanyImport() {
     return ceo?.adapterType ?? "claude_local";
   }, [companyAgents]);
 
-  const localZipHelpText =
-    "Upload a .zip exported directly from Paperclip. Re-zipped archives created by Finder, Explorer, or other zip tools may not import correctly.";
-
   useEffect(() => {
     setBreadcrumbs([
-      { label: "Org Chart", href: "/org" },
-      { label: "Import" },
+      { label: t("breadcrumb.orgChart"), href: "/org" },
+      { label: t("breadcrumb.import") },
     ]);
   }, [setBreadcrumbs]);
 
@@ -804,8 +809,8 @@ export function CompanyImport() {
     onError: (err) => {
       pushToast({
         tone: "error",
-        title: "Preview failed",
-        body: err instanceof Error ? err.message : "Failed to preview import.",
+        title: t("import.toastPreviewFailed"),
+        body: err instanceof Error ? err.message : t("import.toastFailedPreviewImport"),
       });
     },
   });
@@ -863,8 +868,8 @@ export function CompanyImport() {
       setSelectedCompanyId(importedCompany.id);
       pushToast({
         tone: "success",
-        title: "Import complete",
-        body: `${result.company.name}: ${result.agents.length} agent${result.agents.length === 1 ? "" : "s"} processed.`,
+        title: t("import.toastImportComplete"),
+        body: t("import.toastImportCompleteBody", { name: result.company.name, count: result.agents.length, plural: result.agents.length === 1 ? t("import.toastAgentSingular") : t("import.toastAgentPlural") }),
       });
       // Force a fresh dashboard load so newly imported agents are immediately visible.
       window.location.assign(`/${importedCompany.issuePrefix}/dashboard`);
@@ -872,8 +877,8 @@ export function CompanyImport() {
     onError: (err) => {
       pushToast({
         tone: "error",
-        title: "Import failed",
-        body: err instanceof Error ? err.message : "Failed to apply import.",
+        title: t("import.toastImportFailed"),
+        body: err instanceof Error ? err.message : t("import.toastFailedApplyImport"),
       });
     },
   });
@@ -888,8 +893,8 @@ export function CompanyImport() {
     } catch (err) {
       pushToast({
         tone: "error",
-        title: "Package read failed",
-        body: err instanceof Error ? err.message : "Failed to read folder.",
+        title: t("import.toastPackageReadFailed"),
+        body: err instanceof Error ? err.message : t("import.toastFailedReadFolder"),
       });
     }
   }
@@ -1086,7 +1091,7 @@ export function CompanyImport() {
   const selectedAction = selectedFile ? (actionMap.get(selectedFile) ?? null) : null;
 
   if (!selectedCompanyId) {
-    return <EmptyState icon={Download} message="Select a company to import into." />;
+    return <EmptyState icon={Download} message={t("import.noCompanySelected")} />;
   }
 
   return (
@@ -1094,17 +1099,17 @@ export function CompanyImport() {
       {/* Source form section */}
       <div className="border-b border-border px-5 py-5 space-y-4">
         <div>
-          <h2 className="text-base font-semibold">Import source</h2>
+          <h2 className="text-base font-semibold">{t("import.importSource")}</h2>
           <p className="text-xs text-muted-foreground mt-1">
-            Choose a GitHub repo or upload a local Paperclip zip package.
+            {t("import.importSourceDesc")}
           </p>
         </div>
 
         <div className="grid gap-2 md:grid-cols-2">
           {(
             [
-              { key: "github", icon: Github, label: "GitHub repo" },
-              { key: "local", icon: Upload, label: "Local zip" },
+              { key: "github", icon: Github, label: t("import.githubRepo") },
+              { key: "local", icon: Upload, label: t("import.localZip") },
             ] as const
           ).map(({ key, icon: Icon, label }) => (
             <button
@@ -1144,32 +1149,30 @@ export function CompanyImport() {
                 variant="outline"
                 onClick={() => packageInputRef.current?.click()}
               >
-                Choose zip
+                {t("import.chooseZip")}
               </Button>
               {localPackage && (
                 <span className="text-xs text-muted-foreground">
-                  {localPackage.name} with{" "}
-                  {Object.keys(localPackage.files).length} file
-                  {Object.keys(localPackage.files).length === 1 ? "" : "s"}
+                  {t("import.localFileCount", { name: localPackage.name, count: Object.keys(localPackage.files).length, plural: Object.keys(localPackage.files).length === 1 ? t("import.localFileSingular") : t("import.localFilePlural") })}
                 </span>
               )}
             </div>
             {!localPackage && (
               <p className="mt-2 text-xs text-muted-foreground">
-                {localZipHelpText}
+                {t("import.localZipHelp")}
               </p>
             )}
           </div>
         ) : (
           <Field
-            label="GitHub URL"
-            hint="Repo tree path or blob URL to COMPANY.md (e.g. github.com/owner/repo/tree/main/company)."
+            label={t("import.githubUrl")}
+            hint={t("import.githubUrlHint")}
           >
             <input
               className="w-full rounded-md border border-border bg-transparent px-2.5 py-1.5 text-sm outline-none"
               type="text"
               value={importUrl}
-              placeholder="https://github.com/owner/repo/tree/main/company"
+              placeholder={t("import.githubUrlPlaceholder")}
               onChange={(e) => {
                 setImportUrl(e.target.value);
                 setImportPreview(null);
@@ -1178,7 +1181,7 @@ export function CompanyImport() {
           </Field>
         )}
 
-        <Field label="Target" hint="Import into this company or create a new one.">
+        <Field label={t("import.target")} hint={t("import.targetHint")}>
           <select
             className="w-full rounded-md border border-border bg-transparent px-2.5 py-1.5 text-sm outline-none"
             value={targetMode}
@@ -1187,31 +1190,31 @@ export function CompanyImport() {
               setImportPreview(null);
             }}
           >
-            <option value="new">Create new company</option>
+            <option value="new">{t("import.targetNew")}</option>
             <option value="existing">
-              Existing company: {selectedCompany?.name}
+              {t("import.targetExisting", { name: selectedCompany?.name })}
             </option>
           </select>
         </Field>
 
         {targetMode === "new" && (
           <Field
-            label="New company name"
-            hint="Optional override. Leave blank to use the package name."
+            label={t("import.newCompanyName")}
+            hint={t("import.newCompanyNameHint")}
           >
             <input
               className="w-full rounded-md border border-border bg-transparent px-2.5 py-1.5 text-sm outline-none"
               type="text"
               value={newCompanyName}
               onChange={(e) => setNewCompanyName(e.target.value)}
-              placeholder="Imported Company"
+              placeholder={t("import.newCompanyNamePlaceholder")}
             />
           </Field>
         )}
 
         <Field
-          label="Collision strategy"
-          hint="Board imports can rename, skip, or replace matching company content."
+          label={t("import.collisionStrategy")}
+          hint={t("import.collisionStrategyHint")}
         >
           <select
             className="w-full rounded-md border border-border bg-transparent px-2.5 py-1.5 text-sm outline-none"
@@ -1221,9 +1224,9 @@ export function CompanyImport() {
               setImportPreview(null);
             }}
           >
-            <option value="rename">Rename on conflict</option>
-            <option value="skip">Skip on conflict</option>
-            <option value="replace">Replace existing</option>
+            <option value="rename">{t("import.collisionRename")}</option>
+            <option value="skip">{t("import.collisionSkip")}</option>
+            <option value="replace">{t("import.collisionReplace")}</option>
           </select>
         </Field>
 
@@ -1234,7 +1237,7 @@ export function CompanyImport() {
             onClick={() => previewMutation.mutate()}
             disabled={previewMutation.isPending || !hasSource}
           >
-            {previewMutation.isPending ? "Previewing..." : "Preview import"}
+            {previewMutation.isPending ? t("import.previewing") : t("import.previewButton")}
           </Button>
         </div>
       </div>
@@ -1246,19 +1249,19 @@ export function CompanyImport() {
           <div className="sticky top-0 z-10 border-b border-border bg-background px-5 py-3">
             <div className="flex flex-wrap items-center gap-4 text-sm">
               <span className="font-medium">
-                Import preview
+                {t("import.importPreview")}
               </span>
               <span className="text-muted-foreground">
-                {selectedCount} / {totalFiles} file{totalFiles === 1 ? "" : "s"} selected
+                {t("import.selectedCount", { count: selectedCount, total: totalFiles, plural: totalFiles === 1 ? t("import.fileSingular") : t("import.filePlural") })}
               </span>
               {conflicts.length > 0 && (
                 <span className="text-amber-500">
-                  {conflicts.length} conflict{conflicts.length === 1 ? "" : "s"}
+                  {conflicts.length} {conflicts.length === 1 ? t("import.conflictSingular") : t("import.conflictPlural")}
                 </span>
               )}
               {importPreview.errors.length > 0 && (
                 <span className="text-destructive">
-                  {importPreview.errors.length} error{importPreview.errors.length === 1 ? "" : "s"}
+                  {importPreview.errors.length} {importPreview.errors.length === 1 ? t("import.errorSingular") : t("import.errorPlural")}
                 </span>
               )}
             </div>
@@ -1273,6 +1276,7 @@ export function CompanyImport() {
             onRename={handleConflictRename}
             onToggleSkip={handleConflictToggleSkip}
             onToggleConfirm={handleConflictToggleConfirm}
+            t={t}
           />
 
           {/* Adapter picker list */}
@@ -1284,6 +1288,7 @@ export function CompanyImport() {
             onChangeAdapter={handleAdapterChange}
             onToggleExpand={handleAdapterToggleExpand}
             onChangeConfig={handleAdapterConfigChange}
+            t={t}
           />
 
           {/* Import button — below renames */}
@@ -1295,8 +1300,8 @@ export function CompanyImport() {
             >
               <Download className="mr-1.5 h-3.5 w-3.5" />
               {importMutation.isPending
-                ? "Importing..."
-                : `Import ${selectedCount} file${selectedCount === 1 ? "" : "s"}`}
+                ? t("import.importing")
+                : t("import.importButton", { count: selectedCount, plural: selectedCount === 1 ? t("import.fileSingular") : t("import.filePlural") })}
             </Button>
           </div>
 
@@ -1322,7 +1327,7 @@ export function CompanyImport() {
           <div className="grid h-[calc(100vh-16rem)] gap-0 xl:grid-cols-[19rem_minmax(0,1fr)]">
             <aside className="flex flex-col border-r border-border overflow-hidden">
               <div className="border-b border-border px-4 py-3 shrink-0">
-                <h2 className="text-base font-semibold">Package files</h2>
+                <h2 className="text-base font-semibold">{t("import.packageFiles")}</h2>
               </div>
               <div className="flex-1 overflow-y-auto">
                 <FileTree
@@ -1346,6 +1351,7 @@ export function CompanyImport() {
                 allFiles={importPreview?.files ?? {}}
                 action={selectedAction}
                 renamedTo={selectedFile ? (renameMap.get(selectedFile) ?? null) : null}
+                t={t}
               />
             </div>
           </div>

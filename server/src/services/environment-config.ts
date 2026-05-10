@@ -9,8 +9,6 @@ import type {
   PluginEnvironmentConfig,
   PluginSandboxEnvironmentConfig,
   SandboxEnvironmentConfig,
-  SecretProvider,
-  SecretVersionSelector,
   SshEnvironmentConfig,
 } from "@paperclipai/shared";
 import { unprocessable } from "../errors.js";
@@ -167,7 +165,6 @@ async function createEnvironmentSecret(input: {
   environmentName: string;
   driver: EnvironmentDriver;
   field: string;
-  provider: SecretProvider;
   value: string;
   actor?: { userId?: string | null; agentId?: string | null };
 }) {
@@ -175,7 +172,7 @@ async function createEnvironmentSecret(input: {
     input.companyId,
     {
       name: secretName(input),
-      provider: input.provider,
+      provider: "local_encrypted",
       value: input.value,
       description: `Secret for ${input.environmentName} ${input.field}.`,
     },
@@ -193,7 +190,6 @@ async function persistConfigSecretRefs(input: {
   companyId: string;
   environmentName: string;
   driver: EnvironmentDriver;
-  secretProvider: SecretProvider;
   config: Record<string, unknown>;
   schema: Record<string, unknown> | null;
   actor?: { userId?: string | null; agentId?: string | null };
@@ -217,7 +213,6 @@ async function persistConfigSecretRefs(input: {
       environmentName: input.environmentName,
       driver: input.driver,
       field: path.replace(/[^a-z0-9]+/gi, "-").toLowerCase(),
-      provider: input.secretProvider,
       value: trimmed,
       actor: input.actor,
     });
@@ -231,11 +226,6 @@ async function resolveConfigSecretRefsForRuntime(input: {
   companyId: string;
   config: Record<string, unknown>;
   schema: Record<string, unknown> | null;
-  context: {
-    consumerId: string;
-    issueId?: string | null;
-    heartbeatRunId?: string | null;
-  };
 }): Promise<Record<string, unknown>> {
   const secrets = secretService(input.db);
   let nextConfig = { ...input.config };
@@ -244,50 +234,13 @@ async function resolveConfigSecretRefsForRuntime(input: {
     if (typeof current !== "string") continue;
     const trimmed = current.trim();
     if (!isUuidSecretRef(trimmed)) continue;
-    if (!input.context.consumerId) {
-      throw unprocessable("Runtime secret resolution requires an environment id");
-    }
     nextConfig = writeConfigValueAtPath(
       nextConfig,
       path,
-      await secrets.resolveSecretValue(input.companyId, trimmed, "latest", {
-        consumerType: "environment",
-        consumerId: input.context.consumerId,
-        actorType: "system",
-        actorId: null,
-        issueId: input.context.issueId ?? null,
-        heartbeatRunId: input.context.heartbeatRunId ?? null,
-        configPath: path,
-      }),
+      await secrets.resolveSecretValue(input.companyId, trimmed, "latest"),
     );
   }
   return nextConfig;
-}
-
-export async function collectEnvironmentSecretRefs(input: {
-  db: Db;
-  environment: Pick<Environment, "id" | "driver" | "config">;
-}): Promise<Array<{ secretId: string; configPath: string; versionSelector?: SecretVersionSelector }>> {
-  const parsed = parseEnvironmentDriverConfig(input.environment);
-  if (parsed.driver === "ssh" && parsed.config.privateKeySecretRef) {
-    return [{
-      secretId: parsed.config.privateKeySecretRef.secretId,
-      configPath: "privateKeySecretRef",
-      versionSelector: parsed.config.privateKeySecretRef.version ?? "latest",
-    }];
-  }
-  if (parsed.driver === "sandbox" && parsed.config.provider !== "fake") {
-    const schema = await getSandboxProviderConfigSchema(input.db, parsed.config.provider);
-    const refs: Array<{ secretId: string; configPath: string; versionSelector?: SecretVersionSelector }> = [];
-    for (const path of collectSecretRefPaths(schema)) {
-      const current = readConfigValueAtPath(parsed.config as Record<string, unknown>, path);
-      if (typeof current === "string" && isUuidSecretRef(current.trim())) {
-        refs.push({ secretId: current.trim(), configPath: path, versionSelector: "latest" });
-      }
-    }
-    return refs;
-  }
-  return [];
 }
 
 export function stripSandboxProviderEnvelope(config: SandboxEnvironmentConfig): Record<string, unknown> {
@@ -387,7 +340,6 @@ export async function normalizeEnvironmentConfigForPersistence(input: {
   companyId: string;
   environmentName: string;
   driver: EnvironmentDriver;
-  secretProvider: SecretProvider;
   config: Record<string, unknown> | null | undefined;
   actor?: { userId?: string | null; agentId?: string | null };
   pluginWorkerManager?: PluginWorkerManager;
@@ -409,7 +361,6 @@ export async function normalizeEnvironmentConfigForPersistence(input: {
         environmentName: input.environmentName,
         driver: input.driver,
         field: "private-key",
-        provider: input.secretProvider,
         value: privateKey,
         actor: input.actor,
       });
@@ -453,7 +404,6 @@ export async function normalizeEnvironmentConfigForPersistence(input: {
       companyId: input.companyId,
       environmentName: input.environmentName,
       driver: input.driver,
-      secretProvider: input.secretProvider,
       config: {
         provider: parsed.data.provider,
         ...validated.normalizedConfig,
@@ -492,15 +442,10 @@ export async function normalizeEnvironmentConfigForPersistence(input: {
 export async function resolveEnvironmentDriverConfigForRuntime(
   db: Db,
   companyId: string,
-  environment: Pick<Environment, "driver" | "config"> & Partial<Pick<Environment, "id">>,
-  context?: { issueId?: string | null; heartbeatRunId?: string | null },
+  environment: Pick<Environment, "driver" | "config">,
 ): Promise<ParsedEnvironmentConfig> {
   const parsed = parseEnvironmentDriverConfig(environment);
   const secrets = secretService(db);
-  const environmentId = environment.id;
-  if (parsed.driver === "ssh" && parsed.config.privateKeySecretRef && !environmentId) {
-    throw unprocessable("Runtime secret resolution requires an environment id");
-  }
 
   if (parsed.driver === "ssh" && parsed.config.privateKeySecretRef) {
     return {
@@ -511,15 +456,6 @@ export async function resolveEnvironmentDriverConfigForRuntime(
           companyId,
           parsed.config.privateKeySecretRef.secretId,
           parsed.config.privateKeySecretRef.version ?? "latest",
-          {
-            consumerType: "environment",
-            consumerId: environmentId!,
-            actorType: "system",
-            actorId: null,
-            issueId: context?.issueId ?? null,
-            heartbeatRunId: context?.heartbeatRunId ?? null,
-            configPath: "privateKeySecretRef",
-          },
         ),
       },
     };
@@ -533,11 +469,6 @@ export async function resolveEnvironmentDriverConfigForRuntime(
         companyId,
         config: parsed.config as Record<string, unknown>,
         schema: await getSandboxProviderConfigSchema(db, parsed.config.provider),
-        context: {
-          consumerId: environmentId!,
-          issueId: context?.issueId ?? null,
-          heartbeatRunId: context?.heartbeatRunId ?? null,
-        },
       }) as SandboxEnvironmentConfig,
     };
   }

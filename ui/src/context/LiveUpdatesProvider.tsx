@@ -6,6 +6,7 @@ import type { ActiveRunForIssue, LiveRunForIssue } from "../api/heartbeats";
 import type { CompanyUserDirectoryResponse } from "../api/access";
 import { issuesApi } from "../api/issues";
 import { authApi } from "../api/auth";
+import i18next from "../i18n";
 import { useCompany } from "./CompanyContext";
 import type { ToastInput } from "./ToastContext";
 import { useToastActions } from "./ToastContext";
@@ -82,11 +83,11 @@ function resolveActorLabel(
   if (actorType === "agent" && actorId) {
     return resolveAgentName(queryClient, companyId, actorId) ?? `Agent ${shortId(actorId)}`;
   }
-  if (actorType === "system") return "System";
+  if (actorType === "system") return i18next.t("common:actor.system");
   if (actorType === "user" && actorId) {
-    return resolveUserName(queryClient, companyId, actorId) ?? "Board";
+    return resolveUserName(queryClient, companyId, actorId) ?? i18next.t("common:actor.board");
   }
-  return "Someone";
+  return i18next.t("common:actor.someone");
 }
 
 interface IssueToastContext {
@@ -532,13 +533,13 @@ function buildJoinRequestToast(
   if (action !== "join.requested" && action !== "join.request_replayed") return null;
 
   const requestType = readString(details?.requestType);
-  const label = requestType === "agent" ? "Agent" : "Someone";
+  const label = requestType === "agent" ? i18next.t("common:actor.agent") : i18next.t("common:actor.someone");
 
   return {
-    title: `${label} wants to join`,
-    body: "A new join request is waiting for approval.",
+    title: i18next.t("common:toast.wantsToJoin", { label }),
+    body: i18next.t("common:toast.joinRequestBody"),
     tone: "info",
-    action: { label: "View inbox", href: "/inbox/mine" },
+    action: { label: i18next.t("common:toast.viewInbox"), href: "/inbox/mine" },
     dedupeKey: `join-request:${entityId}`,
   };
 }
@@ -554,11 +555,11 @@ function buildAgentStatusToast(
   if (!agentId || !status || !AGENT_TOAST_STATUSES.has(status)) return null;
 
   const tone = status === "error" ? "error" : "info";
-  const name = nameOf(agentId) ?? `Agent ${shortId(agentId)}`;
+  const name = nameOf(agentId) ?? `${i18next.t("common:actor.agent")} ${shortId(agentId)}`;
   const title =
     status === "running"
-      ? `${name} started`
-      : `${name} errored`;
+      ? i18next.t("common:toast.started", { name })
+      : i18next.t("common:toast.errored", { name });
 
   const agents = queryClient.getQueryData<Agent[]>(queryKeys.agents.list(companyId));
   const agent = agents?.find((a) => a.id === agentId);
@@ -568,7 +569,7 @@ function buildAgentStatusToast(
     title,
     body,
     tone,
-    action: { label: "View agent", href: `/agents/${agentId}` },
+    action: { label: i18next.t("common:toast.viewAgent"), href: `/agents/${agentId}` },
     dedupeKey: `agent-status:${agentId}:${status}`,
   };
 }
@@ -584,20 +585,20 @@ function buildRunStatusToast(
 
   const error = readString(payload.error);
   const triggerDetail = readString(payload.triggerDetail);
-  const name = nameOf(agentId) ?? `Agent ${shortId(agentId)}`;
+  const name = nameOf(agentId) ?? `${i18next.t("common:actor.agent")} ${shortId(agentId)}`;
   const tone = status === "succeeded" ? "success" : status === "cancelled" ? "warn" : "error";
   const statusLabel =
-    status === "succeeded" ? "succeeded"
-      : status === "failed" ? "failed"
-        : status === "timed_out" ? "timed out"
-          : "cancelled";
+    status === "succeeded" ? i18next.t("common:toast.succeeded")
+      : status === "failed" ? i18next.t("common:toast.failed")
+        : status === "timed_out" ? i18next.t("common:toast.timedOut")
+          : i18next.t("common:toast.cancelled");
   const title = `${name} run ${statusLabel}`;
 
   let body: string | undefined;
   if (error) {
     body = truncate(error, 100);
   } else if (triggerDetail) {
-    body = `Trigger: ${triggerDetail}`;
+    body = i18next.t("common:toast.trigger", { detail: triggerDetail });
   }
 
   return {
@@ -605,7 +606,7 @@ function buildRunStatusToast(
     body,
     tone,
     ttlMs: status === "succeeded" ? 5000 : 7000,
-    action: { label: "View run", href: `/agents/${agentId}/runs/${runId}` },
+    action: { label: i18next.t("common:toast.viewRun"), href: `/agents/${agentId}/runs/${runId}` },
     dedupeKey: `run-status:${runId}:${status}`,
   };
 }

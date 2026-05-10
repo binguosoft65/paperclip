@@ -2,6 +2,7 @@ import { X } from "lucide-react";
 import { usePanel } from "../context/PanelContext";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { useTranslation } from "react-i18next";
 
 export function PropertiesPanel() {
   const { panelContent, panelVisible, setPanelVisible } = usePanel();

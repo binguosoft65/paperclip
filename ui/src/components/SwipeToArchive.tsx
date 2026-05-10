@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Archive } from "lucide-react";
 import { cn } from "../lib/utils";
+import { useTranslation } from "react-i18next";
 
 interface SwipeToArchiveProps {
   children: ReactNode;

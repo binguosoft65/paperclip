@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 
 import type { CommandManagedRuntimeRunner } from "./command-managed-runtime.js";
-import { preferredShellForSandbox, shellCommandArgs } from "./sandbox-shell.js";
+import { preferredShellForSandbox } from "./sandbox-shell.js";
 import type { RunProcessResult } from "./server-utils.js";
 
 const DEFAULT_BRIDGE_TOKEN_BYTES = 24;
@@ -207,7 +207,7 @@ async function runShell(
 ): Promise<RunProcessResult> {
   return await runner.execute({
     command: shellCommand,
-    args: shellCommandArgs(script),
+    args: ["-lc", script],
     cwd,
     timeoutMs,
     stdin,
@@ -569,11 +569,10 @@ async function writeBridgeResponse(
   requestPath: string,
   responsePath: string,
   response: SandboxCallbackBridgeResponse,
-  options: { requireRequestPath?: boolean } = {},
 ) {
   const body = `${JSON.stringify(response)}\n`;
   if (client.writeResponseFile) {
-    await client.writeResponseFile(responsePath, body, options.requireRequestPath === false ? {} : { requestPath });
+    await client.writeResponseFile(responsePath, body, { requestPath });
     return;
   }
   const tempPath = `${responsePath}.tmp`;
@@ -611,8 +610,6 @@ export async function startSandboxCallbackBridgeWorker(input: {
   });
   const authorizeRequest = input.authorizeRequest ??
     ((request: SandboxCallbackBridgeRequest) => authorizeSandboxCallbackBridgeRequestWithRoutes(request));
-  const buildWorkerFailureMessage = (error: unknown) =>
-    `Sandbox callback bridge worker failed: ${error instanceof Error ? error.message : String(error)}`;
 
   const processRequestFile = async (fileName: string) => {
     const requestPath = path.posix.join(directories.requestsDir, fileName);
@@ -687,15 +684,12 @@ export async function startSandboxCallbackBridgeWorker(input: {
       try {
         const raw = await input.client.readTextFile(requestPath);
         const parsed = JSON.parse(raw) as Partial<SandboxCallbackBridgeRequest>;
-        await input.client.remove(requestPath).catch(() => undefined);
         await writeBridgeResponse(input.client, requestPath, responsePath, {
           id: typeof parsed.id === "string" && parsed.id.length > 0 ? parsed.id : requestId,
           status: 503,
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ error: message }),
           completedAt: new Date().toISOString(),
-        }, {
-          requireRequestPath: false,
         });
       } catch (error) {
         console.warn(
@@ -730,16 +724,6 @@ export async function startSandboxCallbackBridgeWorker(input: {
         if (stopping && Date.now() >= stopDeadline) {
           break;
         }
-      }
-    } catch (error) {
-      const message = buildWorkerFailureMessage(error);
-      console.warn(`[paperclip] ${message}`);
-      try {
-        await failPendingRequests(message);
-      } catch (failPendingError) {
-        console.warn(
-          `[paperclip] sandbox callback bridge failed to abort queued requests after worker failure: ${failPendingError instanceof Error ? failPendingError.message : String(failPendingError)}`,
-        );
       }
     } finally {
       settled = true;
@@ -905,7 +889,8 @@ export async function startSandboxCallbackBridgeServer(input: {
   const nodeCommand = input.nodeCommand?.trim() || "node";
   const startResult = await input.runner.execute({
     command: shellCommand,
-    args: shellCommandArgs(
+    args: [
+      "-lc",
       [
         `mkdir -p ${shellQuote(directories.requestsDir)} ${shellQuote(directories.responsesDir)} ${shellQuote(directories.logsDir)}`,
         `rm -f ${shellQuote(directories.readyFile)} ${shellQuote(directories.pidFile)}`,
@@ -916,7 +901,7 @@ export async function startSandboxCallbackBridgeServer(input: {
         `printf '%s\\n' \"$pid\" > ${shellQuote(directories.pidFile)}`,
         "printf '{\"pid\":%s}\\n' \"$pid\"",
       ].join("\n"),
-    ),
+    ],
     cwd: input.remoteCwd,
     timeoutMs,
   });
@@ -978,7 +963,8 @@ export async function startSandboxCallbackBridgeServer(input: {
     stop: async () => {
       const stopResult = await input.runner.execute({
         command: shellCommand,
-        args: shellCommandArgs(
+        args: [
+          "-lc",
           [
             `if [ -s ${shellQuote(directories.pidFile)} ]; then`,
             `  pid="$(cat ${shellQuote(directories.pidFile)})"`,
@@ -991,7 +977,7 @@ export async function startSandboxCallbackBridgeServer(input: {
             "fi",
             `rm -f ${shellQuote(directories.pidFile)} ${shellQuote(directories.readyFile)}`,
           ].join("\n"),
-        ),
+        ],
         cwd: input.remoteCwd,
         timeoutMs,
       });

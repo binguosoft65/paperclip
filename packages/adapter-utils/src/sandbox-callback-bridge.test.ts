@@ -46,7 +46,7 @@ describe("sandbox callback bridge", () => {
         if (
           input.stdin != null &&
           (input.command === "sh" || input.command === "bash") &&
-          (args[0] === "-c" || args[0] === "-lc") &&
+          args[0] === "-lc" &&
           typeof args[1] === "string"
         ) {
           env.PAPERCLIP_TEST_STDIN = input.stdin;
@@ -422,53 +422,6 @@ describe("sandbox callback bridge", () => {
     );
   });
 
-  it("handles SSH queue polling failures without emitting an unhandled rejection", async () => {
-    const rootDir = await mkdtemp(path.join(os.tmpdir(), "paperclip-bridge-ssh-failure-"));
-    cleanupDirs.push(rootDir);
-
-    const queueDir = path.posix.join(rootDir, "queue");
-    const unhandled: unknown[] = [];
-    const onUnhandledRejection = (reason: unknown) => {
-      unhandled.push(reason);
-    };
-    process.on("unhandledRejection", onUnhandledRejection);
-
-    try {
-      const worker = await startSandboxCallbackBridgeWorker({
-        client: {
-          makeDir: async () => {},
-          listJsonFiles: async () => {
-            throw new Error(
-              "list /remote/.paperclip-runtime/gemini/paperclip-bridge/queue/requests failed with exit code 255: kex_exchange_identification: read: Connection reset by peer",
-            );
-          },
-          readTextFile: async () => {
-            throw new Error("unexpected readTextFile");
-          },
-          writeTextFile: async () => {
-            throw new Error("unexpected writeTextFile");
-          },
-          rename: async () => {
-            throw new Error("unexpected rename");
-          },
-          remove: async () => {},
-        },
-        queueDir,
-        authorizeRequest: async () => null,
-        handleRequest: async () => ({
-          status: 200,
-          body: "ok",
-        }),
-      });
-
-      await new Promise((resolve) => setTimeout(resolve, 50));
-      await worker.stop();
-      expect(unhandled).toEqual([]);
-    } finally {
-      process.off("unhandledRejection", onUnhandledRejection);
-    }
-  });
-
   it("serializes remote response writes so stop does not recreate a late orphaned response", async () => {
     const rootDir = await mkdtemp(path.join(os.tmpdir(), "paperclip-bridge-response-lock-"));
     cleanupDirs.push(rootDir);
@@ -508,7 +461,7 @@ describe("sandbox callback bridge", () => {
       authorizeRequest: async () => null,
       handleRequest: async (request) => {
         seenRequestIds.push(request.id);
-        await new Promise((resolve) => setTimeout(resolve, 250));
+        await new Promise((resolve) => setTimeout(resolve, 100));
         return {
           status: 200,
           headers: { "content-type": "application/json" },
@@ -551,7 +504,7 @@ describe("sandbox callback bridge", () => {
       error: "Bridge worker stopped before request could be handled.",
     });
 
-    await new Promise((resolve) => setTimeout(resolve, 300));
+    await new Promise((resolve) => setTimeout(resolve, 150));
 
     await expect(readdir(directories.responsesDir)).resolves.toEqual([]);
     await expect(

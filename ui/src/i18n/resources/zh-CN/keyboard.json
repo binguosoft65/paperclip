@@ -1,0 +1,27 @@
+{
+  "keyboardShortcuts": "键盘快捷键",
+  "sections": {
+    "inbox": "收件箱",
+    "issueDetail": "问题详情",
+    "global": "全局"
+  },
+  "shortcuts": {
+    "moveDown": "向下移动",
+    "moveUp": "向上移动",
+    "collapseGroup": "折叠选中分组",
+    "expandGroup": "展开选中分组",
+    "openSelected": "打开选中项",
+    "archive": "归档",
+    "markRead": "标记为已读",
+    "markUnread": "标记为未读",
+    "quickArchive": "快速归档返回收件箱",
+    "goToInbox": "前往收件箱",
+    "focusComment": "聚焦评论输入框",
+    "search": "搜索当前页面或快速搜索",
+    "newIssue": "新建问题",
+    "toggleSidebar": "切换侧边栏",
+    "togglePanel": "切换面板",
+    "showShortcuts": "显示键盘快捷键"
+  },
+  "then": "然后"
+}

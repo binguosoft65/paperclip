@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { ChevronDown, ChevronRight, HelpCircle } from "lucide-react";
 import { syncRoutineVariablesWithTemplate, type RoutineVariable } from "@paperclipai/shared";
 import { Badge } from "@/components/ui/badge";
@@ -252,6 +253,7 @@ const BUILTIN_VARIABLE_DOCS: BuiltinVariableDoc[] = [
 ];
 
 export function RoutineVariablesHint() {
+  const { t } = useTranslation("common");
   const [helpOpen, setHelpOpen] = useState(false);
 
   return (
@@ -264,7 +266,7 @@ export function RoutineVariablesHint() {
           type="button"
           onClick={() => setHelpOpen(true)}
           className="shrink-0 rounded-full p-0.5 text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          aria-label="Show variable help"
+          aria-label={t('aria.showVariableHelp')}
         >
           <HelpCircle className="h-3.5 w-3.5" />
         </button>

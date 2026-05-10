@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, useMemo, useCallback } from "react";
 import { Link, useNavigate } from "@/lib/router";
 import { useQuery } from "@tanstack/react-query";
 import { agentsApi, type OrgNode } from "../api/agents";
+import { useTranslation } from "react-i18next";
 import { useCompany } from "../context/CompanyContext";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
 import { queryKeys } from "../lib/queryKeys";
@@ -173,6 +174,7 @@ const defaultDotColor = "#a3a3a3";
 export function OrgChart() {
   const { selectedCompanyId } = useCompany();
   const { setBreadcrumbs } = useBreadcrumbs();
+  const { t } = useTranslation("common");
   const navigate = useNavigate();
 
   const { data: orgTree, isLoading } = useQuery({
@@ -489,7 +491,7 @@ export function OrgChart() {
               }
             }}
             title="Zoom in"
-            aria-label="Zoom in"
+            aria-label={t("aria.zoomIn")}
           >
             <Plus className="h-4 w-4 sm:h-3.5 sm:w-3.5" />
           </button>
@@ -505,7 +507,7 @@ export function OrgChart() {
               }
             }}
             title="Zoom out"
-            aria-label="Zoom out"
+            aria-label={t("aria.zoomOut")}
           >
             <Minus className="h-4 w-4 sm:h-3.5 sm:w-3.5" />
           </button>
@@ -513,7 +515,7 @@ export function OrgChart() {
             className="flex size-9 items-center justify-center rounded border border-border bg-background text-[10px] transition-colors hover:bg-accent sm:size-7"
             onClick={fitToScreen}
             title="Fit to screen"
-            aria-label="Fit chart to screen"
+            aria-label={t("aria.fitChart")}
           >
             <Maximize2 className="h-4 w-4 sm:h-3.5 sm:w-3.5" />
           </button>

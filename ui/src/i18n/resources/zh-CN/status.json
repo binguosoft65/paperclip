@@ -1,0 +1,58 @@
+{
+  "issueStatus": {
+    "backlog": "待排期",
+    "todo": "待开始",
+    "in_progress": "进行中",
+    "in_review": "审核中",
+    "done": "已完成",
+    "cancelled": "已取消",
+    "blocked": "已阻塞"
+  },
+  "priority": {
+    "critical": "紧急",
+    "high": "高",
+    "medium": "中",
+    "low": "低"
+  },
+  "effort": {
+    "minor": "极小",
+    "small": "小",
+    "medium": "中",
+    "large": "大",
+    "major": "极大"
+  },
+  "blocked": {
+    "default": "已阻塞",
+    "waitingOnActiveSubIssue_one": "已阻塞 · 等待活跃子问题 {{identifier}}",
+    "waitingOnActiveSubIssue_one_noId": "已阻塞 · 等待 1 个活跃子问题",
+    "waitingOnActiveSubIssue_other": "已阻塞 · 等待 {{count}} 个活跃子问题",
+    "coveredByActiveDependency_one": "已阻塞 · 被活跃依赖 {{identifier}} 覆盖",
+    "coveredByActiveDependency_one_noId": "已阻塞 · 被 1 个活跃依赖覆盖",
+    "coveredByActiveDependency_other": "已阻塞 · 被 {{count}} 个活跃依赖覆盖",
+    "reviewStalled_one": "已阻塞 · 审核在 {{identifier}} 上停滞",
+    "reviewStalled_one_noId": "已阻塞 · 审核停滞，无明确下一步",
+    "reviewStalled_other": "已阻塞 · {{count}} 个审核停滞，无明确下一步",
+    "needsAttention_one": "已阻塞 · 1 个阻塞项需要关注",
+    "needsAttention_other": "已阻塞 · {{count}} 个阻塞项需要关注",
+    "needsAttentionCovered_one": "{{attention}}；{{covered}} 已被活跃工作覆盖",
+    "needsAttentionCovered_other": "{{attention}}；{{covered}} 已被活跃工作覆盖"
+  },
+  "thinkingEffort": {
+    "default": "默认",
+    "minimal": "最低",
+    "low": "低",
+    "medium": "中",
+    "high": "高",
+    "xhigh": "极高",
+    "max": "最大"
+  },
+  "executionWorkspaceMode": {
+    "shared_workspace": "项目默认",
+    "isolated_workspace": "新建隔离工作区",
+    "reuse_existing": "复用已有工作区"
+  },
+  "workMode": {
+    "standard": "标准",
+    "planning": "规划"
+  }
+}

@@ -4,11 +4,16 @@ import { cn } from "../lib/utils";
 import { issueStatusIcon, issueStatusIconDefault } from "../lib/status-colors";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Button } from "@/components/ui/button";
+import { t as i18nT } from "../i18n";
 
 const allStatuses = ["backlog", "todo", "in_progress", "in_review", "done", "cancelled", "blocked"];
 
 function statusLabel(status: string): string {
-  return status.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+  const result = i18nT(`status:issueStatus.${status}`);
+  if (result === `status:issueStatus.${status}`) {
+    return status.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+  }
+  return result;
 }
 
 interface StatusIconProps {
@@ -20,45 +25,45 @@ interface StatusIconProps {
 }
 
 function blockedAttentionLabel(blockerAttention: IssueBlockerAttention | null | undefined) {
-  if (!blockerAttention || blockerAttention.state === "none") return "Blocked";
+  if (!blockerAttention || blockerAttention.state === "none") return i18nT("status:blocked.default");
 
   if (blockerAttention.reason === "active_child") {
     const count = blockerAttention.coveredBlockerCount;
     if (count === 1 && blockerAttention.sampleBlockerIdentifier) {
-      return `Blocked · waiting on active sub-issue ${blockerAttention.sampleBlockerIdentifier}`;
+      return i18nT("status:blocked.waitingOnActiveSubIssue_one", { identifier: blockerAttention.sampleBlockerIdentifier });
     }
-    if (count === 1) return "Blocked · waiting on 1 active sub-issue";
-    return `Blocked · waiting on ${count} active sub-issues`;
+    if (count === 1) return i18nT("status:blocked.waitingOnActiveSubIssue_one_noId");
+    return i18nT("status:blocked.waitingOnActiveSubIssue_other", { count });
   }
 
   if (blockerAttention.reason === "active_dependency") {
     const count = blockerAttention.coveredBlockerCount;
     if (count === 1 && blockerAttention.sampleBlockerIdentifier) {
-      return `Blocked · covered by active dependency ${blockerAttention.sampleBlockerIdentifier}`;
+      return i18nT("status:blocked.coveredByActiveDependency_one", { identifier: blockerAttention.sampleBlockerIdentifier });
     }
-    if (count === 1) return "Blocked · covered by 1 active dependency";
-    return `Blocked · covered by ${count} active dependencies`;
+    if (count === 1) return i18nT("status:blocked.coveredByActiveDependency_one_noId");
+    return i18nT("status:blocked.coveredByActiveDependency_other", { count });
   }
 
   if (blockerAttention.reason === "stalled_review") {
     const count = blockerAttention.stalledBlockerCount;
     const leaf = blockerAttention.sampleStalledBlockerIdentifier ?? blockerAttention.sampleBlockerIdentifier;
-    if (count === 1 && leaf) return `Blocked · review stalled on ${leaf}`;
-    if (count === 1) return "Blocked · review stalled with no clear next step";
-    return `Blocked · ${count} reviews stalled with no clear next step`;
+    if (count === 1 && leaf) return i18nT("status:blocked.reviewStalled_one", { identifier: leaf });
+    if (count === 1) return i18nT("status:blocked.reviewStalled_one_noId");
+    return i18nT("status:blocked.reviewStalled_other", { count });
   }
 
   if (blockerAttention.reason === "attention_required") {
     const count = blockerAttention.attentionBlockerCount || blockerAttention.unresolvedBlockerCount;
-    const attentionCopy = `${count} ${count === 1 ? "blocker needs" : "blockers need"} attention`;
+    const attentionCopy = i18nT(count === 1 ? "status:blocked.needsAttention_one" : "status:blocked.needsAttention_other", { count });
     const coveredCount = blockerAttention.coveredBlockerCount;
     if (coveredCount > 0) {
-      return `Blocked · ${attentionCopy}; ${coveredCount} covered by active work`;
+      return i18nT("status:blocked.needsAttentionCovered_one", { attention: attentionCopy, covered: coveredCount });
     }
-    return `Blocked · ${attentionCopy}`;
+    return attentionCopy;
   }
 
-  return "Blocked";
+  return i18nT("status:blocked.default");
 }
 
 export function StatusIcon({ status, blockerAttention, onChange, className, showLabel }: StatusIconProps) {

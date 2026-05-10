@@ -11,6 +11,15 @@ export const PRESET_LABELS: Record<DatePreset, string> = {
   custom: "Custom",
 };
 
+export const PRESET_TRANSLATION_KEYS: Record<DatePreset, string> = {
+  mtd: "dateRange.monthToDate",
+  "7d": "dateRange.last7Days",
+  "30d": "dateRange.last30Days",
+  ytd: "dateRange.yearToDate",
+  all: "dateRange.allTime",
+  custom: "dateRange.custom",
+};
+
 export const PRESET_KEYS: DatePreset[] = ["mtd", "7d", "30d", "ytd", "all", "custom"];
 
 // note: computeRange is called inside a useMemo that re-evaluates once per minute

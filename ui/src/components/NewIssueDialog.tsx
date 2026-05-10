@@ -54,7 +54,6 @@ import {
   Calendar,
   Paperclip,
   FileText,
-  Flag,
   Loader2,
   ListTree,
   X,
@@ -67,6 +66,7 @@ import { issueStatusText, issueStatusTextDefault, priorityColor, priorityColorDe
 import { MarkdownEditor, type MarkdownEditorRef, type MentionOption } from "./MarkdownEditor";
 import { AgentIcon } from "./AgentIconPicker";
 import { InlineEntitySelector, type InlineEntityOption } from "./InlineEntitySelector";
+import { useTranslation } from "react-i18next";
 
 const DRAFT_KEY = "paperclip:issue-draft";
 const DEBOUNCE_MS = 800;
@@ -109,44 +109,9 @@ import {
 
 const STAGED_FILE_ACCEPT = "image/*,application/pdf,text/plain,text/markdown,application/json,text/csv,text/html,.md,.markdown";
 
-const ISSUE_THINKING_EFFORT_OPTIONS = {
-  claude_local: [
-    { value: "", label: "Default" },
-    { value: "low", label: "Low" },
-    { value: "medium", label: "Medium" },
-    { value: "high", label: "High" },
-  ],
-  codex_local: [
-    { value: "", label: "Default" },
-    { value: "minimal", label: "Minimal" },
-    { value: "low", label: "Low" },
-    { value: "medium", label: "Medium" },
-    { value: "high", label: "High" },
-    { value: "xhigh", label: "X-High" },
-  ],
-  opencode_local: [
-    { value: "", label: "Default" },
-    { value: "minimal", label: "Minimal" },
-    { value: "low", label: "Low" },
-    { value: "medium", label: "Medium" },
-    { value: "high", label: "High" },
-    { value: "xhigh", label: "X-High" },
-    { value: "max", label: "Max" },
-  ],
-} as const;
-
 function isIssueWorkMode(value: unknown): value is IssueWorkMode {
   return value === "standard" || value === "planning";
 }
-
-const ISSUE_WORK_MODE_OPTIONS: ReadonlyArray<{
-  value: IssueWorkMode;
-  label: string;
-  icon: typeof Hammer;
-}> = [
-  { value: "standard", label: "Standard", icon: Hammer },
-  { value: "planning", label: "Planning", icon: ClipboardList },
-];
 
 function loadDraft(): IssueDraft | null {
   try {
@@ -218,37 +183,6 @@ function formatFileSize(file: File) {
   if (file.size < 1024 * 1024) return `${(file.size / 1024).toFixed(1)} KB`;
   return `${(file.size / (1024 * 1024)).toFixed(1)} MB`;
 }
-
-const statuses: ReadonlyArray<{ value: string; label: string; color: string; description?: string }> = [
-  {
-    value: "backlog",
-    label: "Backlog",
-    color: issueStatusText.backlog ?? issueStatusTextDefault,
-    description: "Parked — assignee will not be woken",
-  },
-  {
-    value: "todo",
-    label: "Todo",
-    color: issueStatusText.todo ?? issueStatusTextDefault,
-    description: "Executable — assignee will be woken",
-  },
-  { value: "in_progress", label: "In Progress", color: issueStatusText.in_progress ?? issueStatusTextDefault },
-  { value: "in_review", label: "In Review", color: issueStatusText.in_review ?? issueStatusTextDefault },
-  { value: "done", label: "Done", color: issueStatusText.done ?? issueStatusTextDefault },
-];
-
-const priorities = [
-  { value: "critical", label: "Critical", icon: AlertTriangle, color: priorityColor.critical ?? priorityColorDefault },
-  { value: "high", label: "High", icon: ArrowUp, color: priorityColor.high ?? priorityColorDefault },
-  { value: "medium", label: "Medium", icon: Minus, color: priorityColor.medium ?? priorityColorDefault },
-  { value: "low", label: "Low", icon: ArrowDown, color: priorityColor.low ?? priorityColorDefault },
-];
-
-const EXECUTION_WORKSPACE_MODES = [
-  { value: "shared_workspace", label: "Project default" },
-  { value: "isolated_workspace", label: "New isolated workspace" },
-  { value: "reuse_existing", label: "Reuse existing workspace" },
-] as const;
 
 function defaultProjectWorkspaceIdForProject(project: { workspaces?: Array<{ id: string; isPrimary: boolean }>; executionWorkspacePolicy?: { defaultProjectWorkspaceId?: string | null } | null } | null | undefined) {
   if (!project) return "";
@@ -436,6 +370,63 @@ export function NewIssueDialog() {
   const draftTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const executionWorkspaceDefaultProjectId = useRef<string | null>(null);
   const initializationKeyRef = useRef<string | null>(null);
+  const { t } = useTranslation(["status", "common"]);
+
+  const ISSUE_THINKING_EFFORT_OPTIONS = {
+    claude_local: [
+      { value: "", label: t('thinkingEffort.default') },
+      { value: "low", label: t('thinkingEffort.low') },
+      { value: "medium", label: t('thinkingEffort.medium') },
+      { value: "high", label: t('thinkingEffort.high') },
+    ],
+    codex_local: [
+      { value: "", label: t('thinkingEffort.default') },
+      { value: "minimal", label: t('thinkingEffort.minimal') },
+      { value: "low", label: t('thinkingEffort.low') },
+      { value: "medium", label: t('thinkingEffort.medium') },
+      { value: "high", label: t('thinkingEffort.high') },
+      { value: "xhigh", label: t('thinkingEffort.xhigh') },
+    ],
+    opencode_local: [
+      { value: "", label: t('thinkingEffort.default') },
+      { value: "minimal", label: t('thinkingEffort.minimal') },
+      { value: "low", label: t('thinkingEffort.low') },
+      { value: "medium", label: t('thinkingEffort.medium') },
+      { value: "high", label: t('thinkingEffort.high') },
+      { value: "xhigh", label: t('thinkingEffort.xhigh') },
+      { value: "max", label: t('thinkingEffort.max') },
+    ],
+  } as const;
+
+  const ISSUE_WORK_MODE_OPTIONS: ReadonlyArray<{
+    value: IssueWorkMode;
+    label: string;
+    icon: typeof Hammer;
+  }> = [
+    { value: "standard", label: t('workMode.standard'), icon: Hammer },
+    { value: "planning", label: t('workMode.planning'), icon: ClipboardList },
+  ];
+
+  const statuses = [
+    { value: "backlog", label: t('issueStatus.backlog'), color: issueStatusText.backlog ?? issueStatusTextDefault },
+    { value: "todo", label: t('issueStatus.todo'), color: issueStatusText.todo ?? issueStatusTextDefault },
+    { value: "in_progress", label: t('issueStatus.in_progress'), color: issueStatusText.in_progress ?? issueStatusTextDefault },
+    { value: "in_review", label: t('issueStatus.in_review'), color: issueStatusText.in_review ?? issueStatusTextDefault },
+    { value: "done", label: t('issueStatus.done'), color: issueStatusText.done ?? issueStatusTextDefault },
+  ];
+
+  const priorities = [
+    { value: "critical", label: t('priority.critical'), icon: AlertTriangle, color: priorityColor.critical ?? priorityColorDefault },
+    { value: "high", label: t('priority.high'), icon: ArrowUp, color: priorityColor.high ?? priorityColorDefault },
+    { value: "medium", label: t('priority.medium'), icon: Minus, color: priorityColor.medium ?? priorityColorDefault },
+    { value: "low", label: t('priority.low'), icon: ArrowDown, color: priorityColor.low ?? priorityColorDefault },
+  ];
+
+  const EXECUTION_WORKSPACE_MODES = [
+    { value: "shared_workspace", label: t('executionWorkspaceMode.shared_workspace') },
+    { value: "isolated_workspace", label: t('executionWorkspaceMode.isolated_workspace') },
+    { value: "reuse_existing", label: t('executionWorkspaceMode.reuse_existing') },
+  ] as const;
 
   const effectiveCompanyId = dialogCompanyId ?? selectedCompanyId;
   const dialogCompany = companies.find((c) => c.id === effectiveCompanyId) ?? selectedCompany;
@@ -1348,10 +1339,6 @@ export function NewIssueDialog() {
                     trackRecentAssignee(nextAssignee.assigneeAgentId);
                   }
                   setAssigneeValue(value);
-                  const hasAssignee = Boolean(nextAssignee.assigneeAgentId || nextAssignee.assigneeUserId);
-                  if (hasAssignee && status === "backlog") {
-                    setStatus("todo");
-                  }
                 }}
                 onConfirm={() => {
                   if (projectId) {
@@ -1650,7 +1637,7 @@ export function NewIssueDialog() {
                   <div
                     className="flex w-full overflow-hidden rounded-md border border-border"
                     role="radiogroup"
-                    aria-label="Model lane"
+                    aria-label={t('aria.modelLane')}
                   >
                     {(["primary", ...(assigneeSupportsCheapLane ? (["cheap"] as const) : ([] as const)), "custom"] as const).map((lane) => (
                       <button
@@ -1843,23 +1830,18 @@ export function NewIssueDialog() {
                 {currentStatus.label}
               </button>
             </PopoverTrigger>
-            <PopoverContent className="w-56 p-1" align="start">
+            <PopoverContent className="w-36 p-1" align="start">
               {statuses.map((s) => (
                 <button
                   key={s.value}
                   className={cn(
-                    "flex w-full items-start gap-2 px-2 py-1.5 text-xs rounded hover:bg-accent/50",
+                    "flex items-center gap-2 w-full px-2 py-1.5 text-xs rounded hover:bg-accent/50",
                     s.value === status && "bg-accent"
                   )}
                   onClick={() => { setStatus(s.value); setStatusOpen(false); }}
                 >
-                  <CircleDot className={cn("h-3 w-3 mt-0.5 shrink-0", s.color)} />
-                  <span className="flex flex-col text-left leading-tight">
-                    <span>{s.label}</span>
-                    {s.description ? (
-                      <span className="text-[10px] text-muted-foreground">{s.description}</span>
-                    ) : null}
-                  </span>
+                  <CircleDot className={cn("h-3 w-3", s.color)} />
+                  {s.label}
                 </button>
               ))}
             </PopoverContent>
@@ -1983,18 +1965,6 @@ export function NewIssueDialog() {
             </PopoverContent>
           </Popover>
         </div>
-
-        {assigneeValue && status === "backlog" ? (
-          <div
-            data-testid="new-issue-assigned-backlog-note"
-            className="mx-4 mb-2 flex items-start gap-2 rounded-md border border-amber-300/70 bg-amber-50/90 px-3 py-2 text-xs text-amber-900 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-100"
-          >
-            <Flag className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-600 dark:text-amber-300" />
-            <span className="leading-snug">
-              Assigning implies executable intent — leave status as <span className="font-medium">Backlog</span> only to deliberately park this. The assignee will not be woken until status moves to <span className="font-medium">Todo</span> or <span className="font-medium">In Progress</span>.
-            </span>
-          </div>
-        ) : null}
 
         {/* Footer */}
         <div className="flex items-center justify-between px-4 py-2.5 border-t border-border shrink-0">

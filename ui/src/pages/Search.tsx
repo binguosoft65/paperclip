@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useQuery } from "@tanstack/react-query";
 import { Search as SearchIcon, AlertTriangle, FileQuestion, Plus, X } from "lucide-react";
 import {
@@ -261,6 +262,7 @@ export function Search() {
     return () => window.removeEventListener("keydown", handler);
   }, [focusInput]);
 
+  const { t } = useTranslation("common");
   const counts = data?.countsByType ?? { issue: 0, agent: 0, project: 0 };
   const totalResults = data?.results.length ?? 0;
 
@@ -343,14 +345,14 @@ export function Search() {
               }
             }}
             placeholder="Search issues, comments, documents, agents, projects…"
-            aria-label="Search query"
+            aria-label={t('aria.searchQuery')}
             className="h-10 pl-9 pr-20 text-sm"
           />
           {draftQuery.length > 0 ? (
             <button
               type="button"
               onClick={handleClear}
-              aria-label="Clear search"
+              aria-label={t('aria.clearSearch')}
               className="absolute right-12 top-1/2 inline-flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-full text-muted-foreground hover:bg-accent/50"
             >
               <X className="h-3.5 w-3.5" />

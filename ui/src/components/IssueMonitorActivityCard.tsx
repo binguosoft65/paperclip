@@ -2,10 +2,11 @@ import type { Issue } from "@paperclipai/shared";
 import { Button } from "@/components/ui/button";
 import { formatMonitorOffset } from "@/lib/issue-monitor";
 import { formatDateTime } from "@/lib/utils";
+import { useTranslation } from "react-i18next";
 
 function resolveScheduledMonitor(issue: Issue) {
   const nextCheckAt =
-    issue.monitorNextCheckAt ??
+    issue.monitorNextCheckAt?.toISOString() ??
     issue.executionPolicy?.monitor?.nextCheckAt ??
     issue.executionState?.monitor?.nextCheckAt ??
     null;
@@ -30,6 +31,7 @@ export function IssueMonitorActivityCard({
   onCheckNow = null,
   checkingNow = false,
 }: IssueMonitorActivityCardProps) {
+  const { t } = useTranslation("common");
   const monitor = resolveScheduledMonitor(issue);
   if (!monitor) return null;
 
@@ -62,7 +64,7 @@ export function IssueMonitorActivityCard({
             onClick={onCheckNow}
             disabled={checkingNow}
           >
-            {checkingNow ? "Checking..." : "Check now"}
+            {checkingNow ? t("issueMonitorActivityCard.checking") : t("issueMonitorActivityCard.checkNow")}
           </Button>
         ) : null}
       </div>

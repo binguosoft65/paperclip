@@ -18,7 +18,6 @@ import { useBreadcrumbs } from "../context/BreadcrumbContext";
 import { useGeneralSettings } from "../context/GeneralSettingsContext";
 import { useSidebar } from "../context/SidebarContext";
 import { queryKeys } from "../lib/queryKeys";
-import { useDialogActions } from "../context/DialogContext";
 import {
   applyIssueFilters,
   countActiveIssueFilters,
@@ -86,7 +85,6 @@ import {
   Check,
   ChevronRight,
   Layers,
-  Plus,
   XCircle,
   X,
   RotateCcw,
@@ -97,6 +95,7 @@ import {
 
 const INBOX_HEARTBEAT_RUN_LIMIT = 200;
 const INBOX_ISSUE_LIST_LIMIT = 500;
+import { useTranslation } from "react-i18next";
 import { Input } from "@/components/ui/input";
 import { PageTabBar } from "../components/PageTabBar";
 import type { Approval, HeartbeatRun, Issue, JoinRequest } from "@paperclipai/shared";
@@ -104,7 +103,6 @@ import {
   ACTIONABLE_APPROVAL_STATUSES,
   DEFAULT_INBOX_ISSUE_COLUMNS,
   buildGroupedInboxSections,
-  buildInboxIssueGroupCreateDefaults,
   buildInboxKeyboardNavEntries,
   getAvailableInboxIssueColumns,
   getInboxWorkItemKey,
@@ -256,6 +254,7 @@ export function FailedRunInboxRow({
   selected?: boolean;
   className?: string;
 }) {
+  const { t } = useTranslation("common");
   const issueId = readIssueIdFromRun(run);
   const issue = issueId ? issueById.get(issueId) ?? null : null;
   const displayError = runFailureMessage(run);
@@ -278,7 +277,7 @@ export function FailedRunInboxRow({
                   "inline-flex h-4 w-4 items-center justify-center rounded-full transition-colors",
                   "hover:bg-blue-500/20",
                 )}
-                aria-label="Mark as read"
+                aria-label={t('aria.markAsRead')}
               >
                 <span className={cn(
                   "block h-2 w-2 rounded-full transition-opacity duration-300",
@@ -292,7 +291,7 @@ export function FailedRunInboxRow({
                 onClick={onArchive}
                 disabled={archiveDisabled}
                 className="inline-flex h-4 w-4 items-center justify-center rounded-md text-muted-foreground opacity-0 transition-opacity hover:text-foreground group-hover:opacity-100 disabled:pointer-events-none disabled:opacity-30"
-                aria-label="Dismiss from inbox"
+                aria-label={t('aria.dismissFromInbox')}
               >
                 <X className="h-3.5 w-3.5" />
               </button>
@@ -351,7 +350,7 @@ export function FailedRunInboxRow({
               type="button"
               onClick={onDismiss}
               className="rounded-md p-1 text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-foreground group-hover:opacity-100"
-              aria-label="Dismiss"
+              aria-label={t('aria.dismiss')}
             >
               <X className="h-4 w-4" />
             </button>
@@ -375,7 +374,7 @@ export function FailedRunInboxRow({
             type="button"
             onClick={onDismiss}
             className="rounded-md p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
-            aria-label="Dismiss"
+            aria-label={t('aria.dismiss')}
           >
             <X className="h-4 w-4" />
           </button>
@@ -410,6 +409,7 @@ function ApprovalInboxRow({
   selected?: boolean;
   className?: string;
 }) {
+  const { t } = useTranslation("common");
   const Icon = typeIcon[approval.type] ?? defaultTypeIcon;
   const label = approvalLabel(approval.type, approval.payload as Record<string, unknown> | null);
   const showResolutionButtons =
@@ -434,7 +434,7 @@ function ApprovalInboxRow({
                   "inline-flex h-4 w-4 items-center justify-center rounded-full transition-colors",
                   "hover:bg-blue-500/20",
                 )}
-                aria-label="Mark as read"
+                aria-label={t('aria.markAsRead')}
               >
                 <span className={cn(
                   "block h-2 w-2 rounded-full transition-opacity duration-300",
@@ -448,7 +448,7 @@ function ApprovalInboxRow({
                 onClick={onArchive}
                 disabled={archiveDisabled}
                 className="inline-flex h-4 w-4 items-center justify-center rounded-md text-muted-foreground opacity-0 transition-opacity hover:text-foreground group-hover:opacity-100 disabled:pointer-events-none disabled:opacity-30"
-                aria-label="Dismiss from inbox"
+                aria-label={t('aria.dismissFromInbox')}
               >
                 <X className="h-3.5 w-3.5" />
               </button>
@@ -550,6 +550,7 @@ function JoinRequestInboxRow({
   selected?: boolean;
   className?: string;
 }) {
+  const { t } = useTranslation("common");
   const label = formatJoinRequestInboxLabel(joinRequest);
   const showUnreadSlot = unreadState !== null;
   const showUnreadDot = unreadState === "visible" || unreadState === "fading";
@@ -570,7 +571,7 @@ function JoinRequestInboxRow({
                   "inline-flex h-4 w-4 items-center justify-center rounded-full transition-colors",
                   "hover:bg-blue-500/20",
                 )}
-                aria-label="Mark as read"
+                aria-label={t('aria.markAsRead')}
               >
                 <span className={cn(
                   "block h-2 w-2 rounded-full transition-opacity duration-300",
@@ -584,7 +585,7 @@ function JoinRequestInboxRow({
                 onClick={onArchive}
                 disabled={archiveDisabled}
                 className="inline-flex h-4 w-4 items-center justify-center rounded-md text-muted-foreground opacity-0 transition-opacity hover:text-foreground group-hover:opacity-100 disabled:pointer-events-none disabled:opacity-30"
-                aria-label="Dismiss from inbox"
+                aria-label={t('aria.dismissFromInbox')}
               >
                 <X className="h-3.5 w-3.5" />
               </button>
@@ -653,9 +654,9 @@ function JoinRequestInboxRow({
 }
 
 export function Inbox() {
+  const { t } = useTranslation("common");
   const { selectedCompanyId } = useCompany();
   const { setBreadcrumbs } = useBreadcrumbs();
-  const { openNewIssue } = useDialogActions();
   const { isMobile } = useSidebar();
   const navigate = useNavigate();
   const location = useLocation();
@@ -950,10 +951,10 @@ export function Inbox() {
     return map;
   }, [projects]);
   const projectWorkspaceById = useMemo(() => {
-    const map = new Map<string, { name: string; projectId: string }>();
+    const map = new Map<string, { name: string }>();
     for (const project of projects ?? []) {
       for (const workspace of project.workspaces ?? []) {
-        map.set(workspace.id, { name: workspace.name, projectId: project.id });
+        map.set(workspace.id, { name: workspace.name });
       }
     }
     return map;
@@ -974,21 +975,16 @@ export function Inbox() {
       name: string;
       mode: "shared_workspace" | "isolated_workspace" | "operator_branch" | "adapter_managed" | "cloud_sandbox";
       projectWorkspaceId: string | null;
-      projectId: string | null;
     }>();
     for (const workspace of executionWorkspaces) {
-      const projectWorkspace = workspace.projectWorkspaceId
-        ? projectWorkspaceById.get(workspace.projectWorkspaceId) ?? null
-        : null;
       map.set(workspace.id, {
         name: workspace.name,
         mode: workspace.mode,
         projectWorkspaceId: workspace.projectWorkspaceId ?? null,
-        projectId: projectWorkspace?.projectId ?? null,
       });
     }
     return map;
-  }, [executionWorkspaces, projectWorkspaceById]);
+  }, [executionWorkspaces]);
   const inboxWorkspaceGrouping = useMemo<InboxWorkspaceGroupingOptions>(
     () => ({
       agentById,
@@ -1252,17 +1248,6 @@ export function Inbox() {
     issueSearchSupplementResults,
     nestingEnabled,
   ]);
-
-  const openCreateIssueForGroup = useCallback((group: InboxGroupedSection) => {
-    const defaults = buildInboxIssueGroupCreateDefaults(
-      group.key,
-      groupBy,
-      group.displayItems,
-      inboxWorkspaceGrouping,
-    );
-    if (!defaults) return;
-    openNewIssue(defaults);
-  }, [groupBy, inboxWorkspaceGrouping, openNewIssue]);
   const totalVisibleWorkItems = useMemo(
     () => groupedSections.reduce((count, group) => count + group.displayItems.length, 0),
     [groupedSections],
@@ -2300,7 +2285,6 @@ export function Inbox() {
                   if (group.label) {
                     const groupNavIdx = groupFlatIndex.get(group.key) ?? -1;
                     const isGroupSelected = groupNavIdx >= 0 && selectedIndex === groupNavIdx;
-                    const canCreateIssueInGroup = group.displayItems.some((item) => item.kind === "issue");
                     elements.push(
                       <div
                         key={`group-${group.key}`}
@@ -2319,21 +2303,6 @@ export function Inbox() {
                           collapsible
                           collapsed={isGroupCollapsed}
                           onToggle={() => toggleGroupCollapse(group.key)}
-                          trailing={canCreateIssueInGroup ? (
-                            <Button
-                              variant="ghost"
-                              size="icon-xs"
-                              className="-mr-2 text-muted-foreground"
-                              title={`New issue in ${group.label}`}
-                              aria-label={`New issue in ${group.label}`}
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                openCreateIssueForGroup(group);
-                              }}
-                            >
-                              <Plus className="h-3 w-3" />
-                            </Button>
-                          ) : null}
                         />
                       </div>,
                     );
@@ -2594,7 +2563,7 @@ export function Inbox() {
                     type="button"
                     onClick={() => dismissAlert("alert:agent-errors")}
                     className="rounded-md p-1 text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-foreground group-hover/alert:opacity-100"
-                    aria-label="Dismiss"
+                    aria-label={t('aria.dismiss')}
                   >
                     <X className="h-3.5 w-3.5" />
                   </button>
@@ -2617,7 +2586,7 @@ export function Inbox() {
                     type="button"
                     onClick={() => dismissAlert("alert:budget")}
                     className="rounded-md p-1 text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-foreground group-hover/alert:opacity-100"
-                    aria-label="Dismiss"
+                    aria-label={t('aria.dismiss')}
                   >
                     <X className="h-3.5 w-3.5" />
                   </button>

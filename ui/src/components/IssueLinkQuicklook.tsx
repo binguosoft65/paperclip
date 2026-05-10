@@ -14,6 +14,7 @@ import { queryKeys } from "@/lib/queryKeys";
 import { cn } from "@/lib/utils";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { StatusIcon } from "@/components/StatusIcon";
+import { useTranslation } from "react-i18next";
 
 function summarizeIssueDescription(description: string | null | undefined) {
   if (!description) return null;

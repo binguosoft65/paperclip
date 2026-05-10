@@ -4,12 +4,14 @@ import { cn } from "../lib/utils";
 import { priorityColor, priorityColorDefault } from "../lib/status-colors";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Button } from "@/components/ui/button";
+import { useTranslation } from "react-i18next";
+import { t as i18nt } from "../i18n";
 
 const priorityConfig: Record<string, { icon: typeof ArrowUp; color: string; label: string }> = {
-  critical: { icon: AlertTriangle, color: priorityColor.critical ?? priorityColorDefault, label: "Critical" },
-  high: { icon: ArrowUp, color: priorityColor.high ?? priorityColorDefault, label: "High" },
-  medium: { icon: Minus, color: priorityColor.medium ?? priorityColorDefault, label: "Medium" },
-  low: { icon: ArrowDown, color: priorityColor.low ?? priorityColorDefault, label: "Low" },
+  critical: { icon: AlertTriangle, color: priorityColor.critical ?? priorityColorDefault, label: i18nt("priorityIcon.critical") },
+  high: { icon: ArrowUp, color: priorityColor.high ?? priorityColorDefault, label: i18nt("priorityIcon.high") },
+  medium: { icon: Minus, color: priorityColor.medium ?? priorityColorDefault, label: i18nt("priorityIcon.medium") },
+  low: { icon: ArrowDown, color: priorityColor.low ?? priorityColorDefault, label: i18nt("priorityIcon.low") },
 };
 
 const allPriorities = ["critical", "high", "medium", "low"];
@@ -22,6 +24,7 @@ interface PriorityIconProps {
 }
 
 export function PriorityIcon({ priority, onChange, className, showLabel }: PriorityIconProps) {
+  const { t } = useTranslation("common");
   const [open, setOpen] = useState(false);
   const config = priorityConfig[priority] ?? priorityConfig.medium!;
   const Icon = config.icon;

@@ -5,7 +5,6 @@ import {
   restoreWorkspaceFromSshExecution,
   syncDirectoryToSsh,
 } from "./ssh.js";
-import { captureDirectorySnapshot } from "./workspace-restore-merge.js";
 
 export interface RemoteManagedRuntimeAsset {
   key: string;
@@ -64,30 +63,18 @@ export function remoteExecutionSessionMatches(saved: unknown, current: SshRemote
 
 export async function prepareRemoteManagedRuntime(input: {
   spec: SshRemoteExecutionSpec;
-  runId: string;
   adapterKey: string;
   workspaceLocalDir: string;
   workspaceRemoteDir?: string;
   assets?: RemoteManagedRuntimeAsset[];
 }): Promise<PreparedRemoteManagedRuntime> {
-  const baseWorkspaceRemoteDir = input.workspaceRemoteDir ?? input.spec.remoteCwd;
-  const workspaceRemoteDir = path.posix.join(
-    baseWorkspaceRemoteDir,
-    ".paperclip-runtime",
-    "runs",
-    input.runId,
-    "workspace",
-  );
+  const workspaceRemoteDir = input.workspaceRemoteDir ?? input.spec.remoteCwd;
   const runtimeRootDir = path.posix.join(workspaceRemoteDir, ".paperclip-runtime", input.adapterKey);
 
-  const preparedWorkspace = await prepareWorkspaceForSshExecution({
+  await prepareWorkspaceForSshExecution({
     spec: input.spec,
     localDir: input.workspaceLocalDir,
     remoteDir: workspaceRemoteDir,
-  });
-  const restoreExclude = preparedWorkspace.gitBacked ? [".git", ".paperclip-runtime"] : [".paperclip-runtime"];
-  const baselineSnapshot = await captureDirectorySnapshot(input.workspaceLocalDir, {
-    exclude: restoreExclude,
   });
 
   const assetDirs: Record<string, string> = {};
@@ -108,8 +95,6 @@ export async function prepareRemoteManagedRuntime(input: {
       spec: input.spec,
       localDir: input.workspaceLocalDir,
       remoteDir: workspaceRemoteDir,
-      baselineSnapshot,
-      restoreGitHistory: preparedWorkspace.gitBacked,
     });
     throw error;
   }
@@ -125,8 +110,6 @@ export async function prepareRemoteManagedRuntime(input: {
         spec: input.spec,
         localDir: input.workspaceLocalDir,
         remoteDir: workspaceRemoteDir,
-        baselineSnapshot,
-        restoreGitHistory: preparedWorkspace.gitBacked,
       });
     },
   };

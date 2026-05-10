@@ -1,6 +1,7 @@
 import { useEffect, useMemo } from "react";
 import { Link, Navigate } from "@/lib/router";
 import { useQuery } from "@tanstack/react-query";
+import { useTranslation } from "react-i18next";
 import type { ExecutionWorkspace, Issue, Project } from "@paperclipai/shared";
 import { executionWorkspacesApi } from "../api/execution-workspaces";
 import { instanceSettingsApi } from "../api/instanceSettings";
@@ -72,6 +73,7 @@ function buildProjectWorkspaceGroups(input: {
 }
 
 export function Workspaces() {
+  const { t } = useTranslation("common");
   const { selectedCompanyId } = useCompany();
   const { setBreadcrumbs } = useBreadcrumbs();
   const experimentalSettingsQuery = useQuery({
@@ -103,8 +105,8 @@ export function Workspaces() {
   });
 
   useEffect(() => {
-    setBreadcrumbs([{ label: "Workspaces" }]);
-  }, [setBreadcrumbs]);
+    setBreadcrumbs([{ label: t("workspaces.title") }]);
+  }, [setBreadcrumbs, t]);
 
   const groups = useMemo(
     () => buildProjectWorkspaceGroups({ projects, issues, executionWorkspaces }),
@@ -121,11 +123,11 @@ export function Workspaces() {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-xl font-bold">Workspaces</h2>
+        <h2 className="text-xl font-bold">{t("workspaces.title")}</h2>
       </div>
 
       {groups.length === 0 ? (
-        <p className="text-sm text-muted-foreground">No workspace activity yet.</p>
+        <p className="text-sm text-muted-foreground">{t("workspaces.noActivity")}</p>
       ) : (
         <div className="space-y-8">
           {groups.map((group) => (
@@ -145,7 +147,7 @@ export function Workspaces() {
                   ) : null}
                 </div>
                 <span className="text-xs text-muted-foreground">
-                  {group.summaries.length} workspace{group.summaries.length === 1 ? "" : "s"}
+                  {t("workspaces.workspaceCount", { count: group.summaries.length })}
                 </span>
               </div>
               <ProjectWorkspacesContent

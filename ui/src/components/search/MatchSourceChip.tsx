@@ -1,4 +1,6 @@
 import { cn } from "@/lib/utils";
+import { useTranslation } from "react-i18next";
+import { t as i18nt } from "../../i18n";
 
 export type MatchSourceChipKind = "title" | "identifier" | "comment" | "document";
 
@@ -14,10 +16,10 @@ const chipStyles: Record<MatchSourceChipKind, string> = {
 };
 
 const chipLabels: Record<MatchSourceChipKind, string> = {
-  title: "Title",
-  identifier: "Identifier",
-  comment: "Comment",
-  document: "Doc",
+  title: i18nt("matchSourceChip.title"),
+  identifier: i18nt("matchSourceChip.identifier"),
+  comment: i18nt("matchSourceChip.comment"),
+  document: i18nt("matchSourceChip.doc"),
 };
 
 export interface MatchSourceChipProps {
@@ -28,6 +30,7 @@ export interface MatchSourceChipProps {
 }
 
 export function MatchSourceChip({ kind, count, label, className }: MatchSourceChipProps) {
+  const { t } = useTranslation("common");
   const text = label ?? chipLabels[kind];
   const showCount = typeof count === "number" && count > 1;
   return (

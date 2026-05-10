@@ -142,13 +142,6 @@ export function projectRoutes(db: Db) {
       );
     }
     const project = await svc.create(companyId, projectData);
-    if (project.env) {
-      await secretsSvc.syncEnvBindingsForTarget?.(
-        companyId,
-        { targetType: "project", targetId: project.id },
-        project.env,
-      );
-    }
     let createdWorkspaceId: string | null = null;
     if (workspace) {
       const createdWorkspace = await svc.createWorkspace(project.id, workspace);
@@ -213,13 +206,6 @@ export function projectRoutes(db: Db) {
     if (!project) {
       res.status(404).json({ error: "Project not found" });
       return;
-    }
-    if (body.env !== undefined) {
-      await secretsSvc.syncEnvBindingsForTarget?.(
-        project.companyId,
-        { targetType: "project", targetId: project.id },
-        project.env,
-      );
     }
 
     const actor = getActorInfo(req);

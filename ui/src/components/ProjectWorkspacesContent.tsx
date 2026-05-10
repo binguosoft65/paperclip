@@ -7,6 +7,7 @@ import { queryKeys } from "../lib/queryKeys";
 import type { ProjectWorkspaceSummary } from "../lib/project-workspaces-tab";
 import { ExecutionWorkspaceCloseDialog } from "./ExecutionWorkspaceCloseDialog";
 import { ProjectWorkspaceSummaryCard } from "./ProjectWorkspaceSummaryCard";
+import { useTranslation } from "react-i18next";
 
 export function ProjectWorkspacesContent({
   companyId,

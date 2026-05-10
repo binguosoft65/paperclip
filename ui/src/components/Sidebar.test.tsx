@@ -95,7 +95,20 @@ async function flushReact() {
 describe("Sidebar", () => {
   let container: HTMLDivElement;
 
-  async function renderSidebar() {
+  beforeEach(() => {
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    mockHeartbeatsApi.liveRunsForCompany.mockResolvedValue([]);
+  });
+
+  afterEach(() => {
+    container.remove();
+    document.body.innerHTML = "";
+    vi.clearAllMocks();
+  });
+
+  it("does not flash the Workspaces link while experimental settings are loading", async () => {
+    mockInstanceSettingsApi.getExperimental.mockImplementation(() => new Promise(() => {}));
     const root = createRoot(container);
     const queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false } },
@@ -110,39 +123,6 @@ describe("Sidebar", () => {
     });
     await flushReact();
 
-    return root;
-  }
-
-  beforeEach(() => {
-    container = document.createElement("div");
-    document.body.appendChild(container);
-    mockHeartbeatsApi.liveRunsForCompany.mockResolvedValue([]);
-  });
-
-  afterEach(() => {
-    container.remove();
-    document.body.innerHTML = "";
-    vi.clearAllMocks();
-  });
-
-  it("links the top search icon to the search page without showing Search in Work nav", async () => {
-    mockInstanceSettingsApi.getExperimental.mockResolvedValue({ enableIsolatedWorkspaces: false });
-    const root = await renderSidebar();
-
-    const topSearchLink = container.querySelector('a[aria-label="Search"]');
-    expect(topSearchLink?.getAttribute("href")).toBe("/search");
-    const workLinks = [...container.querySelectorAll("nav a")].map((anchor) => anchor.textContent?.trim());
-    expect(workLinks).not.toContain("Search");
-
-    await act(async () => {
-      root.unmount();
-    });
-  });
-
-  it("does not flash the Workspaces link while experimental settings are loading", async () => {
-    mockInstanceSettingsApi.getExperimental.mockImplementation(() => new Promise(() => {}));
-    const root = await renderSidebar();
-
     expect(container.textContent).not.toContain("Workspaces");
 
     await act(async () => {
@@ -152,7 +132,19 @@ describe("Sidebar", () => {
 
   it("shows the Workspaces link when isolated workspaces are enabled", async () => {
     mockInstanceSettingsApi.getExperimental.mockResolvedValue({ enableIsolatedWorkspaces: true });
-    const root = await renderSidebar();
+    const root = createRoot(container);
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+
+    await act(async () => {
+      root.render(
+        <QueryClientProvider client={queryClient}>
+          <Sidebar />
+        </QueryClientProvider>,
+      );
+    });
+    await flushReact();
 
     const link = [...container.querySelectorAll("a")].find((anchor) => anchor.textContent === "Workspaces");
     expect(link?.getAttribute("href")).toBe("/workspaces");

@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { useMemo, useState } from "react";
 import { Link } from "@/lib/router";
 import {
@@ -63,6 +64,7 @@ function KanbanColumn({
   agents?: Agent[];
   liveIssueIds?: Set<string>;
 }) {
+  const { t } = useTranslation(["issues", "status"]);
   const { setNodeRef, isOver } = useDroppable({ id: status });
 
   const isEmpty = issues.length === 0;
@@ -74,7 +76,7 @@ function KanbanColumn({
         {(!isEmpty || isOver) && (
           <>
             <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              {statusLabel(status)}
+              {t("status:issueStatus." + status)}
             </span>
             <span className="text-xs text-muted-foreground/60 ml-auto tabular-nums">
               {issues.length}
@@ -119,6 +121,7 @@ function KanbanCard({
   isLive?: boolean;
   isOverlay?: boolean;
 }) {
+  const { t } = useTranslation("issues");
   const {
     attributes,
     listeners,
@@ -164,11 +167,11 @@ function KanbanCard({
           {isSuccessfulRunHandoffRequired(issue) ? (
             <span
               className="inline-flex items-center gap-1 rounded-full border border-amber-400/45 bg-amber-50/60 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:border-amber-300/35 dark:bg-amber-400/10 dark:text-amber-300"
-              title="This issue needs a next step"
-              aria-label="Needs next step"
+              title={t("board.needsNextStep")}
+              aria-label={t("board.needsNextStep")}
             >
               <AlertTriangle className="h-3 w-3" />
-              Next step
+              {t("board.nextStep")}
             </span>
           ) : null}
           {isLive && (

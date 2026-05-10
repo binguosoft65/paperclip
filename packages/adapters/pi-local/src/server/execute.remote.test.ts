@@ -37,7 +37,7 @@ const {
   })),
   ensureCommandResolvable: vi.fn(async () => undefined),
   resolveCommandForLogs: vi.fn(async () => "ssh://fixture@127.0.0.1:2222/remote/workspace :: pi"),
-  prepareWorkspaceForSshExecution: vi.fn(async () => ({ gitBacked: false })),
+  prepareWorkspaceForSshExecution: vi.fn(async () => undefined),
   restoreWorkspaceFromSshExecution: vi.fn(async () => undefined),
   runSshCommand: vi.fn(async () => ({
     stdout: "",
@@ -109,7 +109,6 @@ describe("pi remote execution", () => {
     cleanupDirs.push(rootDir);
     const workspaceDir = path.join(rootDir, "workspace");
     const alternateWorkspaceDir = path.join(rootDir, "workspace-other");
-    const managedRemoteWorkspace = "/remote/workspace/.paperclip-runtime/runs/run-1/workspace";
     await mkdir(workspaceDir, { recursive: true });
     await mkdir(alternateWorkspaceDir, { recursive: true });
 
@@ -168,20 +167,20 @@ describe("pi remote execution", () => {
     });
 
     expect(result.sessionParams).toMatchObject({
-      cwd: managedRemoteWorkspace,
+      cwd: "/remote/workspace",
       remoteExecution: {
         transport: "ssh",
         host: "127.0.0.1",
         port: 2222,
         username: "fixture",
-        remoteCwd: managedRemoteWorkspace,
+        remoteCwd: "/remote/workspace",
       },
     });
-    expect(String(result.sessionId)).toContain(`${managedRemoteWorkspace}/.paperclip-runtime/pi/sessions/`);
+    expect(String(result.sessionId)).toContain("/remote/workspace/.paperclip-runtime/pi/sessions/");
     expect(prepareWorkspaceForSshExecution).toHaveBeenCalledTimes(1);
     expect(syncDirectoryToSsh).toHaveBeenCalledTimes(1);
     expect(syncDirectoryToSsh).toHaveBeenCalledWith(expect.objectContaining({
-      remoteDir: `${managedRemoteWorkspace}/.paperclip-runtime/pi/skills`,
+      remoteDir: "/remote/workspace/.paperclip-runtime/pi/skills",
       followSymlinks: true,
     }));
     expect(runSshCommand).toHaveBeenCalledWith(
@@ -194,12 +193,12 @@ describe("pi remote execution", () => {
       | undefined;
     expect(call?.[2]).toContain("--session");
     expect(call?.[2]).toContain("--skill");
-    expect(call?.[2]).toContain(`${managedRemoteWorkspace}/.paperclip-runtime/pi/skills`);
-    expect(call?.[3].env.PAPERCLIP_WORKSPACE_CWD).toBe(managedRemoteWorkspace);
+    expect(call?.[2]).toContain("/remote/workspace/.paperclip-runtime/pi/skills");
+    expect(call?.[3].env.PAPERCLIP_WORKSPACE_CWD).toBe("/remote/workspace");
     expect(JSON.parse(call?.[3].env.PAPERCLIP_WORKSPACES_JSON ?? "[]")).toEqual([
       {
         workspaceId: "workspace-1",
-        cwd: managedRemoteWorkspace,
+        cwd: "/remote/workspace",
         repoUrl: "https://github.com/paperclipai/paperclip.git",
         repoRef: "main",
       },
@@ -211,7 +210,7 @@ describe("pi remote execution", () => {
     ]);
     expect(call?.[3].env.PAPERCLIP_API_URL).toBe("http://127.0.0.1:4310");
     expect(call?.[3].env.PAPERCLIP_API_BRIDGE_MODE).toBe("queue_v1");
-    expect(call?.[3].remoteExecution?.remoteCwd).toBe(managedRemoteWorkspace);
+    expect(call?.[3].remoteExecution?.remoteCwd).toBe("/remote/workspace");
     expect(startAdapterExecutionTargetPaperclipBridge).toHaveBeenCalledTimes(1);
     expect(restoreWorkspaceFromSshExecution).toHaveBeenCalledTimes(1);
   });
@@ -220,14 +219,13 @@ describe("pi remote execution", () => {
     const rootDir = await mkdtemp(path.join(os.tmpdir(), "paperclip-pi-remote-resume-"));
     cleanupDirs.push(rootDir);
     const workspaceDir = path.join(rootDir, "workspace");
-    const managedRemoteWorkspace = "/remote/workspace/.paperclip-runtime/runs/run-ssh-resume/workspace";
     await mkdir(workspaceDir, { recursive: true });
 
     runSshCommand.mockImplementation(async (...args: unknown[]) => {
       const command = String(args[1] ?? "");
       if (command.includes("head -n 1") && command.includes("session-123.jsonl")) {
         return {
-          stdout: `${JSON.stringify({ type: "session", cwd: managedRemoteWorkspace })}\n`,
+          stdout: `${JSON.stringify({ type: "session", cwd: "/remote/workspace" })}\n`,
           stderr: "",
           exitCode: 0,
         };
@@ -249,16 +247,16 @@ describe("pi remote execution", () => {
         adapterConfig: {},
       },
       runtime: {
-        sessionId: `${managedRemoteWorkspace}/.paperclip-runtime/pi/sessions/session-123.jsonl`,
+        sessionId: "/remote/workspace/.paperclip-runtime/pi/sessions/session-123.jsonl",
         sessionParams: {
-          sessionId: `${managedRemoteWorkspace}/.paperclip-runtime/pi/sessions/session-123.jsonl`,
-          cwd: managedRemoteWorkspace,
+          sessionId: "/remote/workspace/.paperclip-runtime/pi/sessions/session-123.jsonl",
+          cwd: "/remote/workspace",
           remoteExecution: {
             transport: "ssh",
             host: "127.0.0.1",
             port: 2222,
             username: "fixture",
-            remoteCwd: managedRemoteWorkspace,
+            remoteCwd: "/remote/workspace",
           },
         },
         sessionDisplayId: "session-123",
@@ -291,7 +289,7 @@ describe("pi remote execution", () => {
 
     const call = runChildProcess.mock.calls[0] as unknown as [string, string, string[]] | undefined;
     expect(call?.[2]).toContain("--session");
-    expect(call?.[2]).toContain(`${managedRemoteWorkspace}/.paperclip-runtime/pi/sessions/session-123.jsonl`);
+    expect(call?.[2]).toContain("/remote/workspace/.paperclip-runtime/pi/sessions/session-123.jsonl");
   });
 
   it("starts a fresh remote Pi session when the saved session header cwd points at a different workspace", async () => {
@@ -366,12 +364,11 @@ describe("pi remote execution", () => {
       onLog: async () => {},
     });
 
-    const managedRemoteWorkspaceFresh = "/remote/workspace/.paperclip-runtime/runs/run-ssh-stale-session/workspace";
     const call = runChildProcess.mock.calls[0] as unknown as [string, string, string[]] | undefined;
     const sessionIndex = call?.[2].indexOf("--session") ?? -1;
     expect(sessionIndex).toBeGreaterThanOrEqual(0);
     const usedSession = sessionIndex >= 0 ? call?.[2][sessionIndex + 1] : null;
-    expect(usedSession).toContain(`${managedRemoteWorkspaceFresh}/.paperclip-runtime/pi/sessions/`);
+    expect(usedSession).toContain("/remote/workspace/.paperclip-runtime/pi/sessions/");
     expect(usedSession).not.toBe("/remote/workspace/.paperclip-runtime/pi/sessions/session-123.jsonl");
   });
 

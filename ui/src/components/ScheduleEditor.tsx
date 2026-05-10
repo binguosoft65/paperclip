@@ -3,17 +3,19 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { ChevronDown, ChevronRight } from "lucide-react";
+import { useTranslation } from "react-i18next";
+import { t as i18nt } from "../i18n";
 
 type SchedulePreset = "every_minute" | "every_hour" | "every_day" | "weekdays" | "weekly" | "monthly" | "custom";
 
 const PRESETS: { value: SchedulePreset; label: string }[] = [
-  { value: "every_minute", label: "Every minute" },
-  { value: "every_hour", label: "Every hour" },
-  { value: "every_day", label: "Every day" },
-  { value: "weekdays", label: "Weekdays" },
-  { value: "weekly", label: "Weekly" },
-  { value: "monthly", label: "Monthly" },
-  { value: "custom", label: "Custom (cron)" },
+  { value: "every_minute", label: i18nt("scheduleEditor.everyMinute") },
+  { value: "every_hour", label: i18nt("scheduleEditor.everyHour") },
+  { value: "every_day", label: i18nt("scheduleEditor.everyDay") },
+  { value: "weekdays", label: i18nt("scheduleEditor.weekdays") },
+  { value: "weekly", label: i18nt("scheduleEditor.weekly") },
+  { value: "monthly", label: i18nt("scheduleEditor.monthly") },
+  { value: "custom", label: i18nt("scheduleEditor.customCron") },
 ];
 
 const HOURS = Array.from({ length: 24 }, (_, i) => ({
@@ -134,7 +136,7 @@ function describeSchedule(cron: string): string {
     case "monthly":
       return `Monthly on the ${dayOfMonth}${ordinalSuffix(Number(dayOfMonth))} at ${timeStr}`;
     case "custom":
-      return cron || "No schedule set";
+      return cron || i18nt("scheduleEditor.noSchedule");
   }
 }
 
@@ -153,6 +155,7 @@ export function ScheduleEditor({
   value: string;
   onChange: (cron: string) => void;
 }) {
+  const { t } = useTranslation("common");
   const parsed = useMemo(() => parseCronToPreset(value), [value]);
   const [preset, setPreset] = useState<SchedulePreset>(parsed.preset);
   const [hour, setHour] = useState(parsed.hour);
@@ -196,7 +199,7 @@ export function ScheduleEditor({
     <div className="space-y-3">
       <Select value={preset} onValueChange={(v) => handlePresetChange(v as SchedulePreset)}>
         <SelectTrigger className="w-full">
-          <SelectValue placeholder="Choose frequency..." />
+          <SelectValue placeholder={t("scheduleEditor.chooseFrequency")} />
         </SelectTrigger>
         <SelectContent>
           {PRESETS.map((p) => (

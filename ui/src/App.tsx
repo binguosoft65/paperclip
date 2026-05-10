@@ -1,5 +1,6 @@
 import { Navigate, Outlet, Route, Routes, useLocation, useParams } from "@/lib/router";
 import { Button } from "@/components/ui/button";
+import { useTranslation } from "react-i18next";
 import { Layout } from "./components/Layout";
 import { OnboardingWizard } from "./components/OnboardingWizard";
 import { CloudAccessGate } from "./components/CloudAccessGate";
@@ -32,7 +33,6 @@ import { CompanyEnvironments } from "./pages/CompanyEnvironments";
 import { CompanyAccess } from "./pages/CompanyAccess";
 import { CompanyInvites } from "./pages/CompanyInvites";
 import { CompanySkills } from "./pages/CompanySkills";
-import { Secrets } from "./pages/Secrets";
 import { CompanyExport } from "./pages/CompanyExport";
 import { CompanyImport } from "./pages/CompanyImport";
 import { DesignGuide } from "./pages/DesignGuide";
@@ -72,7 +72,6 @@ function boardRoutes() {
       <Route path="company/settings/invites" element={<CompanyInvites />} />
       <Route path="company/export/*" element={<CompanyExport />} />
       <Route path="company/import" element={<CompanyImport />} />
-      <Route path="company/settings/secrets" element={<Secrets />} />
       <Route path="skills/*" element={<CompanySkills />} />
       <Route path="settings" element={<LegacySettingsRedirect />} />
       <Route path="settings/*" element={<LegacySettingsRedirect />} />
@@ -150,6 +149,7 @@ function LegacySettingsRedirect() {
 }
 
 function OnboardingRoutePage() {
+  const { t } = useTranslation("common");
   const { companies } = useCompany();
   const { openOnboarding } = useDialogActions();
   const { companyPrefix } = useParams<{ companyPrefix?: string }>();
@@ -158,15 +158,15 @@ function OnboardingRoutePage() {
     : null;
 
   const title = matchedCompany
-    ? `Add another agent to ${matchedCompany.name}`
+    ? t("onboarding.addAnotherAgent", { name: matchedCompany.name })
     : companies.length > 0
-      ? "Create another company"
-      : "Create your first company";
+      ? t("onboarding.createAnotherCompany")
+      : t("onboarding.createFirstCompany");
   const description = matchedCompany
-    ? "Run onboarding again to add an agent and a starter task for this company."
+    ? t("onboarding.addAgentAndTask")
     : companies.length > 0
-      ? "Run onboarding again to create another company and seed its first agent."
-      : "Get started by creating a company and your first agent.";
+      ? t("onboarding.createCompanyAndAgent")
+      : t("onboarding.getStarted");
 
   return (
     <div className="mx-auto max-w-xl py-10">
@@ -181,7 +181,7 @@ function OnboardingRoutePage() {
                 : openOnboarding()
             }
           >
-            {matchedCompany ? "Add Agent" : "Start Onboarding"}
+            {matchedCompany ? t("onboarding.addAgent") : t("onboarding.startOnboarding")}
           </Button>
         </div>
       </div>
@@ -190,11 +190,12 @@ function OnboardingRoutePage() {
 }
 
 function CompanyRootRedirect() {
+  const { t } = useTranslation("common");
   const { companies, selectedCompany, loading } = useCompany();
   const location = useLocation();
 
   if (loading) {
-    return <div className="mx-auto max-w-xl py-10 text-sm text-muted-foreground">Loading...</div>;
+    return <div className="mx-auto max-w-xl py-10 text-sm text-muted-foreground">{t("common:loading")}</div>;
   }
 
   const targetCompany = selectedCompany ?? companies[0] ?? null;
@@ -214,11 +215,12 @@ function CompanyRootRedirect() {
 }
 
 function UnprefixedBoardRedirect() {
+  const { t } = useTranslation("common");
   const location = useLocation();
   const { companies, selectedCompany, loading } = useCompany();
 
   if (loading) {
-    return <div className="mx-auto max-w-xl py-10 text-sm text-muted-foreground">Loading...</div>;
+    return <div className="mx-auto max-w-xl py-10 text-sm text-muted-foreground">{t("common:loading")}</div>;
   }
 
   const targetCompany = selectedCompany ?? companies[0] ?? null;
@@ -243,17 +245,18 @@ function UnprefixedBoardRedirect() {
 }
 
 function NoCompaniesStartPage() {
+  const { t } = useTranslation(["company", "common"]);
   const { openOnboarding } = useDialogActions();
 
   return (
     <div className="mx-auto max-w-xl py-10">
       <div className="rounded-lg border border-border bg-card p-6">
-        <h1 className="text-xl font-semibold">Create your first company</h1>
+        <h1 className="text-xl font-semibold">{t("app.createFirstCompany")}</h1>
         <p className="mt-2 text-sm text-muted-foreground">
-          Get started by creating a company.
+          {t("app.getStarted")}
         </p>
         <div className="mt-4">
-          <Button onClick={() => openOnboarding()}>New Company</Button>
+          <Button onClick={() => openOnboarding()}>{t("app.newCompany")}</Button>
         </div>
       </div>
     </div>

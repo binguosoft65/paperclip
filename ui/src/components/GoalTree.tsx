@@ -4,6 +4,7 @@ import { StatusBadge } from "./StatusBadge";
 import { ChevronRight } from "lucide-react";
 import { cn } from "../lib/utils";
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 
 interface GoalTreeProps {
   goals: Goal[];
@@ -21,6 +22,7 @@ interface GoalNodeProps {
 }
 
 function GoalNode({ goal, children, allGoals, depth, goalLink, onSelect }: GoalNodeProps) {
+  const { t } = useTranslation("common");
   const [expanded, setExpanded] = useState(true);
   const hasChildren = children.length > 0;
   const link = goalLink?.(goal);
@@ -43,7 +45,7 @@ function GoalNode({ goal, children, allGoals, depth, goalLink, onSelect }: GoalN
       ) : (
         <span className="w-4" />
       )}
-      <span className="text-xs text-muted-foreground capitalize">{goal.level}</span>
+      <span className="text-xs text-muted-foreground capitalize">{t(`goalProperties.levelOptions.${goal.level}`, goal.level)}</span>
       <span className="flex-1 truncate">{goal.title}</span>
       <StatusBadge status={goal.status} />
     </>

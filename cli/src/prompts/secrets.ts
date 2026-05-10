@@ -32,7 +32,7 @@ export async function promptSecrets(current?: SecretsConfig): Promise<SecretsCon
       {
         value: "aws_secrets_manager" as const,
         label: "AWS Secrets Manager",
-        hint: "requires runtime AWS credentials and provider env config",
+        hint: "requires external adapter integration",
       },
       {
         value: "gcp_secret_manager" as const,
@@ -84,9 +84,7 @@ export async function promptSecrets(current?: SecretsConfig): Promise<SecretsCon
 
   if (provider !== "local_encrypted") {
     p.note(
-      provider === "aws_secrets_manager"
-        ? "AWS credentials must come from the Paperclip server runtime (IAM role/workload identity, AWS_PROFILE/SSO/shared credentials, or short-lived shell env), not from Paperclip company secrets."
-        : `${provider} is not fully wired in this build yet. Keep local_encrypted unless you are actively implementing that adapter.`,
+      `${provider} is not fully wired in this build yet. Keep local_encrypted unless you are actively implementing that adapter.`,
       "Heads up",
     );
   }
