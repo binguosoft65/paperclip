@@ -26,6 +26,14 @@ interface IssueMonitorActivityCardProps {
   checkingNow?: boolean;
 }
 
+// 监工活动卡片：展示外部服务监控调度信息。
+// 在 Issue 详情页中作为一个信息面板，向用户说明：
+// - 下次检查时间
+// - 已尝试次数
+// - 关联的外部服务
+// - 自定义备注
+//
+// 提供"立即检查"按钮，便于人工触发即时检查（如 CI 状态查询）。
 export function IssueMonitorActivityCard({
   issue,
   onCheckNow = null,

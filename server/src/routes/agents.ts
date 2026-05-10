@@ -121,6 +121,9 @@ export function agentRoutes(
 ) {
   // Legacy hardcoded maps — used as fallback when adapter module does not
   // declare capability flags explicitly.
+  // 每种 Adapter 默认的指令文件路径键名映射。当 Adapter 模块未显式声明 supportsInstructionsBundle 时，
+  // 从此映射中查找兼容类型。这里列出的是已知支持指令 Bundle 的本地 Adapter。
+  // 设计权衡：硬编码维护成本高，但兼容了未声明能力标志的旧版 Adapter。
   const DEFAULT_INSTRUCTIONS_PATH_KEYS: Record<string, string> = {
     acpx_local: "instructionsFilePath",
     claude_local: "instructionsFilePath",
@@ -461,11 +464,21 @@ export function agentRoutes(
     };
   }
 
+  // 判断 Agent 是否有创建其他 Agent 的权限。权限判断的三层递进逻辑：
+  // 1. CEO 角色 -> 自动拥有（见 buildAgentAccessState）
+  // 2. 显式 canCreateAgents=true -> 拥有
+  // 3. agents:create 权限授权 -> 拥有（见 assertCanCreateAgentsForCompany）
+  // 这种分层设计让权限管理灵活：既可以按角色赋予，也可以精确到个例授权。
   function canCreateAgents(agent: { role: string; permissions: Record<string, unknown> | null | undefined }) {
     if (!agent.permissions || typeof agent.permissions !== "object") return false;
     return Boolean((agent.permissions as Record<string, unknown>).canCreateAgents);
   }
 
+  // 构建 Agent 的访问控制状态。任务分配权限的判断链（优先级从高到低）：
+  // 1. CEO 角色 -> 天生拥有任务分配权限（组织管理者）
+  // 2. canCreateAgents 为 true -> 能创建 Agent 即能分配任务（职责对等原则）
+  // 3. 拥有显式 tasks:assign 授权 -> 精确授权
+  // taskAssignSource 字段用于 UI 展示"为什么这个 Agent 能/不能分配任务"，帮助用户理解权限来源。
   async function buildAgentAccessState(agent: NonNullable<Awaited<ReturnType<typeof svc.getById>>>) {
     const membership = await access.getMembership(agent.companyId, "agent", agent.id);
     const grants = membership
@@ -540,6 +553,11 @@ export function agentRoutes(
     );
   }
 
+  // 创建 Agent 的权限检查。根据请求者类型走不同路径：
+  // - board（用户）：检查 agents:create 权限或是否为实例管理员/local_implicit
+  // - agent（Agent Key）：检查是否拥有 agents:create 授权或 canCreateAgents 标志
+  // 注意：Agent Key 不能跨公司操作（即使在同一个物理实例上）。
+  // 该函数返回 actorAgent 给调用方用于后续审计（记录谁创建了这个 Agent）。
   async function assertCanCreateAgentsForCompany(req: Request, companyId: string) {
     assertCompanyAccess(req, companyId);
     if (req.actor.type === "board") {
@@ -669,6 +687,10 @@ export function agentRoutes(
     };
   }
 
+  // 修改 Agent 的权限检查规则。
+  // Agent 可以修改自身配置；CEO 可以修改任何 Agent；有 canCreateAgents 或 agents:create 授权的
+  // Agent 也可以修改他人。这条规则的意图：创建者对其"创建"的 Agent 负有管理责任，
+  // 所以可以修改它们的配置。这体现了"谁创建谁管理"的职责模型。
   async function assertCanUpdateAgent(req: Request, targetAgent: { id: string; companyId: string }) {
     assertCompanyAccess(req, targetAgent.companyId);
     if (req.actor.type === "board") {

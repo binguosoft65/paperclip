@@ -1,5 +1,8 @@
 import fs from "node:fs/promises";
 
+// 每种角色默认的指令文件列表。CEO 角色获得更丰富的模板（含 HEARTBEAT.md、SOUL.md、TOOLS.md），
+// 因为 CEO Agent 通常需要更全面的行为描述；普通 Agent 只有 AGENTS.md 入门。
+// 设计权衡：CEO 的模板文件更多意味着初始学习成本更高，但获得了更精细的行为控制。
 const DEFAULT_AGENT_BUNDLE_FILES = {
   default: ["AGENTS.md"],
   ceo: ["AGENTS.md", "HEARTBEAT.md", "SOUL.md", "TOOLS.md"],

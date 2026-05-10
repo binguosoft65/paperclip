@@ -28,6 +28,8 @@ function PropertyRow({ label, children }: { label: string; children: React.React
   );
 }
 
+// 通用选择器按钮：用于在下拉 Popover 中切换 status 或 level 等枚举值。
+// 当前选中项高亮（bg-accent），点击即触发 onChange 回调并关闭弹窗。
 function PickerButton({
   current,
   options,
@@ -69,22 +71,28 @@ function PickerButton({
   );
 }
 
+// 目标属性面板：展示在详情页右侧，用于查看和编辑目标的元数据。
+// 当传入 onUpdate 时字段变为可编辑（点击触发 Popover 选择器），否则为只读展示。
+// 额外依赖两个查询：agents（用于查找责任人名称）和 allGoals（用于显示父目标标题）。
 export function GoalProperties({ goal, onUpdate }: GoalPropertiesProps) {
   const { t } = useTranslation("common");
   const { selectedCompanyId } = useCompany();
 
+  // 查询全部 Agent，用于解析 ownerAgentId 为可读的名称
   const { data: agents } = useQuery({
     queryKey: queryKeys.agents.list(selectedCompanyId!),
     queryFn: () => agentsApi.list(selectedCompanyId!),
     enabled: !!selectedCompanyId,
   });
 
+  // 查询全部目标，用于从 parentId 反查父目标的标题
   const { data: allGoals } = useQuery({
     queryKey: queryKeys.goals.list(selectedCompanyId!),
     queryFn: () => goalsApi.list(selectedCompanyId!),
     enabled: !!selectedCompanyId,
   });
 
+  // 解析责任人（ownerAgent）和父目标（parentGoal）的完整对象，用于展示名称和链接
   const ownerAgent = goal.ownerAgentId
     ? agents?.find((a) => a.id === goal.ownerAgentId)
     : null;
@@ -145,6 +153,7 @@ export function GoalProperties({ goal, onUpdate }: GoalPropertiesProps) {
               to={`/goals/${goal.parentId}`}
               className="text-sm hover:underline"
             >
+              {/* 显示父目标标题；若父目标不在当前查询结果中（可能已删除），则回退显示 ID 前 8 位 */}
               {parentGoal?.title ?? goal.parentId.slice(0, 8)}
             </Link>
           </PropertyRow>

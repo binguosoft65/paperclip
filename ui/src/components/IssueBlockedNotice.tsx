@@ -4,6 +4,14 @@ import { Link } from "@/lib/router";
 import { createIssueDetailPath } from "../lib/issueDetailBreadcrumb";
 import { IssueLinkQuicklook } from "./IssueLinkQuicklook";
 
+// 阻塞通知组件：展示 Issue 的阻塞状态和依赖链。
+// 根据 blockerAttention.state 显示不同的提示文案：
+// - needs_attention: 阻塞链上有需要关注的节点
+// - stalled: 阻塞链卡在 review 阶段
+// - covered: 阻塞链正在被处理（显示"等待中"状态）
+//
+// 同时处理 successfulRunHandoff 场景：Run 成功完成但 Issue 仍处于 in_progress，
+// 提示用户需要决定下一步操作。
 export function IssueBlockedNotice({
   issueStatus,
   blockers,

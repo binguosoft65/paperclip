@@ -10,6 +10,9 @@ import { validate } from "../middleware/validate.js";
 import { heartbeatService, issueService, issueTreeControlService, logActivity } from "../services/index.js";
 import { assertBoard, assertCompanyAccess, getActorInfo } from "./authz.js";
 
+// 子树操作取消 Run 时的等待超时时间（1秒）。
+// 不强制等待所有 Run 完成取消（可能很慢），而是"尽力等待"后立即返回。
+// 这是一种可靠性设计：提前返回让用户更快得到响应，异步继续取消剩余的 Run。
 const TREE_RUN_CANCELLATION_RESPONSE_WAIT_MS = 1_000;
 
 function errorToMessage(error: unknown) {
@@ -72,6 +75,14 @@ export function issueTreeControlRoutes(db: Db) {
     res.json(preview);
   });
 
+  // 创建子树控制 Hold 的端点。
+  // hold.mode 决定操作类型：
+  // - pause: 暂停子树执行（取消活跃 Run，延期待处理唤醒请求）
+  // - resume: 恢复子树执行
+  // - cancel: 取消子树（取消 Run + 状态标记为 cancelled）
+  // - restore: 还原子树（恢复 cancelled 状态 + 可选唤醒 Agent）
+  //
+  // 操作流程：预览 → 创建 Hold → 取消活跃 Run → 更新状态 → （可选）唤醒 Agent
   router.post("/issues/:id/tree-holds", validate(createIssueTreeHoldSchema), async (req, res) => {
     assertBoard(req);
     const root = await resolveRootIssue(req);

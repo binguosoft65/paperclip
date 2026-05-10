@@ -13,6 +13,10 @@ import { Identity } from "./Identity";
 import { RunChatSurface } from "./RunChatSurface";
 import { useLiveRunTranscripts } from "./transcript/useLiveRunTranscripts";
 
+// 仪表盘上活跃 Agent 面板的默认配置。
+// MIN_DASHBOARD_RUNS=4：只有当活跃运行数 >=4 时才显示面板（避免面板为空时占位）。
+// DASHBOARD_RUN_CARD_LIMIT=4：最多同时展示 4 张运行卡片，超出时显示"更多"链接。
+// 日志轮询间隔 15 秒：平衡实时性和 API 负载的折中选择。
 const MIN_DASHBOARD_RUNS = 4;
 const DASHBOARD_RUN_CARD_LIMIT = 4;
 const DASHBOARD_LOG_POLL_INTERVAL_MS = 15_000;

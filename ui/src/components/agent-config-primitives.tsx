@@ -236,6 +236,11 @@ export function AutoExpandTextarea({
 /**
  * Text input that manages internal draft state.
  * Calls `onCommit` on blur (and optionally on every change if `immediate` is set).
+ *
+ * 设计意图：使用 draft state 避免每次按键都触发上层重渲染与保存请求。
+ * 用户输入时只更新本地状态，失焦（blur）时一次性提交。这种模式减少了
+ * 不必要的 API 调用，同时保证用户体验流畅。immediate 模式用于需要
+ * 实时反馈的场景（如实时搜索过滤）。
  */
 export function DraftInput({
   value,
@@ -358,6 +363,11 @@ export function DraftNumberInput({
 /**
  * "Choose" button that opens a dialog explaining the user must manually
  * type the path due to browser security limitations.
+ *
+ * 为什么不用原生 <input type="file"> 或文件选择器？
+ * 浏览器安全模型禁止网页直接读取任意文件系统的完整路径。
+ * 所以这里用一个 Dialog 引导用户手动复制粘贴路径——
+ * 这是在不要求用户安装额外客户端的前提下能提供的最好体验。
  */
 export function ChoosePathButton() {
   const [open, setOpen] = useState(false);

@@ -58,6 +58,18 @@ const DEFAULT_EVIDENCE: RunLivenessEvidenceInput = {
   latestEvidenceAt: null,
 };
 
+// ── 活跃度分类的正则模式 ──
+// 通过分析 Run 的输出文本（评论、resultJson、摘要等），自动判断 Run 的活跃度状态。
+// 这些模式用于区分：可继续执行的 Run、需要人工介入的 Run、阻塞的 Run。
+//
+// PLANNING_ONLY_RE — Agent 只描述了计划但没有执行具体操作
+// BLOCKER_RE / NEGATED_BLOCKER_RE — Agent 声明了阻塞/解除了阻塞
+// APPROVAL_REQUIRED_RE — Agent 声明需要审批
+// EXTERNAL_BLOCKER_RE — Agent 被外部因素（凭证、密钥等）阻塞
+// MANAGER_REVIEW_RE — Agent 声明需要人工审核或涉及敏感操作
+// RUNNABLE_RE — Agent 描述了可以继续执行的具体操作
+// PLAN_TASK_*_RE — 识别纯规划类任务（研究、设计文档），这类任务可以有较少的具体操作证据
+
 const PLANNING_ONLY_RE =
   /\b(?:i(?:'ll| will| am going to|'m going to)|let me|i need to|next(?:,| i will| i'll)?|my next step is|the next step is)\s+(?:first\s+)?(?:inspect|check|review|look|investigate|analy[sz]e|open|read|start|begin|work on|implement|fix|test|update|create|add)\b/i;
 const NEXT_STEPS_RE = /^\s*(?:next steps?|plan)\s*:/im;
@@ -147,6 +159,9 @@ function actionabilityText(input: RunLivenessClassificationInput) {
   return rawSources(input).join("\n").trim();
 }
 
+// 判断 Run 是否产生了"有用"的输出（评论、resultJson、摘要、日志等）。
+// 空输出或纯噪音输出意味着 Run 没有提供有价值的信息，
+// 这类 Run 会被分类为 empty_response，不会自动续作。
 export function hasUsefulOutput(input: RunLivenessClassificationInput) {
   return combinedOutput(input).length > 0;
 }
@@ -184,9 +199,8 @@ function normalizeEvidence(evidence: Partial<RunLivenessEvidenceInput> | null | 
 
 export function hasConcreteActionEvidence(evidence: Partial<RunLivenessEvidenceInput> | null | undefined) {
   const normalized = normalizeEvidence(evidence);
-  // Workspace creation is setup evidence, not task progress by itself. It can
-  // appear in reasons alongside durable activity, but it must not prevent a
-  // planning-only or empty run from receiving a bounded continuation.
+  // 工作空间创建属于环境准备，不是任务进展的实质证据。
+  // 它可以与其他证据一起出现在原因中，但不能单独阻止"仅规划"或空 Run 获得有限续作。
   return (
     normalized.issueCommentsCreated +
       normalized.documentRevisionsCreated +
@@ -212,6 +226,13 @@ function stripMarkdownListPrefix(line: string) {
   return line.replace(/^\s*(?:[-*]|\d+\.)\s+/, "").trim();
 }
 
+// 判断是否为"噪音"日志行（如命令调用、工具输出、JSON 序列化等）。
+// 在活跃度分析中，这些行不代表 Agent 的实际思考或进展，应该被过滤掉。
+// 过滤规则：
+// - 元数据行（command/status/exit_code/tool 等标记）
+// - JSON 结构行（可能包含序列化的工具调用）
+// - shell 命令执行行（rg/sed/cat/git/pnpm 等）
+// 设计权衡：这些模式基于经验总结，可能漏掉或误过滤某些 Agent 的输出格式。
 function isNoisyTranscriptLine(line: string) {
   const trimmed = line.trim();
   if (!trimmed) return true;
@@ -274,6 +295,17 @@ function extractNextAction(input: RunLivenessClassificationInput) {
   return null;
 }
 
+// 判断 Run 的"可操作性"类别：决定是否可以自动继续执行。
+// 优先级从高到低：
+// 1. 明确声明"未阻塞"→ 检查是否可继续执行
+// 2. 声明需要审批 → 等待人工审批
+// 3. 声明被外部阻塞（凭证/密钥/API Key）→ 等待外部依赖
+// 4. 声明需要人工审核（安全/部署/敏感操作）→ 等待人工确认
+// 5. 描述可执行的具体操作 → 可以自动继续
+// 6. 无法判断 → unknown（需要人工审查）
+//
+// 注意：否定阻塞（NEGATED_BLOCKER_RE）优先于其他模式检查，
+// 确保 Agent 明确说"未阻塞"时不会误判为阻塞。
 export function classifyRunActionability(input: RunLivenessClassificationInput): RunLivenessActionability {
   const text = actionabilityText(input);
   if (!text) return "unknown";
@@ -289,6 +321,19 @@ export function classifyRunActionability(input: RunLivenessClassificationInput):
   return "unknown";
 }
 
+// Run 活跃度分类的主决策树。
+// 根据 Run 状态、Issue 状态、输出内容、行为证据综合判断活跃度。
+// 分类结果决定了是否续作、如何续作。
+//
+// 决策优先级（从高到低）：
+// 1. Run 失败/超时 → "failed"
+// 2. Issue 已完成/取消 → "completed"
+// 3. 声明阻塞 → "blocked"
+// 4. 无输出+无证据 → "empty_response"
+// 5. 有具体行为证据 → "advanced"（理想的活跃状态）
+// 6. 规划类任务且有输出 → "advanced"（豁免于纯规划分类）
+// 7. 仅规划/有下一步行动 → "plan_only"（可自动续作）或 "needs_followup"（需人工确认）
+// 8. 有输出但无证据 → "needs_followup"
 export function classifyRunLiveness(input: RunLivenessClassificationInput): RunLivenessClassification {
   const evidence = normalizeEvidence(input.evidence);
   const continuationAttempt = normalizeContinuationAttempt(input.continuationAttempt);

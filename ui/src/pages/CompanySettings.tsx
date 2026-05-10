@@ -29,6 +29,8 @@ type AgentSnippetInput = {
 const BYTES_PER_MIB = 1024 * 1024;
 const DEFAULT_COMPANY_ATTACHMENT_MAX_MIB = DEFAULT_COMPANY_ATTACHMENT_MAX_BYTES / BYTES_PER_MIB;
 const MAX_COMPANY_ATTACHMENT_MAX_MIB = MAX_COMPANY_ATTACHMENT_MAX_BYTES / BYTES_PER_MIB;
+// 公司设置页：包含基本信息、外观（logo/品牌色）、附件限制、团队审批、邀请配置、导入导出入口及危险操作区。
+// 所有修改在保存前处于草稿状态，不与服务器同步，防止意外修改
 export function CompanySettings() {
   const {
     companies,

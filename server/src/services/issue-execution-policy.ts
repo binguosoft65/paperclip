@@ -58,6 +58,10 @@ type TransitionResult = {
   workflowControlledAssignment?: boolean;
 };
 
+// 执行工作流阶段的三种状态：
+// - completed: 所有阶段已完成，Issue 可进入 done
+// - pending: 当前阶段等待参与者审批/审核
+// - changes_requested: 参与者要求修改，退回执行人
 const COMPLETED_STATUS: IssueExecutionState["status"] = "completed";
 const PENDING_STATUS: IssueExecutionState["status"] = "pending";
 const CHANGES_REQUESTED_STATUS: IssueExecutionState["status"] = "changes_requested";
@@ -251,10 +255,14 @@ function buildClearedMonitorState(input: {
   };
 }
 
+// 监工（Monitor）仅在 Agent 分配的 Issue 处于 in_progress 或 in_review 时有效
+// 人工分配的 Issue（assigneeUserId 非空）不会触发监工
 function issueAllowsMonitor(status: string, assigneeAgentId: string | null, assigneeUserId: string | null) {
   return Boolean(assigneeAgentId) && !assigneeUserId && (status === "in_progress" || status === "in_review");
 }
 
+// 监工清除原因映射：Issue 状态/AI变导致监工不再适用时，生成对应的清除原因
+// done/cancelled 自然结束，invalid_assignee/invalid_status 为配置不当
 function monitorClearReasonForIssue(
   status: string,
   assigneeAgentId: string | null,
@@ -275,6 +283,8 @@ function parseMonitorDate(value: string | null | undefined) {
   return Number.isNaN(date.getTime()) ? null : date;
 }
 
+// 检查监工是否已耗尽：超时（timeout_exceeded）或达到最大尝试次数（max_attempts_exhausted）
+// 这是防止监工无限循环的安全边界
 function exhaustedMonitorClearReason(input: {
   monitor: IssueExecutionMonitorPolicy;
   attemptCount: number;
@@ -592,6 +602,8 @@ function clearExecutionStatePatch(input: {
   }
 }
 
+// 自动跳过审核阶段的条件：当目标状态是 done、当前是 review 阶段、
+// 且所有参与者与 returnAssignee 相同时，没有必要自审自批，直接跳过
 function canAutoSkipPendingStage(input: {
   stage: IssueExecutionStage;
   returnAssignee: IssueExecutionStagePrincipal | null;
@@ -604,6 +616,20 @@ function canAutoSkipPendingStage(input: {
     input.stage.participants.every((participant) => principalsEqual(participant, input.returnAssignee));
 }
 
+// 执行工作流阶段转换的核心函数。
+// 根据当前执行状态、执行策略和请求的变更，决定如何推进工作流。
+//
+// 决策逻辑：
+// 1. 无执行策略 → 清除执行状态
+// 2. 从终态（done/cancelled）回到活跃状态 → 清除执行状态
+// 3. 当前阶段已不存在 → 清除执行状态
+// 4. 有活跃阶段 → 检查参与者身份和操作权限
+//    a. 非当前参与者试图操作 → 拒绝（抛异常）
+//    b. 当前参与者 approve（status=done）→ 进入下一阶段或标记完成
+//    c. 当前参与者 changes_requested → 退回 returnAssignee
+//    d. 状态偏移（stageStateDrifted）→ 重建挂起阶段
+// 5. 无活跃阶段但请求状态为 done/in_review → 启动新工作流
+// 6. 可以自动跳过阶段（canAutoSkipPendingStage）→ 跳过并继续
 function applyIssueExecutionStageTransition(input: TransitionInput): TransitionResult {
   const patch: Record<string, unknown> = {};
   const existingState = parseIssueExecutionState(input.issue.executionState);
@@ -872,6 +898,19 @@ function applyIssueExecutionStageTransition(input: TransitionInput): TransitionR
   };
 }
 
+// 监工（Monitor）状态转换函数。
+// 在 Issue 状态或分配人变更时同步更新监工状态。
+//
+// 逻辑：
+// - 如果新状态不允许监工（如 done/cancelled/人工分配），
+//   自动清除监工状态并移除执行策略中的 monitor 配置
+// - 如果监工已耗尽（超时/达到最大尝试次数），
+//   自动清除监工状态并从执行策略中剥离 monitor
+// - 如果监工仍然有效，更新下次检查时间和相关字段
+// - 如果之前有监工但现在没有了，清除监工并记录清除原因
+//
+// 注意：监工配置可能因为状态变更被自动剥离（stripMonitorFromExecutionPolicy），
+// 但 Issue 的其他执行策略配置保持不变。
 function applyMonitorTransition(input: TransitionInput, stagePatch: Record<string, unknown>) {
   const patch: Record<string, unknown> = {};
   const previousPolicy = input.previousPolicy ?? normalizeIssueExecutionPolicy(input.issue.executionPolicy ?? null);

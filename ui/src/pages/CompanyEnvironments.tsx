@@ -160,6 +160,9 @@ function SupportMark({ supported }: { supported: boolean }) {
   );
 }
 
+// 运行环境管理页：为公司配置多个运行环境（local/SSH/sandbox），
+// 支持连接测试（probe）和适配器兼容性查看。环境配置是 agent 运行的基础设施依赖，
+// 不同类型的 adapter 支持不同的 driver 组合
 export function CompanyEnvironments() {
   const { t } = useTranslation(["company", "common"]);
   const { selectedCompany, selectedCompanyId } = useCompany();

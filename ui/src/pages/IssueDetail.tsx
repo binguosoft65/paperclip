@@ -164,6 +164,8 @@ type IssueDetailComment = (IssueComment | OptimisticIssueComment) & {
   queueReason?: "hold" | "active_run" | "other";
 };
 
+// 评论分页配置：每页 50 条，自动加载上限为 3 页（150 条）
+// 超出此上限时需要用户手动触发"加载更多"
 const FEEDBACK_TERMS_URL = import.meta.env.VITE_FEEDBACK_TERMS_URL?.trim() || "https://paperclip.ing/tos";
 const ISSUE_COMMENT_PAGE_SIZE = 50;
 const ISSUE_COMMENT_AUTOLOAD_LIMIT = ISSUE_COMMENT_PAGE_SIZE * 3;
@@ -1160,6 +1162,21 @@ function IssueDetailActivityTab({
   );
 }
 
+// Issue 详情页主组件。
+// 这是系统最复杂的 UI 页面，涉及以下功能区域：
+// 1. 头部区域：Issue 标题、状态、优先级、标识符、操作按钮
+// 2. 属性面板：状态切换、分配人、项目、标签、阻塞关系、执行策略配置
+// 3. 聊天区域：评论线程（含乐观更新、分页加载）
+// 4. 活动/日志区域：Run 历史、活动时间线
+// 5. 工作流区域：审核阶段展示、监工状态卡片
+// 6. 子 Issue 区域：树形子任务展示
+// 7. 阻塞通知区域：阻塞链可视化
+// 8. 文档区域：续作摘要、计划文档等
+//
+// 关键设计决策：
+// - 乐观更新：状态变更立即反映在 UI 上，减少感知延迟
+// - 实时心跳：通过轮询获取最新的 Run 状态
+// - 键盘快捷键：支持 a/j/k 等快捷键导航
 export function IssueDetail() {
   const { t } = useTranslation(["issues", "common"]);
   const { issueId } = useParams<{ issueId: string }>();

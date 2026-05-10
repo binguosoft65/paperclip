@@ -712,6 +712,16 @@ function buildExecutionStageWakeup(input: {
   return null;
 }
 
+// Issue 路由注册函数。
+// 注册所有与 Issue 相关的 REST API 端点，包括：
+// - Issue CRUD（创建、读取、更新、删除）
+// - 状态转换（含执行策略工作流）
+// - 评论管理（创建、分页查询）
+// - 阻塞关系管理（添加/移除 blocker）
+// - 文档关联、标签管理
+// - 审批关联、收件箱操作
+// - 引用解析、搜索
+// - 子树控制预览和操作
 export function issueRoutes(
   db: Db,
   storage: StorageService,
@@ -2438,6 +2448,11 @@ export function issueRoutes(
     res.json({ ok: true });
   });
 
+  // Issue 更新路由（PATCH）。
+  // 支持更新状态、分配人、标题、描述、优先级、项目、标签等字段。
+  // 当 status 变更时，会自动触发执行策略工作流（executionPolicy），
+  // 执行监工状态转换（applyMonitorTransition）和阶段推进逻辑。
+  // 状态变更还会记录 activity log 并唤醒分配人。
   router.patch("/issues/:id", validate(updateIssueRouteSchema), async (req, res) => {
     const id = req.params.id as string;
     const existing = await svc.getById(id);

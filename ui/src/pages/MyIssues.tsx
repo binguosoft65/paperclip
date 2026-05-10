@@ -36,7 +36,9 @@ export function MyIssues() {
     return <PageSkeleton variant="list" />;
   }
 
-  // Show issues that are not assigned (user-created or unassigned)
+// "我的 Issue" 视图：显示未分配给 Agent 且未完成的 Issue。
+// 设计意图：Board（人工管理者）通过此页面查看待人工处理的 Issue，
+// 这些 Issue 通常是 Board 创建后等待分配，或需要人工决定下一步。
   const myIssues = (issues ?? []).filter(
     (i) => !i.assigneeAgentId && !["done", "cancelled"].includes(i.status)
   );

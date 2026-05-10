@@ -35,10 +35,12 @@ export function companyRoutes(db: Db, storage?: StorageService) {
   const budgets = budgetService(db);
   const feedback = feedbackService(db);
 
+  // 辅助函数：将查询参数中的布尔值（true/"true"/"1"）统一转为 boolean
   function parseBooleanQuery(value: unknown) {
     return value === true || value === "true" || value === "1";
   }
 
+  // 辅助函数：解析日期查询参数，无效值返回 undefined，格式错误时抛 400
   function parseDateQuery(value: unknown, field: string) {
     if (typeof value !== "string" || value.trim().length === 0) return undefined;
     const parsed = new Date(value);
@@ -48,6 +50,7 @@ export function companyRoutes(db: Db, storage?: StorageService) {
     return parsed;
   }
 
+  // 多租户隔离：导入目标权限断言 —— 创建新公司需 instance admin 权限，导入现有公司需该公司成员权限
   function assertImportTargetAccess(
     req: Request,
     target: { mode: "new_company" } | { mode: "existing_company"; companyId: string },
@@ -59,6 +62,7 @@ export function companyRoutes(db: Db, storage?: StorageService) {
     assertCompanyAccess(req, target.companyId);
   }
 
+  // 品牌更新权限校验：仅 CEO 角色的 agent 或 board 用户可以操作，且 agent 必须属于目标公司
   async function assertCanUpdateBranding(req: Request, companyId: string) {
     assertCompanyAccess(req, companyId);
     if (req.actor.type === "board") return;
@@ -73,6 +77,7 @@ export function companyRoutes(db: Db, storage?: StorageService) {
     }
   }
 
+  // 导入/导出管理权限校验：仅 CEO 角色的 agent 可操作，防止跨公司越权
   async function assertCanManagePortability(req: Request, companyId: string, capability: "imports" | "exports") {
     assertCompanyAccess(req, companyId);
     if (req.actor.type === "board") return;
@@ -87,6 +92,7 @@ export function companyRoutes(db: Db, storage?: StorageService) {
     }
   }
 
+  // 多租户隔离：列出所有公司。instance admin 可查看全部，非 admin 仅能查看其有权限的公司
   router.get("/", async (req, res) => {
     assertBoard(req);
     const result = await svc.list();
@@ -98,6 +104,7 @@ export function companyRoutes(db: Db, storage?: StorageService) {
     res.json(result.filter((company) => allowed.has(company.id)));
   });
 
+  // 多租户隔离：统计各公司的 agent 和 issue 数量，非 admin 仅能看到其有权限的公司的统计
   router.get("/stats", async (req, res) => {
     assertBoard(req);
     const allowed = req.actor.source === "local_implicit" || req.actor.isInstanceAdmin
@@ -162,6 +169,7 @@ export function companyRoutes(db: Db, storage?: StorageService) {
     res.json(traces);
   });
 
+  // 公司导出：生成可移植的 zip 包，包含公司配置、agent、project、issue 等。只允许 CEO agent 或 board 操作
   router.post("/:companyId/export", validate(companyPortabilityExportSchema), async (req, res) => {
     const companyId = req.params.companyId as string;
     await assertCanManagePortability(req, companyId, "exports");
@@ -169,6 +177,7 @@ export function companyRoutes(db: Db, storage?: StorageService) {
     res.json(result);
   });
 
+  // 导入预览：在不实际写入数据库的情况下，模拟导入结果，展示冲突和变更计划
   router.post("/import/preview", validate(companyPortabilityPreviewSchema), async (req, res) => {
     assertBoard(req);
     assertImportTargetAccess(req, req.body.target);
@@ -176,6 +185,7 @@ export function companyRoutes(db: Db, storage?: StorageService) {
     res.json(preview);
   });
 
+  // 导入执行：将外部公司包导入为新的或现有的公司，记录导入活动的审计日志
   router.post("/import", validate(companyPortabilityImportSchema), async (req, res) => {
     assertBoard(req);
     assertImportTargetAccess(req, req.body.target);
@@ -214,6 +224,7 @@ export function companyRoutes(db: Db, storage?: StorageService) {
     res.json(result);
   });
 
+  // Agent 安全的导入预览：限制目标只能为当前路由公司，且禁止 replace 碰撞策略，防止 agent 误操作覆盖已有数据
   router.post("/:companyId/imports/preview", validate(companyPortabilityPreviewSchema), async (req, res) => {
     const companyId = req.params.companyId as string;
     await assertCanManagePortability(req, companyId, "imports");
@@ -230,6 +241,7 @@ export function companyRoutes(db: Db, storage?: StorageService) {
     res.json(preview);
   });
 
+  // Agent 安全的导入执行：与 preview 同理，限制目标公司并禁止 replace 碰撞策略
   router.post("/:companyId/imports/apply", validate(companyPortabilityImportSchema), async (req, res) => {
     const companyId = req.params.companyId as string;
     await assertCanManagePortability(req, companyId, "imports");
@@ -264,6 +276,7 @@ export function companyRoutes(db: Db, storage?: StorageService) {
     res.json(result);
   });
 
+  // 创建公司：仅 instance admin 可操作。创建后自动授予创建者 owner 成员身份，如有月预算则自动设置预算策略
   router.post("/", validate(createCompanySchema), async (req, res) => {
     assertBoard(req);
     if (!(req.actor.source === "local_implicit" || req.actor.isInstanceAdmin)) {
@@ -295,6 +308,8 @@ export function companyRoutes(db: Db, storage?: StorageService) {
     res.status(201).json(company);
   });
 
+  // 更新公司设置：agent 用户仅可更新品牌字段（如颜色、logo），且必须是 CEO 角色；
+  // board 用户可以更新全部字段，启用的 feedback 数据共享需记录同意时间戳和版本号
   router.patch("/:companyId", async (req, res) => {
     const companyId = req.params.companyId as string;
     assertCompanyAccess(req, companyId);
@@ -354,6 +369,7 @@ export function companyRoutes(db: Db, storage?: StorageService) {
     res.json(company);
   });
 
+  // 仅更新品牌信息（独立端点），供 agent CEO 调用
   router.patch("/:companyId/branding", validate(updateCompanyBrandingSchema), async (req, res) => {
     const companyId = req.params.companyId as string;
     await assertCanUpdateBranding(req, companyId);
@@ -377,6 +393,7 @@ export function companyRoutes(db: Db, storage?: StorageService) {
     res.json(company);
   });
 
+  // 归档公司：软删除，将状态标记为 "archived"，不实际删除数据
   router.post("/:companyId/archive", async (req, res) => {
     assertBoard(req);
     const companyId = req.params.companyId as string;
@@ -397,6 +414,7 @@ export function companyRoutes(db: Db, storage?: StorageService) {
     res.json(company);
   });
 
+  // 删除公司：硬删除，级联清除所有关联子表数据。仅 board 可操作
   router.delete("/:companyId", async (req, res) => {
     assertBoard(req);
     const companyId = req.params.companyId as string;

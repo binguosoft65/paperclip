@@ -9,6 +9,9 @@ interface LinkActor {
   userId?: string | null;
 }
 
+// Issue 审批关联服务：管理 Issue 与 Approval 记录之间的关联。
+// Approval 是独立的审批流（如部署审批、费用审批），可关联到多个 Issue。
+// 此服务处理关联的增删查，以及跨公司验证。
 export function issueApprovalService(db: Db) {
   async function getIssue(issueId: string) {
     return db

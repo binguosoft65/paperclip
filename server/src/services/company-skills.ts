@@ -1549,6 +1549,8 @@ export function companySkillService(db: Db) {
   const agents = agentService(db);
   const projects = projectService(db);
 
+  // 确保内置 skill 已注册到公司：扫描多个可能的 skill 根目录（模块目录、cwd、上级目录），
+  // 将所有内置 SKILL.md 以 "paperclip_bundled" 来源类型导入。这是新公司首次加载 skill 列表时自动执行的关键步骤
   async function ensureBundledSkills(companyId: string) {
     for (const skillsRoot of resolveBundledSkillsRoot()) {
       const stats = await fs.stat(skillsRoot).catch(() => null);
@@ -1575,6 +1577,7 @@ export function companySkillService(db: Db) {
     return [];
   }
 
+  // 清理已不存在的本地路径 skill：当源目录被删除后，移除对应的数据库记录和运行时缓存文件
   async function pruneMissingLocalPathSkills(companyId: string) {
     const rows = await db
       .select({
@@ -1602,6 +1605,8 @@ export function companySkillService(db: Db) {
     }
   }
 
+  // 确保技能库存最新：先 load 内置技能，再清理已不存在的本地技能。
+  // 使用延迟去重锁（skillInventoryRefreshPromises）防止同一公司的并发刷新
   async function ensureSkillInventoryCurrent(companyId: string) {
     const existingRefresh = skillInventoryRefreshPromises.get(companyId);
     if (existingRefresh) {
@@ -2375,6 +2380,9 @@ export function companySkillService(db: Db) {
     return out;
   }
 
+  // 从外部源导入 skill：支持本地路径、GitHub URL、skills.sh URL、任意 HTTP URL。
+  // skills.sh 的快捷方式（如 "org/repo/skill"）会自动解析为 GitHub 并追踪来源。
+  // 导入过程中的 key 派生逻辑保证同一来源的 skill 可被正确识别和更新
   async function importFromSource(companyId: string, source: string): Promise<CompanySkillImportResult> {
     await ensureSkillInventoryCurrent(companyId);
     const parsed = parseSkillImportSourceInput(source);
@@ -2415,6 +2423,8 @@ export function companySkillService(db: Db) {
     return { imported, warnings };
   }
 
+  // 删除 skill：必须确保没有任何 agent 正在使用该 skill，否则拒绝删除并提示用户先解绑。
+  // 删除后同步清理运行时物化文件。设计意图：防止误删导致 agent 配置损坏
   async function deleteSkill(companyId: string, skillId: string): Promise<CompanySkill | null> {
     const row = await db
       .select()

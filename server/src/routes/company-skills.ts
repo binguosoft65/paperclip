@@ -27,6 +27,7 @@ export function companySkillRoutes(db: Db) {
   const access = accessService(db);
   const svc = companySkillService(db);
 
+  // 判断 agent 的 permissions 字段中是否允许创建 agent（旧版兼容方式）
   function canCreateAgents(agent: { permissions: Record<string, unknown> | null | undefined }) {
     if (!agent.permissions || typeof agent.permissions !== "object") return false;
     return Boolean((agent.permissions as Record<string, unknown>).canCreateAgents);
@@ -38,6 +39,7 @@ export function companySkillRoutes(db: Db) {
     return trimmed.length > 0 ? trimmed : null;
   }
 
+  // 从遥测数据中提取可追踪的 skill 引用：仅 skills_sh 和 github.com 上的 skill 会被追踪
   function deriveTrackedSkillRef(skill: SkillTelemetryInput): string | null {
     if (skill.sourceType === "skills_sh") {
       return skill.key;
@@ -52,6 +54,8 @@ export function companySkillRoutes(db: Db) {
     return skill.key;
   }
 
+  // 技能变更权限校验：board 用户需要 agents:create 权限，agent 必须属于目标公司且拥有 agents:create 权限。
+  // 设计约束：创建/修改技能被视为创建 agent 的一部分，因为技能是 agent 的核心配置
   async function assertCanMutateCompanySkills(req: Request, companyId: string) {
     assertCompanyAccess(req, companyId);
 

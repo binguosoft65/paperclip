@@ -139,6 +139,9 @@ function shouldRedactSecretValue(key: string, value: unknown): boolean {
   return JWT_VALUE_RE.test(value);
 }
 
+// 脱敏环境变量值。敏感键名匹配规则覆盖常见凭据命名惯例。
+// 设计决策：脱敏在客户端执行，避免将原始敏感值发送到浏览器。
+// 这是"深度防御"的一部分——即使后端已经脱敏，前端再做一层保证。
 function redactEnvValue(key: string, value: unknown, censorUsernameInLogs: boolean): string {
   if (
     typeof value === "object" &&
@@ -195,6 +198,9 @@ function isElementScrollContainer(element: HTMLElement): boolean {
   return overflowY === "auto" || overflowY === "scroll" || overflowY === "overlay";
 }
 
+// 向上查找可滚动的父容器。如果找不到则回退到 window。
+// 这种动态查找比写死容器更健壮——组件可能在页面不同位置被复用，
+// 也可能在路由切换后 DOM 结构发生变化。
 function findScrollContainer(anchor: HTMLElement | null): ScrollContainer {
   let parent = anchor?.parentElement ?? null;
   while (parent) {
@@ -903,6 +909,9 @@ export function AgentDetail() {
     return () => closePanel();
   }, [closePanel]);
 
+  // 当配置或指令有未保存变更时，阻止用户意外离开页面。
+  // 使用 useBeforeUnload 而非自定义弹窗，因为浏览器原生弹窗无法被定制，
+  // 但却是唯一能可靠阻止关闭标签页/浏览器的方式。
   useBeforeUnload(
     useCallback((event) => {
       if (!configDirty) return;
@@ -1039,6 +1048,9 @@ export function AgentDetail() {
       )}
 
       {actionError && <p className="text-sm text-destructive">{actionError}</p>}
+      {/* pending_approval 状态是一种安全控制机制：当新 Agent 需要人工审批时进入此状态。
+          只有拥有审批权限的用户（通常是 CEO 或管理员）可以点击"批准"按钮激活 Agent。
+          审批通过后 Agent 进入 idle 状态，然后可以被调度运行。 */}
       {isPendingApproval && (
         <div className="flex flex-wrap items-center gap-3 rounded-md border border-amber-300/60 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-400/40 dark:bg-amber-950/30 dark:text-amber-200">
           <span>{t("agentDetail.pendingApprovalBanner")}</span>
@@ -1054,7 +1066,10 @@ export function AgentDetail() {
         </div>
       )}
 
-      {/* Floating Save/Cancel (desktop) */}
+      {/* 浮动保存/取消按钮（桌面端）。设计意图：
+          配置和指令页面通常内容较长，用户滚动到页面底部后如果返回顶部保存体验很差。
+          所以使用 fixed 定位的浮动按钮栏始终可见。
+          移动端使用底部固定栏（见下方），适配 safe-area-inset 避免被设备 UI 遮挡。 */}
       {!isMobile && showConfigActionBar && (
         <div className="fixed bottom-6 right-6 z-30">
           <div className="flex items-center gap-2 bg-background/90 backdrop-blur-sm border border-border rounded-lg px-3 py-1.5 shadow-lg">
@@ -1488,7 +1503,9 @@ function AgentConfigurePage({
         <KeysTab agentId={agentId} companyId={companyId} />
       </div>
 
-      {/* Configuration Revisions — collapsible at the bottom */}
+      {/* 配置变更历史（可折叠）。每个 revision 记录了某次配置修改的 before/after 快照和变更字段列表。
+          用户可以从这里回滚到任意历史版本。回滚操作本身也会创建一条新的 revision 记录（source=rollback），
+          因此回滚历史本身也是可审计的。最多展示最近 10 条 revision 以防止列表过长。 */}
       <div>
         <button
           className="flex items-center gap-2 text-sm font-medium hover:text-foreground transition-colors"
@@ -1929,6 +1946,10 @@ function PromptsTab({
     };
   }, [bundle, currentEntryFile, currentMode, currentRootPath, selectedOrEntryFile]);
 
+  // 存在两种独立的"脏"状态：
+  // - bundleDirty: 指令 Bundle 的配置（模式/路径/入口文件）被修改但未保存
+  // - fileDirty: 当前文件的草稿内容与已保存内容不一致
+  // 两者独立追踪，保存时先保存 bundle 配置再保存文件内容。
   const currentContent = selectedFileExists ? (selectedFileDetail?.content ?? "") : "";
   const displayValue = draft ?? currentContent;
   const bundleDirty = Boolean(

@@ -33,9 +33,11 @@ import { notFound, unprocessable } from "../errors.js";
 import { environmentService } from "./environments.js";
 
 export function companyService(db: Db) {
+  // 默认 issue 前缀（当公司名无法提取有效字母时使用）
   const ISSUE_PREFIX_FALLBACK = "CMP";
   const environmentsSvc = environmentService(db);
 
+  // 公司查询字段选择：包含基本信息、预算、品牌和数据共享设置。logo 通过 left join 获取
   const companySelection = {
     id: companies.id,
     name: companies.name,
@@ -57,6 +59,7 @@ export function companyService(db: Db) {
     updatedAt: companies.updatedAt,
   };
 
+  // 将 logoAssetId 转为完整的图片 URL，前端可直接使用
   function enrichCompany<T extends { logoAssetId: string | null }>(company: T) {
     return {
       ...company,
@@ -64,6 +67,7 @@ export function companyService(db: Db) {
     };
   }
 
+  // 计算当前 UTC 月份的起止时间窗口（当月 1 日 00:00:00 至下月 1 日 00:00:00），用于月度预算统计
   function currentUtcMonthWindow(now = new Date()) {
     const year = now.getUTCFullYear();
     const month = now.getUTCMonth();
@@ -73,6 +77,7 @@ export function companyService(db: Db) {
     };
   }
 
+  // 批量查询多家公司的本月累计花费（从 costEvents 表中聚合）
   async function getMonthlySpendByCompanyIds(
     companyIds: string[],
     database: Pick<Db, "select"> = db,
@@ -96,6 +101,7 @@ export function companyService(db: Db) {
     return new Map(rows.map((row) => [row.companyId, Number(row.spentMonthlyCents ?? 0)]));
   }
 
+  // 将实时月度花费注入到公司行中，确保 spentMonthlyCents 字段反映最新数据而非数据库快照
   async function hydrateCompanySpend<T extends { id: string; spentMonthlyCents: number }>(
     rows: T[],
     database: Pick<Db, "select"> = db,
@@ -107,6 +113,7 @@ export function companyService(db: Db) {
     }));
   }
 
+  // 基础查询：关联 companies 与 companyLogos 表
   function getCompanyQuery(database: Pick<Db, "select">) {
     return database
       .select(companySelection)
@@ -114,16 +121,19 @@ export function companyService(db: Db) {
       .leftJoin(companyLogos, eq(companyLogos.companyId, companies.id));
   }
 
+  // 从公司名提取 issue 前缀：取前 3 个大写字母，若无则用默认值 CMP
   function deriveIssuePrefixBase(name: string) {
     const normalized = name.toUpperCase().replace(/[^A-Z]/g, "");
     return normalized.slice(0, 3) || ISSUE_PREFIX_FALLBACK;
   }
 
+  // 生成避免冲突的后缀：首次无需后缀，之后按 A, AA, AAA... 递增
   function suffixForAttempt(attempt: number) {
     if (attempt <= 1) return "";
     return "A".repeat(attempt - 1);
   }
 
+  // 判断报错是否为 issue 前缀的唯一约束冲突（pg 错误码 23505），以决定是否需要重试
   function isIssuePrefixConflict(error: unknown) {
     const constraint = typeof error === "object" && error !== null && "constraint" in error
       ? (error as { constraint?: string }).constraint
@@ -137,6 +147,7 @@ export function companyService(db: Db) {
       && constraint === "companies_issue_prefix_idx";
   }
 
+  // 创建公司并分配唯一的 issue 前缀：最多尝试 9999 次，从"公司名缩写"到"缩写+AA..."递增，确保前缀不重复
   async function createCompanyWithUniquePrefix(data: typeof companies.$inferInsert) {
     const base = deriveIssuePrefixBase(data.name);
     let suffix = 1;
@@ -157,12 +168,14 @@ export function companyService(db: Db) {
   }
 
   return {
+    // 列出所有公司（含实时月度花费和 logo URL）
     list: async () => {
       const rows = await getCompanyQuery(db);
       const hydrated = await hydrateCompanySpend(rows);
       return hydrated.map((row) => enrichCompany(row));
     },
 
+    // 按 ID 获取单个公司详情（含实时月度花费）
     getById: async (id: string) => {
       const row = await getCompanyQuery(db)
         .where(eq(companies.id, id))
@@ -172,6 +185,7 @@ export function companyService(db: Db) {
       return enrichCompany(hydrated);
     },
 
+    // 创建公司：先分配唯一 issue 前缀，再确保创建本地环境（适合 local driver 的默认环境）
     create: async (data: typeof companies.$inferInsert) => {
       const created = await createCompanyWithUniquePrefix(data);
       await environmentsSvc.ensureLocalEnvironment(created.id);
@@ -183,6 +197,8 @@ export function companyService(db: Db) {
       return enrichCompany(hydrated);
     },
 
+    // 更新公司：支持更新 logo（需在事务中处理 logo 与公司信息的一致性），
+    // 新 logo 资产必须属于同一公司，删除旧 logo 资产以节省存储
     update: (
       id: string,
       data: Partial<typeof companies.$inferInsert> & { logoAssetId?: string | null },
@@ -245,6 +261,7 @@ export function companyService(db: Db) {
         return enrichCompany(hydrated);
       }),
 
+    // 归档公司：软删除，将 status 设为 "archived"，仍保留所有数据
     archive: (id: string) =>
       db.transaction(async (tx) => {
         const updated = await tx
@@ -262,6 +279,7 @@ export function companyService(db: Db) {
         return enrichCompany(hydrated);
       }),
 
+    // 删除公司：硬删除，按依赖顺序清除所有关联子表中的数据（agent → project → issue → ... → 最终删除公司本身）
     remove: (id: string) =>
       db.transaction(async (tx) => {
         // Delete from child tables in dependency order
@@ -298,6 +316,7 @@ export function companyService(db: Db) {
         return rows[0] ?? null;
       }),
 
+    // 统计：并行查询各公司下的 agent 数和 issue 数，构造 { companyId: { agentCount, issueCount } } 映射
     stats: () =>
       Promise.all([
         db

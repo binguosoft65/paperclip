@@ -89,6 +89,9 @@ function extractPathCandidates(...texts: Array<string | null | undefined>) {
   return [...seen];
 }
 
+// 推断 Issue 当前的"模式"：review（审核）、implementation（执行）、plan（规划）
+// 这决定了续作摘要中给 Agent 的建议语气和内容侧重。
+// 业务规则：done/in_review → review，失败的 Run → implementation，backlog/todo → plan
 function inferMode(issue: IssueSummaryInput, run: RunSummaryInput) {
   if (issue.status === "done" || issue.status === "in_review") return "review";
   if (run.status === "failed" || run.status === "timed_out" || run.status === "cancelled") return "implementation";
@@ -96,6 +99,9 @@ function inferMode(issue: IssueSummaryInput, run: RunSummaryInput) {
   return "implementation";
 }
 
+// 根据 Issue 状态和 Run 状态推断"下一步行动"建议。
+// 这些建议作为续作摘要的一部分，帮助 Agent 快速恢复工作上下文。
+// 不同状态组合给出不同的行动指引，避免 Agent 在下次接手时迷失方向。
 function inferNextAction(issue: IssueSummaryInput, run: RunSummaryInput, previousNextAction: string | null) {
   if (issue.status === "done") return "Review the completed issue output and close any remaining follow-up comments.";
   if (issue.status === "in_review") return "Wait for reviewer feedback or approval before continuing executor work.";

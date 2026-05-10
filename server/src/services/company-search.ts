@@ -298,6 +298,9 @@ export function companySearchBranchFetchLimit(limit: number, offset = 0) {
   return Math.min(COMPANY_SEARCH_BRANCH_FETCH_LIMIT, normalizedOffset + normalizedLimit + 1);
 }
 
+// 公司内搜索引擎：跨 issue、agent、project 的全文检索。
+// 支持短语/分词匹配、模糊匹配（Levenshtein 编辑距离）、标题/描述/评论多字段搜索。
+// 搜索结果按相关性评分排序，评分考虑完整匹配 > 前缀匹配 > 短语包含 > 分词覆盖等多种因素
 export function companySearchService(db: Db) {
   return {
     search: async (companyId: string, query: CompanySearchQuery): Promise<CompanySearchResponse> => {

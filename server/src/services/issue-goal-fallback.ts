@@ -1,5 +1,11 @@
 type MaybeId = string | null | undefined;
 
+// Issue 目标的回退解析逻辑。
+// 当创建 Issue 时，如果没有显式指定 goalId，则按优先级回退：
+// 1. 直接指定的 goalId
+// 2. 项目关联的 goalId（projectGoalId）
+// 3. 公司的默认 goal（defaultGoalId）
+// 这种设计确保每个 Issue 都有归属的目标，即使创建者没有显式指定。
 export function resolveIssueGoalId(input: {
   projectId: MaybeId;
   goalId: MaybeId;

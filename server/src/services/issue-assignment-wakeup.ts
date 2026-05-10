@@ -18,6 +18,13 @@ export interface IssueAssignmentWakeupDeps {
   ) => Promise<unknown>;
 }
 
+// Issue 分配后自动唤醒 Agent 的辅助函数。
+// 设计意图：当 Issue 被分配或更新时，立即通知对应 Agent，减少等待延迟。
+//
+// 关键约束：
+// - 未分配 Agent（assigneeAgentId 为空）的 Issue 不唤醒
+// - backlog 状态的 Issue 不唤醒（等待移出 backlog 后再处理）
+// - 静默失败（默认不抛出异常），避免分配错误影响主流程
 export function queueIssueAssignmentWakeup(input: {
   heartbeat: IssueAssignmentWakeupDeps;
   issue: { id: string; assigneeAgentId: string | null; status: string };

@@ -22,13 +22,18 @@ import { normalizeAgentPermissions } from "./agent-permissions.js";
 import { REDACTED_EVENT_VALUE, sanitizeRecord } from "../redaction.js";
 
 function hashToken(token: string) {
+  // 使用 SHA-256 哈希 API Key，原因：绝不以明文形式存储 Key，即使数据库泄露也无法逆推原始 Token。
   return createHash("sha256").update(token).digest("hex");
 }
 
 function createToken() {
+  // 使用 24 字节随机数 + 'pcp_' 前缀生成 API Key。选择 24 字节（192 位）确保足够熵，
+  // pcp_ 前缀便于日志中快速识别 Paperclip API Key。
   return `pcp_${randomBytes(24).toString("hex")}`;
 }
 
+// Config 变更审计所追踪的字段列表。选择这几项的原因：它们直接影响 Agent 的运行行为和权限范围。
+// 注意：非功能性的字段（如 icon、shortname 等）不被追踪，设计上认为不影响业务逻辑的变更不需要审计。
 const CONFIG_REVISION_FIELDS = [
   "name",
   "role",
@@ -180,6 +185,10 @@ function configPatchFromSnapshot(snapshot: unknown): Partial<typeof agents.$infe
   };
 }
 
+// 检查 Agent 短名（URL 友好名称）是否在公司内重复。
+// 边界条件：
+// - terminated 状态的 Agent 不参与碰撞检查，因为其 URL 已不再对外提供访问。
+// - 排除 excludeAgentId 本身（用于更新场景：Agent 改名但不换短名时不自撞）。
 export function hasAgentShortnameCollision(
   candidateName: string,
   existingAgents: AgentShortnameRow[],
@@ -195,6 +204,10 @@ export function hasAgentShortnameCollision(
   });
 }
 
+// 自动去重 Agent 名称：当创建 Agent 时名称与现有非 terminated Agent 短名冲突时，
+// 追加编号后缀（如 "Agent 2"、"Agent 3"）。最多尝试到 100，之后用时间戳保证唯一。
+// 设计考量：自动去重比报错更友好——用户不必手动改名；100 次的限制避免无限循环，
+// 最后的时间戳回退方案确保极端情况下也能成功创建。
 export function deduplicateAgentName(
   candidateName: string,
   existingAgents: AgentShortnameRow[],
@@ -324,6 +337,13 @@ export function agentService(db: Db) {
     }
   }
 
+  // 更新 Agent 的核心方法。业务规则（状态机约束）：
+  // 1. terminated -> 任何状态都不允许，即 Agent 一旦终止不可逆转。
+  // 2. pending_approval 只能转为 terminated 或保持原状，不能直接激活到 idle/running ——
+  //    必须通过审批流程激活（见 activatePendingApproval），确保有人工审查环节。
+  // 3. 修改 reportsTo 时会校验：manager 是否存在、是否同公司、是否形成循环引用。
+  // 4. 如果修改了名称且短名发生变化，会检查是否与公司内其他 Agent 冲突。
+  // 5. 当存在 recordRevision 选项且修改了 ConfigRevisionField 中的字段时，记录审计快照。
   async function updateAgent(
     id: string,
     data: Partial<typeof agents.$inferInsert>,
@@ -365,6 +385,8 @@ export function agentService(db: Db) {
       normalizedPatch.permissions = normalizeAgentPermissions(data.permissions, role);
     }
 
+    // 只有在调用方明确要求记录修订（options.recordRevision）且 patch 确实涉及配置字段时，
+    // 才生成 before/after 快照。避免为纯状态变更（如 pause/resume）写入无意义的审计记录。
     const shouldRecordRevision = Boolean(options?.recordRevision) && hasConfigPatchFields(normalizedPatch);
     const beforeConfig = shouldRecordRevision ? buildConfigSnapshot(existing) : null;
 
@@ -410,6 +432,8 @@ export function agentService(db: Db) {
 
     getById,
 
+    // 创建 Agent 时自动执行：名称去重、权限规范化、运行时配置填充默认值。
+    // 设计意图：允许调用方不关心这些细节，服务层保证创建的 Agent 始终处于合法状态。
     create: async (companyId: string, data: Omit<typeof agents.$inferInsert, "companyId">) => {
       if (data.reportsTo) {
         await ensureManager(companyId, data.reportsTo);
@@ -435,6 +459,10 @@ export function agentService(db: Db) {
 
     update: updateAgent,
 
+    // 暂停 Agent。三种暂停原因代表不同的恢复触发方式：
+    // - manual: 用户手动暂停，需要手动恢复
+    // - budget: 超预算自动暂停，恢复由预算策略重置触发
+    // - system: 系统级暂停（如后端感知到异常），通常自动恢复
     pause: async (id: string, reason: "manual" | "budget" | "system" = "manual") => {
       const existing = await getById(id);
       if (!existing) return null;
@@ -454,6 +482,9 @@ export function agentService(db: Db) {
       return updated ? normalizeAgentRow(updated) : null;
     },
 
+    // 恢复 Agent 运行。恢复状态总是 idle（而非之前的具体状态），
+    // 设计意图：让 Agent 在空闲状态下重新开始，由心跳调度决定下一步动作。
+    // pending_approval 状态的 Agent 不能用 resume 激活——必须走审批流程。
     resume: async (id: string) => {
       const existing = await getById(id);
       if (!existing) return null;
@@ -476,6 +507,9 @@ export function agentService(db: Db) {
       return updated ? normalizeAgentRow(updated) : null;
     },
 
+    // 终止 Agent：标记为 terminated，同时吊销所有 API Key。
+    // 注意：不级联删除数据（run、issues 等历史记录保留），实现软删除语义。
+    // 与 remove 不同，terminate 保留数据仅改变状态，后续可以查阅历史但不能恢复运行。
     terminate: async (id: string) => {
       const existing = await getById(id);
       if (!existing) return null;
@@ -498,6 +532,11 @@ export function agentService(db: Db) {
       return getById(id);
     },
 
+    // 硬删除 Agent 及其所有关联数据（级联清理）。这是不可逆操作。
+    // 删除顺序很重要：先解除外键引用（将 reportsTo 置 null），再清理引用表，
+    // 最后删除 agents 行本身。这样的顺序可以避免外键约束冲突。
+    // 注意：如果 Agent 有正在运行的 heartbeat，删除会导致数据不一致——
+    // 调用方应确保在删除前先终止 Agent。
     remove: async (id: string) => {
       const existing = await getById(id);
       if (!existing) return null;
@@ -531,6 +570,10 @@ export function agentService(db: Db) {
       });
     },
 
+    // 审批通过后激活 Agent。使用原子化条件更新：
+    // WHERE id = ? AND status = 'pending_approval'，保证只有在 pending_approval 状态时才能激活。
+    // 如果 update 返回空行（状态已改变），回退到 getById 读取当前状态并返回 activated=false，
+    // 这样调用方可以知道状态已被其他操作变更而非 Agent 不存在。
     activatePendingApproval: async (id: string) => {
       const updated = await db
         .update(agents)
@@ -578,6 +621,10 @@ export function agentService(db: Db) {
         .where(and(eq(agentConfigRevisions.agentId, id), eq(agentConfigRevisions.id, revisionId)))
         .then((rows) => rows[0] ?? null),
 
+    // 回滚配置到指定修订版本。使用被回滚到的那个版本的 afterConfig 作为新的配置值。
+    // 回滚操作本身也会生成一条新的 revision 记录（source=rollback，rolledBackFromRevisionId=指向被回滚的版本），
+    // 这样就形成了可审计的回滚链：回滚并不是真的"撤销"历史，而是创建一个恢复到旧状态的新版本。
+    // 不允许回滚包含已被脱敏标记的 revision，因为这些值无法还原为真实的配置值。
     rollbackConfigRevision: async (
       id: string,
       revisionId: string,
@@ -669,6 +716,10 @@ export function agentService(db: Db) {
       return rows[0] ?? null;
     },
 
+    // 构建公司组织树。通过 reportsTo 字段形成树形结构。
+    // terminated 状态不参与组织树展示。
+    // 递归构建：从顶级（reportsTo IS NULL）节点开始，逐层将子节点挂接到管理者之下。
+    // 复杂度 O(n)，每次调用都全量查询后内存构建树，不依赖数据库递归 CTE。
     orgForCompany: async (companyId: string) => {
       const rows = await db
         .select()

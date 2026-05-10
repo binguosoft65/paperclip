@@ -29,6 +29,7 @@ import { useCompany } from "@/context/CompanyContext";
 import { useToast } from "@/context/ToastContext";
 import { queryKeys } from "@/lib/queryKeys";
 
+// 权限标签的中文化映射（此处保留英文供 UI 展示，注释说明含义）
 const permissionLabels: Record<PermissionKey, string> = {
   "agents:create": "Create agents",
   "users:invite": "Invite humans and agents",
@@ -40,11 +41,15 @@ const permissionLabels: Record<PermissionKey, string> = {
   "environments:manage": "Manage environments",
 };
 
+// 格式化成员的权限摘要：无显式权限时提示，否则列出所有权限名称
 function formatGrantSummary(member: CompanyMember) {
   if (member.grants.length === 0) return i18n.t("company:access.noExplicitGrants");
   return member.grants.map((grant) => permissionLabels[grant.permissionKey]).join(", ");
 }
 
+// 角色→隐式权限映射表：这是权限系统的核心设计决策。
+// owner 拥有完整控制权；admin 不含 manage_permissions 以防止权限滥用；
+// operator 仅可分配任务；viewer 只读
 const implicitRoleGrantMap: Record<NonNullable<CompanyMember["membershipRole"]>, PermissionKey[]> = {
   owner: ["agents:create", "users:invite", "users:manage_permissions", "tasks:assign", "joins:approve"],
   admin: ["agents:create", "users:invite", "tasks:assign", "joins:approve"],
@@ -52,6 +57,7 @@ const implicitRoleGrantMap: Record<NonNullable<CompanyMember["membershipRole"]>,
   viewer: [],
 };
 
+// 移除成员时涉及的问题状态列表（未关闭的问题需要重新分配）
 const reassignmentIssueStatuses = "backlog,todo,in_progress,in_review,blocked,failed,timed_out";
 type EditableMemberStatus = "pending" | "active" | "suspended";
 

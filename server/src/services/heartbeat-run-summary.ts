@@ -45,6 +45,10 @@ export function mergeHeartbeatRunResultJson(
   };
 }
 
+// 从 Run 的 resultJson 中提取结构化摘要。
+// 只保留关键字段（summary、result、message、error、费用、超时信息），
+// 避免将完整的原始 resultJson（可能很大）返回给前端或存储在摘要中。
+// 这是性能和安全性权衡：摘要足够用于展示，原始数据保留在日志中。
 export function summarizeHeartbeatRunResultJson(
   resultJson: Record<string, unknown> | null | undefined,
 ): Record<string, unknown> | null {

@@ -11,6 +11,16 @@ import { useTranslation } from "react-i18next";
 
 type AuthMode = "sign_in" | "sign_up";
 
+/**
+ * 认证页面 —— 登录/注册入口。
+ *
+ * 设计要点：
+ * - 单页面支持 sign_in / sign_up 两种模式，通过 mode state 切换
+ * - 密码最低 8 位（与 Better Auth 服务端配置一致），前端先行验证以改善用户体验
+ * - session 检查在路由守卫之前进行：如果已登录，自动跳转到 nextPath
+ * - nextPath 优先取 URL 参数，其次取"记忆的邀请路径"（用户从未完成的邀请流程回来）
+ * - 表单 action 指向 Better Auth 的标准端点，支持无 JavaScript 回退
+ */
 export function AuthPage() {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
@@ -22,16 +32,19 @@ export function AuthPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
 
+  // 登录成功后跳转的目标路径：优先使用 next 参数，其次记忆的邀请路径，最后首页
   const nextPath = useMemo(
     () => searchParams.get("next") || getRememberedInvitePath() || "/",
     [searchParams],
   );
+  // 检查当前是否已登录，retry: false 避免 401 时不断重试
   const { data: session, isLoading: isSessionLoading } = useQuery({
     queryKey: queryKeys.auth.session,
     queryFn: () => authApi.getSession(),
     retry: false,
   });
 
+  // 已登录用户直接跳转，避免看到登录页
   useEffect(() => {
     if (session) {
       navigate(nextPath, { replace: true });
@@ -61,6 +74,7 @@ export function AuthPage() {
     },
   });
 
+  // 表单可提交条件：必填字段非空，且注册模式下密码至少 8 位
   const canSubmit =
     email.trim().length > 0 &&
     password.trim().length > 0 &&

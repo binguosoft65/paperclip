@@ -11,6 +11,9 @@ import type {
 import { extractIssueReferenceMatches } from "@paperclipai/shared";
 import { notFound } from "../errors.js";
 
+// Issue 引用来源的排序优先级。
+// title（标题中的提及）优先级最高，comment（评论中的提及）优先级最低。
+// 排序影响引用摘要的展示顺序：更正式的提及优先展示。
 const SOURCE_KIND_ORDER: Record<IssueReferenceSourceKind, number> = {
   title: 0,
   description: 1,

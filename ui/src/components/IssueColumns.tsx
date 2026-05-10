@@ -21,6 +21,8 @@ import { timeAgo } from "../lib/timeAgo";
 import { Identity } from "./Identity";
 import { StatusIcon } from "./StatusIcon";
 
+// Issue 列表的尾列配置：可自定义显示哪些列（分配人、项目、工作区、父 Issue、标签、更新时间）
+// 用户通过列选择器（IssueColumnPicker）切换可见列，偏好通过 localStorage 持久化
 export const issueTrailingColumns: InboxIssueColumn[] = ["assignee", "project", "workspace", "parent", "labels", "updated"];
 
 function issueColumnLabels(t: (key: string) => string): Record<InboxIssueColumn, string> {

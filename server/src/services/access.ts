@@ -23,7 +23,21 @@ type MemberArchiveInput = {
   } | null;
 };
 
+/**
+ * 访问控制服务 —— 公司成员管理与细粒度权限控制。
+ *
+ * 核心概念：
+ * - Principal（主体）：用户或 Agent 两种类型
+ * - Membership（成员关系）：主体与公司的关联，包含角色和状态
+ * - Permission Grant（权限授予）：在成员关系之上，授予具体操作权限
+ * - Instance Admin（实例管理员）：全局超级管理员，绕过公司级权限检查
+ */
 export function accessService(db: Db) {
+  /**
+   * 检查用户是否为实例管理员。
+   * 实例管理员拥有最高权限，可以访问所有公司执行所有操作。
+   * 此函数被广泛用于权限检查中的"管理员绕过"逻辑。
+   */
   async function isInstanceAdmin(userId: string | null | undefined): Promise<boolean> {
     if (!userId) return false;
     const row = await db
@@ -34,6 +48,10 @@ export function accessService(db: Db) {
     return Boolean(row);
   }
 
+  /**
+   * 获取主体在指定公司的成员关系。
+   * principalType + principalId 联合唯一标识一个成员。
+   */
   async function getMembership(
     companyId: string,
     principalType: PrincipalType,
@@ -52,6 +70,11 @@ export function accessService(db: Db) {
       .then((rows) => rows[0] ?? null);
   }
 
+  /**
+   * 检查主体是否拥有指定权限。
+   * 先确认成员关系为 active，再检查权限授权表中是否有对应记录。
+   * 不活跃的成员（即使有授权记录）也无法使用权限。
+   */
   async function hasPermission(
     companyId: string,
     principalType: PrincipalType,
@@ -75,6 +98,11 @@ export function accessService(db: Db) {
     return Boolean(grant);
   }
 
+  /**
+   * 检查用户是否具备指定权限。
+   * 实例管理员自动拥有所有权限，无需单独授权。
+   * 普通用户需要明确的权限授予记录。
+   */
   async function canUser(
     companyId: string,
     userId: string | null | undefined,
@@ -153,6 +181,16 @@ export function accessService(db: Db) {
     return member;
   }
 
+  /**
+   * 更新成员的角色、状态和权限。
+   *
+   * 这是一个复合操作：在一次事务中同时更新成员关系和权限授权。
+   * 事务中锁定 owner 行防止竞态，确保"最后一位活跃 owner"保护机制有效。
+   *
+   * 关键业务规则 - "最后一位活跃 owner"保护：
+   * 不允许将最后一位活跃 owner 降级或移除非活跃状态。
+   * 这防止了公司陷入"无人管理"的状态。
+   */
   async function updateMemberAndPermissions(
     companyId: string,
     memberId: string,
@@ -164,6 +202,7 @@ export function accessService(db: Db) {
     grantedByUserId: string | null,
   ) {
     return db.transaction(async (tx) => {
+      // 使用 SELECT FOR UPDATE 锁定活跃 owner 行，防止并发修改导致 owner 耗尽
       await tx.execute(sql`
         select ${companyMemberships.id}
         from ${companyMemberships}
@@ -185,6 +224,7 @@ export function accessService(db: Db) {
         data.membershipRole !== undefined ? data.membershipRole : existing.membershipRole;
       const nextStatus = data.status ?? existing.status;
 
+      // 检查是否正在移除一个活跃 owner 的最后一人
       if (
         existing.principalType === "user" &&
         existing.status === "active" &&
@@ -325,8 +365,23 @@ export function accessService(db: Db) {
     }
   }
 
+  /**
+   * 归档公司成员。
+   *
+   * 归档意味着成员不再属于公司，但其操作历史保留。
+   * 关键副作用：成员名下的未完成 Issues（非 done/cancelled 状态）
+   * 会被重新分配给指定的替代者。
+   *
+   * 约束：
+   * - 只能归档人类用户成员（Agent 成员归档走其他流程）
+   * - 不能归档最后一个活跃 owner
+   * - 不能归档给自己（reassignment 不能是同一用户）
+   * - 正在执行中的 Issue 会先重置为 todo，清除执行状态
+   * - 同时清除该成员的所有权限授权
+   */
   async function archiveMember(companyId: string, memberId: string, input: MemberArchiveInput = {}) {
     return db.transaction(async (tx) => {
+      // 锁定公司的活跃 owner 行，防止并发归档导致最后一个 owner 被移除
       await tx.execute(sql`
         select ${companyMemberships.id}
         from ${companyMemberships}
@@ -368,11 +423,13 @@ export function accessService(db: Db) {
         assigneeUserId: input.reassignment?.assigneeUserId ?? null,
         updatedAt: now,
       };
+      // 查询该成员名下所有未关闭的 Issues
       const assignedOpenIssueWhere = and(
         eq(issues.companyId, companyId),
         eq(issues.assigneeUserId, existing.principalId),
         sql`${issues.status} not in ('done', 'cancelled')`,
       );
+      // 正在执行中的 Issue 需要重置为 todo 并清除运行时状态
       const resetInProgress = await tx
         .update(issues)
         .set({
@@ -385,6 +442,7 @@ export function accessService(db: Db) {
         })
         .where(and(assignedOpenIssueWhere, eq(issues.status, "in_progress")))
         .returning({ id: issues.id });
+      // 其他未关闭 Issue 直接转移 assignee
       const reassigned = await tx
         .update(issues)
         .set(assignmentPatch)
@@ -418,6 +476,10 @@ export function accessService(db: Db) {
     });
   }
 
+  /**
+   * 将用户提升为实例管理员。
+   * 幂等操作：如果用户已是实例管理员，直接返回现有记录不再重复插入。
+   */
   async function promoteInstanceAdmin(userId: string) {
     const existing = await db
       .select()
@@ -451,6 +513,18 @@ export function accessService(db: Db) {
       .orderBy(sql`${companyMemberships.createdAt} desc`);
   }
 
+  /**
+   * 批量设置用户的公司访问权限。
+   *
+   * 此方法实现"授权即同步"：传入的 companyIds 列表即为用户最终可访问的公司集合。
+   * 不在列表中的公司（且之前有访问权限的）会被归档。
+   *
+   * 安全约束：
+   * - 用户不能移除自己的访问权限
+   * - 实例管理员不能被移除公司访问权限
+   * - owner/admin 角色不能被批量移除（需通过 archiveMember 单独处理）
+   * - 不能移除最后一个活跃 owner
+   */
   async function setUserCompanyAccess(
     userId: string,
     companyIds: string[],

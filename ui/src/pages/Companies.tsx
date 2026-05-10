@@ -29,6 +29,8 @@ import {
   Calendar,
 } from "lucide-react";
 
+// 公司列表页：展示当前用户有权限查看的所有公司，支持行内重命名和删除操作。
+// 每个公司卡片展示 agent 数、issue 数、月度花销预算等关键统计信息
 export function Companies() {
   const {
     companies,
@@ -42,6 +44,7 @@ export function Companies() {
   const { setBreadcrumbs } = useBreadcrumbs();
   const queryClient = useQueryClient();
 
+  // 获取各公司的 agent/issue 统计，用于卡片头部的计数展示
   const { data: stats } = useQuery({
     queryKey: queryKeys.companies.stats,
     queryFn: () => companiesApi.stats(),
@@ -52,6 +55,7 @@ export function Companies() {
   const [editName, setEditName] = useState("");
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
+  // 行内重命名：仅修改公司名，成功后刷新列表
   const editMutation = useMutation({
     mutationFn: ({ id, newName }: { id: string; newName: string }) =>
       companiesApi.update(id, { name: newName }),
@@ -61,6 +65,7 @@ export function Companies() {
     },
   });
 
+  // 删除公司：硬删除，成功后同时刷新公司列表和统计数据
   const deleteMutation = useMutation({
     mutationFn: (id: string) => companiesApi.remove(id),
     onSuccess: () => {

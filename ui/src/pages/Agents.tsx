@@ -27,6 +27,9 @@ const roleLabels = AGENT_ROLE_LABELS as Record<string, string>;
 
 type FilterTab = "all" | "active" | "paused" | "error";
 
+// Agent 列表的过滤逻辑。"active" 标签包含三种运行状态（active/running/idle），
+// 因为从用户视角看，只要 Agent 没有被暂停或报错，它就是"活跃"的。
+// terminated 的显示与否由独立的 showTerminated 开关控制，与 Tab 过滤正交。
 function matchesFilter(status: string, tab: FilterTab, showTerminated: boolean): boolean {
   if (status === "terminated") return showTerminated;
   if (tab === "all") return true;
@@ -96,7 +99,10 @@ export function Agents() {
     refetchInterval: 15_000,
   });
 
-  // Map agentId -> first live run + live run count
+  // 将每个 Agent 的活跃运行（running/queued）聚合成一条记录。
+  // 取第一条运行的 ID 作为跳转目标，count 表示该 Agent 当前有多少个并发运行。
+  // 这样设计的原因：一个 Agent 可能同时有多个活跃运行（如果 maxConcurrentRuns > 1），
+  // 但在列表视图中只展示一个"有活跃运行"的指示，点击跳转到第一条运行。
   const liveRunByAgent = useMemo(() => {
     const map = new Map<string, { runId: string; liveCount: number }>();
     for (const r of runs ?? []) {

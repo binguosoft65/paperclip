@@ -40,6 +40,13 @@ function collectExecutionWorkspaceConfigCommandPaths(raw: unknown, prefix: strin
   return paths;
 }
 
+/**
+ * 断言 Agent 不能修改由宿主机执行的 Workspace 命令。
+ *
+ * 安全规则：Agent 凭据（API Key / JWT）不能修改 provision、teardown 等
+ * 宿主级命令，因为这些命令运行在宿主环境，Agent 修改可能导致权限逃逸。
+ * Board 用户（人类操作者）不受此限制。
+ */
 export function assertNoAgentHostWorkspaceCommandMutation(req: Request, paths: string[]) {
   if (req.actor.type !== "agent" || paths.length === 0) return;
   throw forbidden(

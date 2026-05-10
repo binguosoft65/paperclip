@@ -580,6 +580,8 @@ function expandAncestors(filePath: string): string[] {
   return dirs;
 }
 
+// 公司导出页：生成可移植的公司包（zip），包含公司信息、agent、project、issue、skill 的 markdown 文件。
+// 用户可以通过文件树选择性地勾选要导出的内容，支持搜索、预览和冲突检测
 export function CompanyExport() {
   const { t } = useTranslation(["company", "common"]);
   const { selectedCompanyId, selectedCompany } = useCompany();

@@ -18,6 +18,12 @@ const createActivitySchema = z.object({
   details: z.record(z.unknown()).optional().nullable(),
 });
 
+// 活动流路由：提供与 Issue 相关的活动日志和 Run 历史查询端点。
+// - GET /companies/:companyId/activity — 查询公司级活动流
+// - POST /companies/:companyId/activity — 记录活动事件（由 Board 或系统调用）
+// - GET /issues/:id/activity — 查询特定 Issue 的活动流
+// - GET /issues/:id/runs — 查询特定 Issue 的 Run 历史（含活跃度数据）
+// - GET /heartbeat-runs/:runId/issues — 查询特定 Run 关联的 Issue
 export function activityRoutes(db: Db) {
   const router = Router();
   const svc = activityService(db);

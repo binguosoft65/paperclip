@@ -651,6 +651,9 @@ async function readLocalPackageZip(file: File): Promise<{
 
 // ── Main page ─────────────────────────────────────────────────────────
 
+// 公司导入页：从 GitHub URL 或本地 zip 包导入公司数据。
+// 核心流程：选择来源 → 预览冲突 → 解决冲突（重命名/跳过/确认）→ 适配器类型选择 → 执行导入。
+// 导入后自动刷新侧边栏顺序和会话状态
 export function CompanyImport() {
   const { t } = useTranslation(["company", "common"]);
   const {

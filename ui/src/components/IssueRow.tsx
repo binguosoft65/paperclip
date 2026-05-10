@@ -37,6 +37,16 @@ interface IssueRowProps {
   className?: string;
 }
 
+// Issue 行组件：在列表/收件箱中渲染单行 Issue。
+// 支持多种展示模式：
+// - 桌面端：显示状态图标、标识符、标题、列信息、生产力审查徽章、规划模式标记
+// - 移动端：响应式布局，自动隐藏部分列
+// - 未读状态：蓝色圆点提示（点击标记已读）
+// - checklist 模式：显示步骤编号和当前步骤高亮
+// - 收件箱归档：支持快捷归档按钮
+//
+// 设计权衡：桌面端和移动端的布局差异大，通过 sm:/hidden 等 Tailwind 断点实现，
+// 而非使用两套独立组件，减少代码重复但增加了模板复杂度。
 export function IssueRow({
   issue,
   issueLinkState,

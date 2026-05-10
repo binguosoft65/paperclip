@@ -5,16 +5,23 @@ interface JwtHeader {
   typ?: string;
 }
 
+/**
+ * Agent JWT 声明 —— Agent 临时认证令牌的数据结构。
+ *
+ * 与标准的用户 JWT 不同，Agent JWT 不包含用户的身份信息，
+ * 而是包含 Agent ID、公司 ID 和适配器类型。
+ * 这些令牌由 Paperclip 平台内部签发，用于 Agent 任务执行的 API 调用认证。
+ */
 export interface LocalAgentJwtClaims {
-  sub: string;
-  company_id: string;
-  adapter_type: string;
-  run_id: string;
-  iat: number;
-  exp: number;
-  iss?: string;
-  aud?: string;
-  jti?: string;
+  sub: string;         // Agent ID
+  company_id: string;  // 所属公司 ID
+  adapter_type: string; // Agent 适配器类型
+  run_id: string;      // 任务运行 ID，关联执行上下文
+  iat: number;         // 签发时间
+  exp: number;         // 过期时间
+  iss?: string;         // 签发者
+  aud?: string;         // 受众（目标 API）
+  jti?: string;         // JWT ID，用于重放防护
 }
 
 const JWT_ALGORITHM = "HS256";
@@ -25,6 +32,11 @@ function parseNumber(value: string | undefined, fallback: number) {
   return Math.floor(parsed);
 }
 
+/**
+ * 获取 Agent JWT 配置。
+ * secret 优先使用专用变量，回退到 BETTER_AUTH_SECRET（便于部署时减少配置项）。
+ * 如果两者都未设置，返回 null 表示 JWT 功能不可用（适用于不启用 Agent 认证的场景）。
+ */
 function jwtConfig() {
   const secret = process.env.PAPERCLIP_AGENT_JWT_SECRET?.trim() || process.env.BETTER_AUTH_SECRET?.trim();
   if (!secret) return null;
@@ -65,6 +77,13 @@ function safeCompare(a: string, b: string) {
   return timingSafeEqual(left, right);
 }
 
+/**
+ * 创建 Agent JWT —— 平台为运行中的 Agent 任务签发临时认证令牌。
+ *
+ * 令牌使用 HMAC-SHA256 签名，默认有效期为 48 小时。
+ * 包含 Agent ID、公司 ID、适配器类型和运行 ID，用于 API 网关验证身份和权限。
+ * 如果 JWT 未配置（无 secret），返回 null，表示不支持 Agent JWT 认证。
+ */
 export function createLocalAgentJwt(agentId: string, companyId: string, adapterType: string, runId: string) {
   const config = jwtConfig();
   if (!config) return null;
@@ -92,6 +111,19 @@ export function createLocalAgentJwt(agentId: string, companyId: string, adapterT
   return `${signingInput}.${signature}`;
 }
 
+/**
+ * 验证 Agent JWT —— 检查签名、过期时间和声明完整性。
+ *
+ * 验证步骤：
+ * 1. 检查 token 格式（三部分：header.payload.signature）
+ * 2. 验证头部算法为 HS256
+ * 3. 使用 HMAC-SHA256 验证签名完整性
+ * 4. 检查过期时间
+ * 5. 如果声明中包含 issuer/audience，验证与配置匹配
+ *
+ * 使用恒定时间比较防止签名伪造攻击。
+ * 返回 null 表示验证失败（格式错误、签名无效、已过期等）。
+ */
 export function verifyLocalAgentJwt(token: string): LocalAgentJwtClaims | null {
   if (!token) return null;
   const config = jwtConfig();

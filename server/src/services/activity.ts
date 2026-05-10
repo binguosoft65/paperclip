@@ -144,6 +144,10 @@ export function activityService(db: Db) {
     return typeof value === "number" && Number.isFinite(value) ? value : null;
   }
 
+  // 回填缺失的 Run 活跃度数据。
+  // 当查询 Issue 的 Run 历史时，如果发现某些 Run 的 livenessState 为空
+  //（可能是旧数据或异步处理未完成），则同步计算并回填。
+  // 这是一种数据一致性保障：确保新老数据都有活跃度分类。
   async function backfillMissingRunLivenessForIssue(companyId: string, issueId: string) {
     const runs = await db
       .select({

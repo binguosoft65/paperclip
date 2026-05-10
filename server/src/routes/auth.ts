@@ -10,6 +10,10 @@ import {
 import { unauthorized } from "../errors.js";
 import { validate } from "../middleware/validate.js";
 
+/**
+ * 加载当前用户的个人资料。
+ * 若用户记录不存在（例如用户已被删除但 session 未过期），则抛出 401。
+ */
 async function loadCurrentUserProfile(db: Db, userId: string) {
   const user = await db
     .select({
@@ -34,9 +38,20 @@ async function loadCurrentUserProfile(db: Db, userId: string) {
   });
 }
 
+/**
+ * 认证路由 —— 提供 session 查询、用户资料读写等接口。
+ *
+ * 注意：实际的登录/登出、注册流程由 Better Auth 处理（/api/auth/*），
+ * 此处只提供 Board 管理面板所需的扩展接口。
+ */
 export function authRoutes(db: Db) {
   const router = Router();
 
+  /**
+   * GET /get-session —— 获取当前登录用户的 session 信息。
+   * 前端通过此接口判断用户是否已登录及其身份。
+   * Session ID 编码了认证来源，用于审计日志。
+   */
   router.get("/get-session", async (req, res) => {
     if (req.actor.type !== "board" || !req.actor.userId) {
       throw unauthorized("Board authentication required");
@@ -52,6 +67,9 @@ export function authRoutes(db: Db) {
     }));
   });
 
+  /**
+   * GET /profile —— 获取当前用户的公开资料。
+   */
   router.get("/profile", async (req, res) => {
     if (req.actor.type !== "board" || !req.actor.userId) {
       throw unauthorized("Board authentication required");
@@ -60,6 +78,11 @@ export function authRoutes(db: Db) {
     res.json(await loadCurrentUserProfile(db, req.actor.userId));
   });
 
+  /**
+   * PATCH /profile —— 更新当前用户的名称和头像。
+   * 头像支持外部 HTTPS URL 或内部资产路径两种格式。
+   * 传递空字符串会转换为 null（清除头像）。image 字段为 undefined 时不更新。
+   */
   router.patch("/profile", validate(updateCurrentUserProfileSchema), async (req, res) => {
     if (req.actor.type !== "board" || !req.actor.userId) {
       throw unauthorized("Board authentication required");

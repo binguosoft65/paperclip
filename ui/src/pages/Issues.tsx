@@ -19,6 +19,8 @@ import type { Issue } from "@paperclipai/shared";
 const WORKSPACE_FILTER_ISSUE_LIMIT = 1000;
 const ISSUES_PAGE_SIZE = 500;
 
+// 计算分页游标：如果当前页数据量 >= 页面大小，说明可能还有更多数据，返回下一页 offset
+// 如果当前页数据量 < 页面大小，说明已是最后一页，返回 undefined 停止分页
 export function getNextIssuesPageOffset(
   loadedPageSize: number,
   currentOffset: number,

@@ -68,6 +68,11 @@ import {
 } from "./issue-tree-control.js";
 import { parseIssueGraphLivenessIncidentKey } from "./recovery/origins.js";
 
+// Issue 生命周期所有合法状态。状态迁移顺序：
+// backlog → todo → in_progress → in_review → done
+//                      ↓              ↓
+//                   blocked       cancelled
+// done 和 cancelled 为终态，不再回到活跃状态（除非子树还原操作）
 const ALL_ISSUE_STATUSES = ["backlog", "todo", "in_progress", "in_review", "blocked", "done", "cancelled"];
 const MAX_ISSUE_COMMENT_PAGE_LIMIT = 500;
 export const ISSUE_LIST_DEFAULT_LIMIT = 500;
@@ -83,6 +88,10 @@ function assertTransition(from: string, to: string) {
   }
 }
 
+// Issue 状态变更的副作用：自动记录关键时间戳
+// - 首次进入 in_progress 时记录 startedAt（不覆盖已有值，防止重复执行覆盖开始时间）
+// - 每次进入 done 时更新 completedAt
+// - 每次进入 cancelled 时更新 cancelledAt
 function applyStatusSideEffects(
   status: string | undefined,
   patch: Partial<typeof issues.$inferInsert>,
@@ -306,8 +315,10 @@ async function listIssueDependencyReadinessMap(
   for (const row of blockerRows) {
     const current = readinessMap.get(row.issueId) ?? createIssueDependencyReadiness(row.issueId);
     current.blockerIssueIds.push(row.blockerIssueId);
-    // Only done blockers resolve dependents; cancelled blockers stay unresolved
-    // until an operator removes or replaces the blocker relationship explicitly.
+    // 阻塞依赖就绪判断：
+    // - cancelled 的 blocker 不会自动解除阻塞——需要人工移除或替换阻塞关系
+    // - 只有 done 状态的 blocker 才算解除阻塞
+    // 这是有意为之的设计权衡：取消一个 blocker 通常不代表依赖关系消失
     if (row.blockerStatus !== "done") {
       current.unresolvedBlockerIssueIds.push(row.blockerIssueId);
       current.unresolvedBlockerCount += 1;
@@ -708,6 +719,13 @@ async function withIssueLabels(dbOrTx: any, rows: IssueRow[]): Promise<IssueWith
   });
 }
 
+// 阻塞关注度计算中使用的常量定义：
+// ACTIVE_RUN_STATUSES — 正在执行的 Run，标记"覆盖"路径
+// BLOCKER_ATTENTION_ACTIVE_WAKE_STATUSES — 待处理的唤醒请求
+// BLOCKER_ATTENTION_PENDING_INTERACTION_STATUSES — 等待 Agent 响应的交互
+// BLOCKER_ATTENTION_PENDING_APPROVAL_STATUSES — 待审批的请求
+// BLOCKER_ATTENTION_OPEN_RECOVERY_ORIGIN_KIND — 活跃度升级产生的恢复 Issue
+// PRODUCTIVITY_REVIEW_ORIGIN_KIND — 生产力审查 Issue
 const ACTIVE_RUN_STATUSES = ["queued", "running"];
 const BLOCKER_ATTENTION_ACTIVE_RUN_STATUSES = ["queued", "running"];
 const BLOCKER_ATTENTION_ACTIVE_WAKE_STATUSES = ["queued", "deferred_issue_execution"];
@@ -726,6 +744,8 @@ const PRODUCTIVITY_REVIEW_TRIGGERS: readonly IssueProductivityReviewTrigger[] = 
   "high_churn",
 ];
 const BLOCKER_ATTENTION_OPEN_RECOVERY_TERMINAL_STATUSES = ["done", "cancelled"];
+// 阻塞图遍历的安全边界：最大深度 8 层，最大节点 2000 个
+// 防止循环引用或过深的依赖链导致性能问题
 const BLOCKER_ATTENTION_MAX_DEPTH = 8;
 const BLOCKER_ATTENTION_MAX_NODES = 2000;
 const BLOCKER_ATTENTION_INVOKABLE_AGENT_STATUSES = new Set(["active", "idle", "running", "error"]);
@@ -1236,9 +1256,9 @@ async function listIssueBlockerAttentionMap(
       for (const row of approvalRows) explicitWaitingIssueIds.add(row.issueId);
     }
 
-    // Recovery rows are intentionally company-wide: a liveness escalation for
-    // the same leaf blocker represents an active waiting path even when that
-    // blocker is reached through another blocked graph.
+    // 恢复 Issue 的查询范围是整个公司而非仅当前阻塞图：
+    // 因为同一个叶子 blocker 的活跃度升级可能通过不同阻塞路径被引用。
+    // 只要公司内存在一个未关闭的活跃度升级，就表示该路径的等待是活跃的。
     const recoveryRows: Array<{ id: string; originId: string | null }> = await dbOrTx
       .select({ id: issues.id, originId: issues.originId })
       .from(issues)
@@ -1277,6 +1297,20 @@ async function listIssueBlockerAttentionMap(
     sampleBlockerIdentifier: string | null;
     sampleStalledBlockerIdentifier: string | null;
   };
+  // 阻塞路径分类函数：递归遍历阻塞链，判断每个节点的"覆盖"状态。
+  //
+  // 返回值逻辑：
+  // - covered=true: 节点正在被处理（有活跃 Run、活跃唤醒、等待交互、等待审批）
+  // - stalled=true: 节点在 review 阶段卡住（没有人 Review）
+  // - covered=false && stalled=false: 节点无人处理，需要关注（needs_attention）
+  //
+  // 递归终止条件：
+  // - 深度越界或循环引用 → 视为未覆盖（需要关注）
+  // - status=done → 已覆盖
+  // - 有等待路径（交互/审批/恢复 Issue）→ 已覆盖
+  // - status=in_review → 检查是否有活跃路径，无则视为 stalled
+  // - 有活跃 Run → 已覆盖
+  // - status=cancelled → 未覆盖（cancelled 不解除阻塞）
   const classifyPath = (
     nodeId: string,
     seen: Set<string>,

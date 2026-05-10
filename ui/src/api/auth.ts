@@ -14,6 +14,10 @@ type AuthErrorBody =
   }
   | null;
 
+/**
+ * 认证 API 错误 —— 封装 Better Auth 返回的错误信息。
+ * code 字段用于前端按错误类型做差异化处理（如密码强度不足、邮箱已注册等）。
+ */
 export class AuthApiError extends Error {
   status: number;
   code: string | null;
@@ -28,6 +32,11 @@ export class AuthApiError extends Error {
   }
 }
 
+/**
+ * 将 session 响应解析为标准化 AuthSession 对象。
+ * 兼容两种响应格式：直接的 {session, user} 结构和 Better Auth 包装的 {data: {session, user}} 嵌套格式。
+ * 这种兼容性处理是因为 Better Auth 在不同端点下返回格式略有不同。
+ */
 function toSession(value: unknown): AuthSession | null {
   const direct = authSessionSchema.safeParse(value);
   if (direct.success) return direct.data;
@@ -37,6 +46,11 @@ function toSession(value: unknown): AuthSession | null {
   return nested.success ? nested.data : null;
 }
 
+/**
+ * 从 Better Auth 的多种错误响应格式中提取错误信息。
+ * Better Auth 可能返回 {error: {code, message}}、{code, message}、{error: "string"} 等格式，
+ * 此函数按优先级尝试所有可能的结构。
+ */
 function extractAuthError(payload: AuthErrorBody, status: number) {
   const nested =
     payload?.error && typeof payload.error === "object"

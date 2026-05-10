@@ -12,6 +12,9 @@ const PROMPT_KEY = "promptTemplate";
 /** @deprecated Use the managed instructions bundle system instead. */
 const BOOTSTRAP_PROMPT_KEY = "bootstrapPromptTemplate";
 const LEGACY_PROMPT_TEMPLATE_PATH = "promptTemplate.legacy.md";
+// 扫描指令文件时需要忽略的文件和目录。设计意图：防止将版本控制、缓存目录等
+// 系统文件错误地作为 Agent 指令暴露出去。这种白名单排除比黑名单更安全——
+// 默认只包含已知的噪声文件，新增格式不会意外地被包含。
 const IGNORED_INSTRUCTIONS_FILE_NAMES = new Set([".DS_Store", "Thumbs.db", "Desktop.ini"]);
 const IGNORED_INSTRUCTIONS_DIRECTORY_NAMES = new Set([
   ".git",
@@ -222,6 +225,12 @@ async function readLegacyInstructions(agent: AgentLike, config: Record<string, u
   return asString(config[PROMPT_KEY]) ?? "";
 }
 
+// 从 Agent 的 adapterConfig 中推导指令 Bundle 的状态（模式、根路径、入口文件等）。
+// 支持三种配置方式（按优先级从高到低）：
+// 1. 托管模式（managed）：Paperclip 管理指令目录（companies/{companyId}/agents/{agentId}/instructions/）
+// 2. 外部模式（external）：用户指定磁盘上的绝对路径
+// 3. 旧版 promptTemplate 字段：单字符串（已废弃，用于迁移到 Bundle 系统）
+// 此函数同时负责检测遗留配置并生成迁移警告。
 function deriveBundleState(agent: AgentLike): BundleState {
   const config = asRecord(agent.adapterConfig);
   const warnings: string[] = [];

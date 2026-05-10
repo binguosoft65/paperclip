@@ -5,6 +5,10 @@ import type { Request } from "express";
 import { forbidden } from "../errors.js";
 import { assertCompanyAccess } from "./authz.js";
 
+/**
+ * 有资格管理 Workspace Runtime 的 Issue 状态列表。
+ * 已关闭的 Issue（done/cancelled）不再需要运行时服务管理。
+ */
 const WORKSPACE_RUNTIME_ELIGIBLE_ISSUE_STATUSES: string[] = [
   "backlog",
   "todo",
@@ -13,7 +17,13 @@ const WORKSPACE_RUNTIME_ELIGIBLE_ISSUE_STATUSES: string[] = [
   "blocked",
 ];
 
+/**
+ * 获取指定 Agent 的所有下级 Agent ID（递归向下遍历汇报关系树）。
+ * BFS 遍历，排除已终止的 Agent。
+ * 用于判定 Agent 是否有权限管理其下级 Agent 的 Workspace Runtime。
+ */
 async function listReportingSubtreeAgentIds(db: Db, companyId: string, actorAgentId: string) {
+  // 加载公司所有活跃 Agent 的汇报关系
   const companyAgents = await db
     .select({
       id: agents.id,
@@ -22,6 +32,7 @@ async function listReportingSubtreeAgentIds(db: Db, companyId: string, actorAgen
     .from(agents)
     .where(and(eq(agents.companyId, companyId), ne(agents.status, "terminated")));
 
+  // 构建管理关系映射表：managerId -> [subordinateId, ...]
   const reportsByManager = new Map<string, string[]>();
   for (const agent of companyAgents) {
     if (!agent.reportsTo) continue;
@@ -30,6 +41,7 @@ async function listReportingSubtreeAgentIds(db: Db, companyId: string, actorAgen
     reportsByManager.set(agent.reportsTo, reports);
   }
 
+  // BFS 遍历汇报树
   const visited = new Set<string>([actorAgentId]);
   const queue = [actorAgentId];
   while (queue.length > 0) {
@@ -46,6 +58,17 @@ async function listReportingSubtreeAgentIds(db: Db, companyId: string, actorAgen
   return [...visited];
 }
 
+/**
+ * 断言 Agent 有权管理指定 Workspace 的运行服务。
+ *
+ * 权限逻辑：
+ * - 只有 Agent 主体可调用，用户（board）走 assertCompanyAccess 路径
+ * - CEO 角色自动拥有所有 Workspace Runtime 管理权限
+ * - 非 CEO Agent 只能管理其汇报子树内 Agent 所关联 Issue 的 Workspace
+ *
+ * 设计意图：层级汇报关系决定了 Agent 的管理范围，
+ * 下级 Agent 的 Issue Workspace 对其上级可见，但反之不可。
+ */
 async function assertAgentCanManageRuntimeServicesForWorkspace(
   db: Db,
   req: Request,
@@ -74,6 +97,7 @@ async function assertAgentCanManageRuntimeServicesForWorkspace(
     throw forbidden("Agent key cannot access another company");
   }
 
+  // CEO 角色拥有所有 Workspace 管理权限，无需进一步检查
   if (actorAgent.role === "ceo") {
     return;
   }

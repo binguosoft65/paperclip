@@ -759,6 +759,9 @@ function SkillPane({
   );
 }
 
+// 公司技能管理页：左侧为技能列表（含文件树），右侧为技能详情和文件预览/编辑面板。
+// 支持从 GitHub、skills.sh、本地路径或 URL 导入技能，也可在页面内创建新技能。
+// 技能文件可在线编辑（限 managed_local 类型的技能），GitHub 来源的技能支持更新检查
 export function CompanySkills() {
   const { t } = useTranslation(["company", "common"]);
   const { "*": routePath } = useParams<{ "*": string }>();

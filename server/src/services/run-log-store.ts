@@ -41,6 +41,8 @@ function safeSegments(...segments: string[]) {
   return segments.map((segment) => segment.replace(/[^a-zA-Z0-9._-]/g, "_"));
 }
 
+// 路径安全性检查：确保解析后的路径仍在 basePath 内。
+// 防止路径穿越攻击（path traversal），保证日志文件只能读写到指定目录。
 function resolveWithin(basePath: string, relativePath: string) {
   const resolved = path.resolve(basePath, relativePath);
   const base = path.resolve(basePath) + path.sep;

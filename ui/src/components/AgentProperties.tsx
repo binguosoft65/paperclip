@@ -31,6 +31,8 @@ export function AgentProperties({ agent, runtimeState }: AgentPropertiesProps) {
   const { t } = useTranslation("common");
   const { selectedCompanyId } = useCompany();
 
+  // 只有在 Agent 有 reportsTo 时才查询全量 Agent 列表查找其管理者。
+  // 这种懒查询避免了对没有上级的 Agent（通常是 CEO）发起不必要的请求。
   const { data: agents } = useQuery({
     queryKey: queryKeys.agents.list(selectedCompanyId!),
     queryFn: () => agentsApi.list(selectedCompanyId!),

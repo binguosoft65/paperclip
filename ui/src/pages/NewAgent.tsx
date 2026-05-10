@@ -95,6 +95,10 @@ export function NewAgent() {
     enabled: Boolean(selectedCompanyId),
   });
 
+  // 关键业务规则：公司的第一个 Agent 自动被设置为 CEO 角色。
+  // 因为 Paperclip 的组织模型要求有一个顶级管理者来管理后续创建的 Agent。
+  // 当 isFirstAgent 为 true 时，角色选择器被禁用并显示"CEO"，
+  // 同时默认名称和标题自动填充为"CEO"。
   const isFirstAgent = !agents || agents.length === 0;
   const effectiveRole = isFirstAgent ? "ceo" : role;
 

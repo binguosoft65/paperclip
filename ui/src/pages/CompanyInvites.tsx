@@ -47,6 +47,8 @@ function isInviteHistoryRow(value: unknown): value is Awaited<ReturnType<typeof 
   return "id" in value && "state" in value && "createdAt" in value;
 }
 
+// 邀请管理页：创建单次使用的邀请链接，管理邀请历史和状态（active/accepted/expired/revoked）。
+// 核心流程：选择角色 → 生成邀请 → 复制链接 → 等待用户加入
 export function CompanyInvites() {
   const { t } = useTranslation(["company", "common"]);
   const { selectedCompany, selectedCompanyId } = useCompany();

@@ -108,10 +108,12 @@ const progressSegmentClasses: Record<IssueStatus, string> = {
   cancelled: "bg-neutral-400",
 };
 
-/* ── View state ── */
+/* ── 视图状态：保存用户对 Issue 列表的个性化设置 ── */
 
 export type IssueSortField = "status" | "priority" | "title" | "created" | "updated" | "workflow";
 
+// 视图状态包含筛选、排序、分组、视图模式等所有用户偏好
+// 通过 localStorage 持久化，支持每个视图（如项目 Issue 页 vs 全局 Issue 页）独立存储
 export type IssueViewState = IssueFilterState & {
   sortField: IssueSortField;
   sortDir: "asc" | "desc";
