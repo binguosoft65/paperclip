@@ -4,6 +4,12 @@ import { feedbackVotes } from "./feedback_votes.js";
 import { issues } from "./issues.js";
 import { projects } from "./projects.js";
 
+/**
+ * feedback_exports  exports 表 —— 反馈数据导出。
+ *
+ * 用于将用户反馈（经脱敏处理后）导出到外部系统
+ * 以供产品改进分析。支持导出状态追踪和重试机制。
+ */
 export const feedbackExports = pgTable(
   "feedback_exports",
   {

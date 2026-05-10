@@ -5,6 +5,13 @@ import { heartbeatRuns } from "./heartbeat_runs.js";
 import { issues } from "./issues.js";
 import { plugins } from "./plugins.js";
 
+/**
+ * secret_access_events 表 —— 密钥访问审计日志。
+ *
+ * 记录每次密钥被读取/使用的操作，包括访问者、消费者、
+ * 关联的 Issue 和 Run，以及访问结果（成功/失败）。
+ * 满足安全和合规审计需求。
+ */
 export const secretAccessEvents = pgTable(
   "secret_access_events",
   {

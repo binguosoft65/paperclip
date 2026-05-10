@@ -1,3 +1,4 @@
+-- companies 表添加 issue_prefix/issue_counter 列：支持生成 Issue 唯一标识符（如 PAP-123）
 -- Add issue identifier columns to companies
 ALTER TABLE "companies" ADD COLUMN "issue_prefix" text NOT NULL DEFAULT 'PAP';--> statement-breakpoint
 ALTER TABLE "companies" ADD COLUMN "issue_counter" integer NOT NULL DEFAULT 0;--> statement-breakpoint

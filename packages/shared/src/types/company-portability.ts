@@ -1,3 +1,10 @@
+/**
+ * 公司可移植性（Company Portability）相关类型。
+ * 支持将公司的 Agent、项目、Issue、技能等资源导出为标准格式，
+ * 并在另一个 Paperclip 实例上导入恢复。
+ * 导出内容包括清单文件（manifest）、附件和配置文件。
+ */
+
 import type { AgentEnvConfig } from "./secrets.js";
 import type { RoutineVariable } from "./routine.js";
 import type { IssueCommentAuthorType } from "../constants.js";

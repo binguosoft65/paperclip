@@ -1,3 +1,4 @@
+-- 创建 issue_execution_decisions 表：Issue 执行决策审计
 CREATE TABLE "issue_execution_decisions" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"company_id" uuid NOT NULL,

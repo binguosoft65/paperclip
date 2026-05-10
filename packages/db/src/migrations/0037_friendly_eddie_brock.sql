@@ -1,3 +1,4 @@
+-- 创建 workspace_operations 表：工作空间操作日志审计
 CREATE TABLE "workspace_operations" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"company_id" uuid NOT NULL,

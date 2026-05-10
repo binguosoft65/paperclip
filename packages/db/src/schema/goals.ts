@@ -9,6 +9,13 @@ import {
 import { agents } from "./agents.js";
 import { companies } from "./companies.js";
 
+/**
+ * goals 表 —— 目标/OKR 定义。
+ *
+ * 目标是对齐项目和 Issue 的高级业务目标。
+ * 支持层级结构（parent_id），level 区分粒度：
+ * 'company'（公司级）、'project'（项目级）、'task'（任务级）。
+ */
 export const goals = pgTable(
   "goals",
   {

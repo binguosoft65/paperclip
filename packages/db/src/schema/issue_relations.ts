@@ -3,6 +3,12 @@ import { agents } from "./agents.js";
 import { companies } from "./companies.js";
 import { issues } from "./issues.js";
 
+/**
+ * issue_relations 表 —— Issue 间关系（如阻塞/依赖）。
+ *
+ * 定义 Issue 之间的有向关系，当前仅支持 'blocks'（阻塞）类型。
+ * 用于检测循环依赖和计算执行顺序。
+ */
 export const issueRelations = pgTable(
   "issue_relations",
   {

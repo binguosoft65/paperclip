@@ -3,6 +3,12 @@ import { companies } from "./companies.js";
 import { issues } from "./issues.js";
 import { documents } from "./documents.js";
 
+/**
+ * issue_documents 表 —— Issue 关联的文档。
+ *
+ * 将文档附加到 Issue 中，支持命名键（key）区分不同用途的角色。
+ * 一个文档只能属于一个 Issue（documentUq 唯一约束）。
+ */
 export const issueDocuments = pgTable(
   "issue_documents",
   {

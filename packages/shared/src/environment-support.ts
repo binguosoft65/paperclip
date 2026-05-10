@@ -1,3 +1,12 @@
+/**
+ * Agent 适配器环境支持查询。
+ * 不同的 Agent 适配器类型（process/acpx_local/claude_local 等）
+ * 对环境驱动（local/ssh/sandbox）的支持能力不同。
+ *
+ * 远程管理型适配器（acpx_local/claude_local/cursor 等）支持 SSH 和沙箱环境，
+ * 普通适配器（process/http）仅支持本地环境。
+ */
+
 import type { AgentAdapterType, EnvironmentDriver } from "./constants.js";
 import type { SandboxEnvironmentProvider } from "./types/environment.js";
 import type { JsonSchema } from "./types/plugin.js";
@@ -103,6 +112,10 @@ export function getAdapterEnvironmentSupport(
   };
 }
 
+/**
+ * 获取整体环境能力查询结果。
+ * 包含所有 Agent 适配器的支持情况、所有驱动的支持状态以及沙箱提供者的详细能力。
+ */
 export function getEnvironmentCapabilities(
   adapterTypes: readonly AgentAdapterType[],
   options: {

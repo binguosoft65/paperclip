@@ -1,3 +1,8 @@
+/**
+ * Routine（常规模板）相关 API 请求体的 Zod 校验模式。
+ * 涵盖 Routine 的创建、更新、触发、变量校验等操作。
+ */
+
 import { z } from "zod";
 import {
   ISSUE_PRIORITIES,
@@ -22,6 +27,7 @@ export const routineVariableSchema = z.object({
   defaultValue: routineVariableValueSchema.optional().nullable(),
   required: z.boolean().optional().default(true),
   options: z.array(z.string().trim().min(1).max(120)).max(50).optional().default([]),
+/** 交叉校验：select 类型必须有选项列表，非 select 类型不能有选项，select 默认值必须在选项中 */
 }).superRefine((value, ctx) => {
   if (value.type === "select" && value.options.length === 0) {
     ctx.addIssue({

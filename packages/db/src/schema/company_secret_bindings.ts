@@ -2,6 +2,13 @@ import { boolean, index, pgTable, text, timestamp, uniqueIndex, uuid } from "dri
 import { companies } from "./companies.js";
 import { companySecrets } from "./company_secrets.js";
 
+/**
+ * company_secret_bindings 表 —— 密钥绑定/注入配置。
+ *
+ * 将密钥绑定到具体的消费目标（Agent、项目等），
+ * 配置路径决定在运行环境中注入密钥的位置。
+ * version_selector 控制使用哪个版本（'latest' 或指定版本号）。
+ */
 export const companySecretBindings = pgTable(
   "company_secret_bindings",
   {

@@ -1,3 +1,9 @@
+/**
+ * 密钥与环境变量绑定相关类型定义。
+ * 支持明文绑定和密钥引用绑定两种方式，
+ * 兼容旧版直接使用字符串作为值的做法。
+ */
+
 export type SecretProvider =
   | "local_encrypted"
   | "aws_secrets_manager"

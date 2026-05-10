@@ -1,3 +1,4 @@
+-- 创建 inbox_dismissals 表：用户忽略通知项管理
 CREATE TABLE IF NOT EXISTS "inbox_dismissals" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"company_id" uuid NOT NULL,

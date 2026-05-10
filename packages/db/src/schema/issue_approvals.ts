@@ -4,6 +4,9 @@ import { issues } from "./issues.js";
 import { approvals } from "./approvals.js";
 import { agents } from "./agents.js";
 
+/**
+ * issue_approvals 表 —— Issue 与审批的多对多关联。
+ */
 export const issueApprovals = pgTable(
   "issue_approvals",
   {

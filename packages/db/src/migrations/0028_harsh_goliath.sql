@@ -1,3 +1,4 @@
+-- 创建 document_revisions 表：文档版本历史管理
 CREATE TABLE "document_revisions" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"company_id" uuid NOT NULL,

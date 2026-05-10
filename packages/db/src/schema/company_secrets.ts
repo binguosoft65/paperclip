@@ -2,6 +2,13 @@ import { pgTable, uuid, text, timestamp, integer, index, uniqueIndex } from "dri
 import { companies } from "./companies.js";
 import { agents } from "./agents.js";
 
+/**
+ * company_secrets 表 —— 公司级密钥/凭据。
+ *
+ * 存储 API 密钥、访问令牌等敏感信息。
+ * 实际值存储在 company_secret_versions 表中（版本化管理）。
+ * provider 决定加密/存储方式（local_encrypted、vault 等）。
+ */
 export const companySecrets = pgTable(
   "company_secrets",
   {

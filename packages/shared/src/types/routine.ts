@@ -1,3 +1,9 @@
+/**
+ * 常规模板（Routine）实体类型及相关类型定义。
+ * Routine 是一种可定时执行的任务模板，支持变量替换、
+ * 多种触发方式（定时/Webhook/API）、并发策略和版本快照。
+ */
+
 import type {
   IssueOriginKind,
   IssuePriority,

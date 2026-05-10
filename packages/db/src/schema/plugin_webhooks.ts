@@ -11,23 +11,19 @@ import { plugins } from "./plugins.js";
 import type { PluginWebhookDeliveryStatus } from "@paperclipai/shared";
 
 /**
- * `plugin_webhook_deliveries` table — inbound webhook delivery history for plugins.
+ * plugin_webhook_deliveries 表 —— 插件 Webhook 入站投递历史。
  *
- * When an external system sends an HTTP POST to a plugin's registered webhook
- * endpoint (e.g. `/api/plugins/:pluginKey/webhooks/:webhookKey`), the server
- * creates a row in this table before dispatching the payload to the plugin
- * worker. This provides an auditable log of every delivery attempt.
+ * 当外部系统向插件的注册 Webhook 端点发送 HTTP POST 时，
+ * 服务器在处理前先创建此记录，提供可审计的投递日志。
  *
- * The `webhook_key` matches the key declared in the plugin manifest's
- * `webhooks` array. `external_id` is an optional identifier supplied by the
- * remote system (e.g. a GitHub delivery GUID) that can be used to detect
- * and reject duplicate deliveries.
+ * webhook_key 对应插件 manifest 中 `webhooks` 数组的声明键。
+ * external_id 由外部系统提供（如 GitHub 投递 GUID），用于去重。
  *
- * Status values:
- * - `pending` — received but not yet dispatched to the worker
- * - `processing` — currently being handled by the plugin worker
- * - `succeeded` — worker processed the payload successfully
- * - `failed` — worker returned an error or timed out
+ * 状态说明：
+ * - pending：已接收，等待分发到 Worker
+ * - processing：Worker 正在处理中
+ * - succeeded：Worker 成功处理
+ * - failed：Worker 返回错误或超时
  *
  * @see PLUGIN_SPEC.md §21.3 — `plugin_webhook_deliveries`
  */

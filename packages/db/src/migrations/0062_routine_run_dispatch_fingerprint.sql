@@ -1,3 +1,4 @@
+-- routine_runs 添加 dispatch_fingerprint 列：支持运行去重（防重复调度）
 ALTER TABLE "routine_runs" ADD COLUMN IF NOT EXISTS "dispatch_fingerprint" text;--> statement-breakpoint
 ALTER TABLE "issues" ADD COLUMN IF NOT EXISTS "origin_fingerprint" text DEFAULT 'default' NOT NULL;--> statement-breakpoint
 DROP INDEX IF EXISTS "issues_open_routine_execution_uq";--> statement-breakpoint

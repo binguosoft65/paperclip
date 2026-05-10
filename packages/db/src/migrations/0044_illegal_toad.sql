@@ -1,3 +1,4 @@
+-- 创建 board_api_keys 表：用户 Board API 密钥认证
 CREATE TABLE IF NOT EXISTS "board_api_keys" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"user_id" text NOT NULL,

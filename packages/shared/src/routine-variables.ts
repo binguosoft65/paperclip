@@ -1,5 +1,13 @@
+/**
+ * 常规模板（Routine Template）变量解析与插值工具。
+ * 支持在模板字符串中使用 {{ variableName }} 语法引用变量，
+ * 内置变量（date/timestamp）无需在常规变量列表中定义，
+ * 其他变量需在 Routine 的 variables 字段中声明。
+ */
+
 import type { RoutineVariable } from "./types/routine.js";
 
+/** 匹配 {{ variableName }} 语法 */
 const ROUTINE_VARIABLE_MATCHER = /\{\{\s*([A-Za-z][A-Za-z0-9_]*)\s*\}\}/g;
 type RoutineTemplateInput = string | null | undefined | Array<string | null | undefined>;
 

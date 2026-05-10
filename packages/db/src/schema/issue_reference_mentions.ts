@@ -3,6 +3,13 @@ import { index, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/
 import { companies } from "./companies.js";
 import { issues } from "./issues.js";
 
+/**
+ * issue_reference_mentions 表 —— Issue 引用/提及关系。
+ *
+ * 当 Issue A 在标题、描述或评论中引用 Issue B 时创建此记录。
+ * sourceKind 标识引用来源（title/description/comment/document），
+ * 用于构建 Issue 之间的引用图谱。
+ */
 export const issueReferenceMentions = pgTable(
   "issue_reference_mentions",
   {

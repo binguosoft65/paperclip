@@ -3,6 +3,9 @@ import { companies } from "./companies.js";
 import { projects } from "./projects.js";
 import { goals } from "./goals.js";
 
+/**
+ * project_goals 表 —— 项目与目标的多对多关联。
+ */
 export const projectGoals = pgTable(
   "project_goals",
   {

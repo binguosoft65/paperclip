@@ -1,6 +1,13 @@
 import { pgTable, uuid, text, timestamp, jsonb, uniqueIndex, index } from "drizzle-orm/pg-core";
 import { companies } from "./companies.js";
 
+/**
+ * principal_permission_grants 表 —— 主体权限授予。
+ *
+ * 细粒度权限控制，支持为不同类型的主体（用户/Agent）
+ * 授予特定权限键（如 'issue.create'、'agent.manage'）。
+ * scope 字段支持权限作用域限定。
+ */
 export const principalPermissionGrants = pgTable(
   "principal_permission_grants",
   {

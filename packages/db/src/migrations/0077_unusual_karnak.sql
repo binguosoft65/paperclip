@@ -1,3 +1,4 @@
+-- 创建 routine_revisions 表：Routine 版本快照历史
 CREATE TABLE IF NOT EXISTS "routine_revisions" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"company_id" uuid NOT NULL,

@@ -1,6 +1,11 @@
 import { pgTable, uuid, text, timestamp, jsonb, uniqueIndex, index } from "drizzle-orm/pg-core";
 import { companies } from "./companies.js";
 
+/**
+ * company_user_sidebar_preferences 表 —— 用户侧边栏偏好（公司级）。
+ *
+ * 记录用户在公司内的项目排序偏好。
+ */
 export const companyUserSidebarPreferences = pgTable(
   "company_user_sidebar_preferences",
   {

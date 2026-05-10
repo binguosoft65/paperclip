@@ -1,5 +1,13 @@
+/**
+ * Issue 引用解析工具。
+ * 支持从 Markdown 文本中提取 Issue 引用标识符（如 "PROJ-123"），
+ * 自动跳过代码块和内联代码中的内容，避免误匹配。
+ */
+
+/** Issue 标识符正则：大写字母开头 + 数字，如 "PROJ-123" */
 export const ISSUE_REFERENCE_IDENTIFIER_RE = /^[A-Z][A-Z0-9]*-\d+$/;
 
+/** Issue 引用匹配结果 */
 export interface IssueReferenceMatch {
   index: number;
   length: number;
@@ -7,12 +15,18 @@ export interface IssueReferenceMatch {
   matchedText: string;
 }
 
+/** 从文本中识别 Issue 引用的 token 模式：URL、路径或标识符 */
 const ISSUE_REFERENCE_TOKEN_RE = /https?:\/\/[^\s<>()]+|\/[^\s<>()]+|[A-Z][A-Z0-9]*-\d+/gi;
 
+/** 将非换行字符替换为空格，保留行号对齐 */
 function preserveNewlinesAsWhitespace(value: string) {
   return value.replace(/[^\n]/g, " ");
 }
 
+/**
+ * 去除 Markdown 中的代码块（``` 和 ~~~）和内联代码（`），
+ * 用空白占位保持位置信息，避免误将代码中的文本当作 Issue 引用。
+ */
 function stripMarkdownCode(markdown: string): string {
   if (!markdown) return "";
 
@@ -72,6 +86,11 @@ function stripMarkdownCode(markdown: string): string {
   return output;
 }
 
+/**
+ * 去掉 token 末尾的标点符号，但要小心处理括号匹配：
+ * 如果 token 末尾是右括号，检查左括号数量是否 >= 右括号数量，
+ * 如果是则说明括号是匹配的，不裁剪。
+ */
 function trimTrailingPunctuation(token: string): string {
   let trimmed = token;
   while (trimmed.length > 0) {
@@ -89,16 +108,27 @@ function trimTrailingPunctuation(token: string): string {
   return trimmed;
 }
 
+/**
+ * 归一化 Issue 标识符：去除空格、转大写，然后校验格式。
+ * 合法的标识符如 "PROJ-123"，不合法的返回 null。
+ */
 export function normalizeIssueIdentifier(value: string): string | null {
   const trimmed = value.trim().toUpperCase();
   return ISSUE_REFERENCE_IDENTIFIER_RE.test(trimmed) ? trimmed : null;
 }
 
+/**
+ * 根据 Issue 标识符构建前端路由链接：/issues/标识符
+ */
 export function buildIssueReferenceHref(identifier: string): string {
   const normalized = normalizeIssueIdentifier(identifier);
   return `/issues/${normalized ?? identifier.trim()}`;
 }
 
+/**
+ * 解析 Issue 引用链接（相对路径或完整 URL），提取标识符。
+ * 支持 /issues/PROJ-123 格式和 https://host/issues/PROJ-123 格式。
+ */
 export function parseIssueReferenceHref(href: string): { identifier: string } | null {
   const raw = href.trim();
   if (!raw) return null;

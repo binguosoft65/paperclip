@@ -1,3 +1,4 @@
+-- 创建 execution_workspaces 表：运行时执行沙箱管理
 CREATE TABLE "execution_workspaces" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"company_id" uuid NOT NULL,

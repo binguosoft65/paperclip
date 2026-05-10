@@ -10,6 +10,13 @@ import { heartbeatRuns } from "./heartbeat_runs.js";
 import { issueComments } from "./issue_comments.js";
 import { issues } from "./issues.js";
 
+/**
+ * issue_thread_interactions 表 —— Issue 线程交互（Agent 与用户的对话/指令）。
+ *
+ * 记录 Agent 与用户在 Issue 上下文中的交互会话，
+ * 如 Agent 请求用户澄清、用户给出指令等。
+ * 支持幂等处理（idempotencyKey）和续接策略（continuationPolicy）。
+ */
 export const issueThreadInteractions = pgTable(
   "issue_thread_interactions",
   {

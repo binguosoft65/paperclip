@@ -1,6 +1,12 @@
 import { pgTable, uuid, text, timestamp, index, uniqueIndex } from "drizzle-orm/pg-core";
 import { authUsers } from "./auth.js";
 
+/**
+ * board_api_keys 表 —— 用户 Board API 密钥。
+ *
+ * 用户用于命令行工具（CLI）或 API 调用的认证密钥。
+ * 以哈希形式存储，支持吊销和过期。
+ */
 export const boardApiKeys = pgTable(
   "board_api_keys",
   {

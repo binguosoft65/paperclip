@@ -1,3 +1,4 @@
+-- join_requests 数据修复：去重 pending_approval 状态的重复申请
 WITH ranked_user_requests AS (
   SELECT
     id,

@@ -1,3 +1,15 @@
+/**
+ * runtime-config.ts —— Paperclip 运行时配置解析。
+ *
+ * 从多个来源按优先级解析数据库配置：
+ * 1. 环境变量 DATABASE_URL
+ * 2. .env 文件中的 DATABASE_URL
+ * 3. config.json 中的 database.connectionString
+ * 4. 默认嵌入式 PostgreSQL 配置
+ *
+ * 支持 ~ 路径展开、PAPERCLIP_HOME 和 PAPERCLIP_INSTANCE_ID 环境变量。
+ * 自动迁移旧版 "pglite" 配置到 "embedded-postgres"。
+ */
 import { existsSync, readFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";

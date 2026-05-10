@@ -1,3 +1,13 @@
+/**
+ * migration-runtime.ts —— 数据库连接解析与嵌入式 Postgres 管理。
+ *
+ * 支持两种数据库模式：
+ * 1. postgres：直接连接外部 PostgreSQL 实例
+ * 2. embedded-postgres：启动和管理嵌入式 PostgreSQL 实例
+ *
+ * 嵌入式模式自动检测已有实例、分配可用端口、初始化数据目录，
+ * 提供完整的生命周期管理（启动/停止）。
+ */
 import { existsSync, readFileSync, rmSync } from "node:fs";
 import { createServer } from "node:net";
 import path from "node:path";

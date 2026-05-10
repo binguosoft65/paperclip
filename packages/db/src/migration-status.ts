@@ -1,3 +1,9 @@
+/**
+ * migration-status.ts —— 迁移状态查询 CLI。
+ *
+ * 输出当前数据库的迁移状态（是否最新、待迁移数量等）。
+ * 支持 --json 参数输出结构化数据以供脚本消费。
+ */
 import { inspectMigrations } from "./client.js";
 import { resolveMigrationConnection } from "./migration-runtime.js";
 

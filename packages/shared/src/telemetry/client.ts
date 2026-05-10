@@ -1,3 +1,9 @@
+/**
+ * 遥测客户端。
+ * 收集匿名的使用数据，通过周期性的批量上报发送到遥测服务。
+ * 支持多个备用端点，当主端点不可达时自动切换。
+ */
+
 import { createHash } from "node:crypto";
 import type {
   TelemetryConfig,

@@ -15,6 +15,13 @@ import { issues } from "./issues.js";
 import { agents } from "./agents.js";
 import { heartbeatRuns } from "./heartbeat_runs.js";
 
+/**
+ * workspace_runtime_services 表 —— 工作空间运行时服务。
+ *
+ * 在 Agent 执行期间启动的持久化服务（如数据库、Web 服务等），
+ * 这些服务在工作空间生命周期内保持运行。
+ * 支持服务健康检查和自动停止策略。
+ */
 export const workspaceRuntimeServices = pgTable(
   "workspace_runtime_services",
   {

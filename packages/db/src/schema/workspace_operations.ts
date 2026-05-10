@@ -13,6 +13,13 @@ import { companies } from "./companies.js";
 import { executionWorkspaces } from "./execution_workspaces.js";
 import { heartbeatRuns } from "./heartbeat_runs.js";
 
+/**
+ * workspace_operations 表 —— 工作空间操作日志。
+ *
+ * 记录在执行工作空间中执行的每个命令/操作，
+ * 包含命令、退出码、日志引用和执行耗时。
+ * 用于审计和问题排查。
+ */
 export const workspaceOperations = pgTable(
   "workspace_operations",
   {

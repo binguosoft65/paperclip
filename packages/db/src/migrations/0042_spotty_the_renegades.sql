@@ -1,3 +1,4 @@
+-- 创建 company_skills 表：公司级技能/能力定义
 CREATE TABLE IF NOT EXISTS "company_skills" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"company_id" uuid NOT NULL,

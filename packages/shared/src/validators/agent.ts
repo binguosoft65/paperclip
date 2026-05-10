@@ -1,3 +1,8 @@
+/**
+ * Agent（智能体）相关 API 请求体的 Zod 校验模式。
+ * 涵盖创建、更新、唤醒、重置、密钥管理等操作的输入校验。
+ */
+
 import { z } from "zod";
 import {
   AGENT_ICON_NAMES,
@@ -31,6 +36,10 @@ export const upsertAgentInstructionsFileSchema = z.object({
 
 export type UpsertAgentInstructionsFile = z.infer<typeof upsertAgentInstructionsFileSchema>;
 
+/**
+ * 适配器配置校验：在常规 Record<string, unknown> 基础上，
+ * 额外校验了 env 字段（如果存在）——它必须是一个合法的环境绑定配置。
+ */
 const adapterConfigSchema = z.record(z.unknown()).superRefine((value, ctx) => {
   const envValue = value.env;
   if (envValue === undefined) return;

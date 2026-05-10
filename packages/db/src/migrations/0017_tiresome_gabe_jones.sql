@@ -1,3 +1,4 @@
+-- 删除旧的 issues_company_identifier_idx 索引并添加全文搜索索引
 DROP INDEX "issues_company_identifier_idx";--> statement-breakpoint
 
 -- Rebuild issue prefixes to be company-specific and globally unique.

@@ -2,6 +2,14 @@ import { sql } from "drizzle-orm";
 import { index, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { companies } from "./companies.js";
 
+/**
+ * environments 表 —— 执行环境配置。
+ *
+ * 定义 Agent 任务的执行环境（如本地、Docker、远程服务器等）。
+ * driver 字段标识环境驱动类型，driver = 'local' 时有唯一约束
+ * （每个公司只能有一个 local 环境）。
+ * config 字段存储驱动特定的连接/配置信息。
+ */
 export const environments = pgTable(
   "environments",
   {

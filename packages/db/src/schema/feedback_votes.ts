@@ -2,6 +2,13 @@ import { boolean, index, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } fr
 import { companies } from "./companies.js";
 import { issues } from "./issues.js";
 
+/**
+ * feedback_votes 表 —— 用户投票/反馈收集。
+ *
+ * 收集用户对系统生成的代码、文档、回复等内容的评价
+ * （赞同/反对），用于改进 AI Agent 输出质量。
+ * 支持匿名共享和隐私遮罩（redactionSummary）。
+ */
 export const feedbackVotes = pgTable(
   "feedback_votes",
   {

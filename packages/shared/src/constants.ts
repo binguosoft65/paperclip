@@ -1,21 +1,36 @@
+// =========================================================================
+// 公司 & 部署相关常量
+// =========================================================================
+
+/** 公司生命周期：active=运营中, paused=暂停, archived=归档 */
 export const COMPANY_STATUSES = ["active", "paused", "archived"] as const;
 export type CompanyStatus = (typeof COMPANY_STATUSES)[number];
 
+/** 公司附件大小限制：默认 10MB，最大值 1GB */
 export const DEFAULT_COMPANY_ATTACHMENT_MAX_BYTES = 10 * 1024 * 1024;
 export const MAX_COMPANY_ATTACHMENT_MAX_BYTES = 1024 * 1024 * 1024;
 
+/** 部署模式：local_trusted=信任本地网络, authenticated=需要认证（多租户） */
 export const DEPLOYMENT_MODES = ["local_trusted", "authenticated"] as const;
 export type DeploymentMode = (typeof DEPLOYMENT_MODES)[number];
 
+/** 网络暴露级别：private=仅内网可达, public=对外公开 */
 export const DEPLOYMENT_EXPOSURES = ["private", "public"] as const;
 export type DeploymentExposure = (typeof DEPLOYMENT_EXPOSURES)[number];
 
+/** 服务绑定模式：loopback=仅本机, lan=局域网, tailnet=Tailscale 网络, custom=自定义地址 */
 export const BIND_MODES = ["loopback", "lan", "tailnet", "custom"] as const;
 export type BindMode = (typeof BIND_MODES)[number];
 
+/** 认证回调 URL 模式：auto=自动推导, explicit=手动指定 */
 export const AUTH_BASE_URL_MODES = ["auto", "explicit"] as const;
 export type AuthBaseUrlMode = (typeof AUTH_BASE_URL_MODES)[number];
 
+// =========================================================================
+// Agent（智能体）相关常量
+// =========================================================================
+
+/** Agent 生命周期状态：包含暂停/运行/错误/待审批等 */
 export const AGENT_STATUSES = [
   "active",
   "paused",
@@ -27,6 +42,7 @@ export const AGENT_STATUSES = [
 ] as const;
 export type AgentStatus = (typeof AGENT_STATUSES)[number];
 
+/** Agent 适配器类型：process=本地进程, http=HTTP远程, acpx_local/acpx, claude_local/claude桌面等。运行时还可注册自定义类型。 */
 export const AGENT_ADAPTER_TYPES = [
   "process",
   "http",
@@ -41,6 +57,7 @@ export const AGENT_ADAPTER_TYPES = [
 ] as const;
 export type AgentAdapterType = (typeof AGENT_ADAPTER_TYPES)[number] | (string & {});
 
+/** Agent 职责角色：对应公司组织结构中的职能 */
 export const AGENT_ROLES = [
   "ceo",
   "cto",
@@ -72,9 +89,15 @@ export const AGENT_ROLE_LABELS: Record<AgentRole, string> = {
   general: "General",
 };
 
+/** Agent 默认最大并发运行数 */
 export const AGENT_DEFAULT_MAX_CONCURRENT_RUNS = 20;
+/**
+ * 内置常规变量名，代指当前工作空间分支。
+ * 用于常规模板（routine template）中引用工作空间分支名称。
+ */
 export const WORKSPACE_BRANCH_ROUTINE_VARIABLE = "workspaceBranch";
 
+/** 模型配置文件预设键：当前仅有 "cheap"（低成本）配置 */
 export const MODEL_PROFILE_KEYS = ["cheap"] as const;
 export type ModelProfileKey = (typeof MODEL_PROFILE_KEYS)[number];
 
@@ -123,6 +146,11 @@ export const AGENT_ICON_NAMES = [
 ] as const;
 export type AgentIconName = (typeof AGENT_ICON_NAMES)[number];
 
+// =========================================================================
+// Issue（任务/事务）相关常量
+// =========================================================================
+
+/** Issue 生命周期状态 */
 export const ISSUE_STATUSES = [
   "backlog",
   "todo",
@@ -144,21 +172,27 @@ export const INBOX_MINE_ISSUE_STATUSES = [
 ] as const;
 export const INBOX_MINE_ISSUE_STATUS_FILTER = INBOX_MINE_ISSUE_STATUSES.join(",");
 
+/** Issue 优先级：critical=严重, high=高, medium=中, low=低 */
 export const ISSUE_PRIORITIES = ["critical", "high", "medium", "low"] as const;
 export type IssuePriority = (typeof ISSUE_PRIORITIES)[number];
+/** Issue 工作模式：standard=标准执行, planning=计划阶段（仅做规划不执行） */
 export const ISSUE_WORK_MODES = ["standard", "planning"] as const;
 export type IssueWorkMode = (typeof ISSUE_WORK_MODES)[number];
 export const MAX_ISSUE_REQUEST_DEPTH = 1024;
 
+/** Issue 评论作者类型：user=用户, agent=智能体, system=系统 */
 export const ISSUE_COMMENT_AUTHOR_TYPES = ["user", "agent", "system"] as const;
 export type IssueCommentAuthorType = (typeof ISSUE_COMMENT_AUTHOR_TYPES)[number];
 
+/** Issue 评论呈现样式：message=普通消息, system_notice=系统通知 */
 export const ISSUE_COMMENT_PRESENTATION_KINDS = ["message", "system_notice"] as const;
 export type IssueCommentPresentationKind = (typeof ISSUE_COMMENT_PRESENTATION_KINDS)[number];
 
+/** Issue 评论内容呈现语调：用于 system_notice 类型 */
 export const ISSUE_COMMENT_PRESENTATION_TONES = ["neutral", "info", "success", "warning", "danger"] as const;
 export type IssueCommentPresentationTone = (typeof ISSUE_COMMENT_PRESENTATION_TONES)[number];
 
+/** Issue 评论元数据结构行类型：用于结构化的评论元数据显示 */
 export const ISSUE_COMMENT_METADATA_ROW_TYPES = [
   "text",
   "code",
@@ -169,11 +203,16 @@ export const ISSUE_COMMENT_METADATA_ROW_TYPES = [
 ] as const;
 export type IssueCommentMetadataRowType = (typeof ISSUE_COMMENT_METADATA_ROW_TYPES)[number];
 
+/**
+ * 将 Issue 嵌套请求深度截断到 [0, MAX_ISSUE_REQUEST_DEPTH] 范围内。
+ * 子 Issue 深度 = 父 Issue 深度 + 1，超出范围时不会继续创建子 Issue。
+ */
 export function clampIssueRequestDepth(value: number | null | undefined): number {
   if (typeof value !== "number" || !Number.isFinite(value)) return 0;
   return Math.min(MAX_ISSUE_REQUEST_DEPTH, Math.max(0, Math.floor(value)));
 }
 
+/** Issue 线程交互类型：suggest_tasks=推荐子任务, ask_user_questions=向用户提问, request_confirmation=请求确认 */
 export const ISSUE_THREAD_INTERACTION_KINDS = [
   "suggest_tasks",
   "ask_user_questions",
@@ -288,12 +327,22 @@ export type IssueExecutionMonitorClearReason = (typeof ISSUE_EXECUTION_MONITOR_C
 export const ISSUE_EXECUTION_DECISION_OUTCOMES = ["approved", "changes_requested"] as const;
 export type IssueExecutionDecisionOutcome = (typeof ISSUE_EXECUTION_DECISION_OUTCOMES)[number];
 
+// =========================================================================
+// Goal（目标）相关常量
+// =========================================================================
+
+/** 目标层级：company=公司级, team=团队级, agent=智能体级, task=任务级 */
 export const GOAL_LEVELS = ["company", "team", "agent", "task"] as const;
 export type GoalLevel = (typeof GOAL_LEVELS)[number];
 
 export const GOAL_STATUSES = ["planned", "active", "achieved", "cancelled"] as const;
 export type GoalStatus = (typeof GOAL_STATUSES)[number];
 
+// =========================================================================
+// Project（项目）相关常量
+// =========================================================================
+
+/** 项目生命周期状态 */
 export const PROJECT_STATUSES = [
   "backlog",
   "planned",
@@ -303,6 +352,11 @@ export const PROJECT_STATUSES = [
 ] as const;
 export type ProjectStatus = (typeof PROJECT_STATUSES)[number];
 
+// =========================================================================
+// Environment（环境）相关常量
+// =========================================================================
+
+/** 环境驱动类型：local=本地, ssh=SSH远程, sandbox=沙箱, plugin=插件提供 */
 export const ENVIRONMENT_DRIVERS = ["local", "ssh", "sandbox", "plugin"] as const;
 export type EnvironmentDriver = (typeof ENVIRONMENT_DRIVERS)[number];
 
@@ -323,6 +377,11 @@ export type EnvironmentLeasePolicy = (typeof ENVIRONMENT_LEASE_POLICIES)[number]
 export const ENVIRONMENT_LEASE_CLEANUP_STATUSES = ["pending", "success", "failed"] as const;
 export type EnvironmentLeaseCleanupStatus = (typeof ENVIRONMENT_LEASE_CLEANUP_STATUSES)[number];
 
+// =========================================================================
+// Routine（常规模板）相关常量
+// =========================================================================
+
+/** 常规模板生命周期状态 */
 export const ROUTINE_STATUSES = ["active", "paused", "archived"] as const;
 export type RoutineStatus = (typeof ROUTINE_STATUSES)[number];
 
@@ -370,6 +429,11 @@ export const PROJECT_COLORS = [
   "#3b82f6", // blue
 ] as const;
 
+// =========================================================================
+// Approval（审批）相关常量
+// =========================================================================
+
+/** 审批类型：hire_agent=招聘Agent, approve_ceo_strategy=审批CEO策略, budget_override=预算超额, request_board_approval=请求Board审批 */
 export const APPROVAL_TYPES = [
   "hire_agent",
   "approve_ceo_strategy",
@@ -378,6 +442,7 @@ export const APPROVAL_TYPES = [
 ] as const;
 export type ApprovalType = (typeof APPROVAL_TYPES)[number];
 
+/** 审批生命周期状态 */
 export const APPROVAL_STATUSES = [
   "pending",
   "revision_requested",
@@ -387,6 +452,11 @@ export const APPROVAL_STATUSES = [
 ] as const;
 export type ApprovalStatus = (typeof APPROVAL_STATUSES)[number];
 
+// =========================================================================
+// Secret（密钥）& Storage（存储）相关常量
+// =========================================================================
+
+/** 密钥存储提供者 */
 export const SECRET_PROVIDERS = [
   "local_encrypted",
   "aws_secrets_manager",
@@ -398,6 +468,11 @@ export type SecretProvider = (typeof SECRET_PROVIDERS)[number];
 export const STORAGE_PROVIDERS = ["local_disk", "s3"] as const;
 export type StorageProvider = (typeof STORAGE_PROVIDERS)[number];
 
+// =========================================================================
+// Finance（财务）& Budget（预算）相关常量
+// =========================================================================
+
+/** 计费类型 */
 export const BILLING_TYPES = [
   "metered_api",
   "subscription_included",
@@ -465,6 +540,11 @@ export const BUDGET_INCIDENT_RESOLUTION_ACTIONS = [
 ] as const;
 export type BudgetIncidentResolutionAction = (typeof BUDGET_INCIDENT_RESOLUTION_ACTIONS)[number];
 
+// =========================================================================
+// Heartbeat（心跳）/ Wakeup（唤醒）/ Liveness（活性）相关常量
+// =========================================================================
+
+/** 心跳调用来源：timer=定时器, assignment=任务分配, on_demand=按需, automation=自动化 */
 export const HEARTBEAT_INVOCATION_SOURCES = [
   "timer",
   "assignment",
@@ -523,6 +603,11 @@ export const LIVE_EVENT_TYPES = [
 ] as const;
 export type LiveEventType = (typeof LIVE_EVENT_TYPES)[number];
 
+// =========================================================================
+// Access Control（访问控制）相关常量
+// =========================================================================
+
+/** 主体类型：user=用户, agent=智能体 */
 export const PRINCIPAL_TYPES = ["user", "agent"] as const;
 export type PrincipalType = (typeof PRINCIPAL_TYPES)[number];
 

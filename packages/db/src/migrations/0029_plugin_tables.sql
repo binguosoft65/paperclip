@@ -1,3 +1,4 @@
+-- 创建插件系统核心表（plugins、plugin_config、plugin_state 等）：支持第三方插件扩展
 -- Rollback:
 --   DROP INDEX IF EXISTS "plugin_logs_level_idx";
 --   DROP INDEX IF EXISTS "plugin_logs_plugin_time_idx";

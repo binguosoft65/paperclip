@@ -5,6 +5,15 @@ import { executionWorkspaces } from "./execution_workspaces.js";
 import { heartbeatRuns } from "./heartbeat_runs.js";
 import { issues } from "./issues.js";
 
+/**
+ * environment_leases 表 —— 环境租约管理。
+ *
+ * 当 Agent 需要独占访问某个环境时，创建一条租约记录。
+ * 支持自动到期释放（expiresAt）和清理状态追踪。
+ * lease_policy 控制租约的持久性：
+ * - 'ephemeral'：任务完成后释放
+ * - 'persistent'：保持分配直到手动释放
+ */
 export const environmentLeases = pgTable(
   "environment_leases",
   {

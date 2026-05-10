@@ -1,3 +1,4 @@
+-- 创建 agent_config_revisions 表：Agent 配置变更历史审计
 CREATE TABLE "agent_config_revisions" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"company_id" uuid NOT NULL,

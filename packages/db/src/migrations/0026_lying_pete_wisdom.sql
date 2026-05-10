@@ -1,3 +1,4 @@
+-- 创建 workspace_runtime_services 表：工作空间运行时服务管理
 CREATE TABLE "workspace_runtime_services" (
 	"id" uuid PRIMARY KEY NOT NULL,
 	"company_id" uuid NOT NULL,

@@ -1,3 +1,9 @@
+/**
+ * check-migration-numbering.ts —— 迁移文件编号完整性检查工具。
+ *
+ * 确保所有迁移文件的编号连续无中断（0000, 0001, 0002, ...），
+ * 且与 journal.json 中的顺序一致，防止因合并冲突导致的编号跳跃或顺序错乱。
+ */
 import { readdir, readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 

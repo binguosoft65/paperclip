@@ -14,11 +14,15 @@ import type {
 import { plugins } from "./plugins.js";
 
 /**
- * Database namespace allocated to an installed plugin.
+ * plugin_database_namespaces 表 —— 插件分配的数据库命名空间。
  *
- * Namespaces are deterministic and owned by the host. Plugin SQL may create
- * objects only inside its namespace, while selected public core tables remain
- * read-only join targets through runtime checks.
+ * 每个安装的插件被分配一个独立的数据库命名空间（PostgreSQL schema），
+ * 插件只能在其命名空间内创建和操作数据库对象。
+ * 核心业务表对插件只读，通过运行时检查确保安全。
+ *
+ * namespace_mode 控制命名空间模式：
+ * - 'schema'：使用 PostgreSQL schema 隔离
+ * - 'prefix'：使用表名前缀隔离
  */
 export const pluginDatabaseNamespaces = pgTable(
   "plugin_database_namespaces",
@@ -42,10 +46,11 @@ export const pluginDatabaseNamespaces = pgTable(
 );
 
 /**
- * Per-plugin migration ledger.
+ * plugin_migrations 表 —— 插件迁移记录。
  *
- * Every migration file is recorded with a checksum. A previously applied
- * migration whose checksum changes is rejected during later activation.
+ * 每个迁移文件在应用时记录其校验和（checksum）。
+ * 如果已应用的迁移文件内容发生变更，在下次激活时会被拒绝，
+ * 从而保证插件数据库迁移的不可变性和可追溯性。
  */
 export const pluginMigrations = pgTable(
   "plugin_migrations",

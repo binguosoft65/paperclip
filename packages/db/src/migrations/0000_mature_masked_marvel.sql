@@ -1,3 +1,4 @@
+-- 初始数据库 Schema：创建核心业务表（activity_log、agents、approvals、budget_policies 等 20+ 张表）
 CREATE TABLE "activity_log" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"company_id" uuid NOT NULL,

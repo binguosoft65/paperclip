@@ -1,3 +1,4 @@
+-- 创建 agent_task_sessions 表：Agent 任务级多会话管理
 CREATE TABLE "agent_task_sessions" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"company_id" uuid NOT NULL,

@@ -1,3 +1,4 @@
+-- 创建 company_secret_provider_configs 表：密钥存储后端配置；company_secrets 添加 provider_config_id 外键
 CREATE TABLE IF NOT EXISTS "company_secret_provider_configs" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"company_id" uuid NOT NULL,

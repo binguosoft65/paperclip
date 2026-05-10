@@ -1,3 +1,4 @@
+-- 创建 issue_tree_holds 表：Issue 树阻塞/暂停机制
 CREATE TABLE IF NOT EXISTS "issue_tree_holds" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"company_id" uuid NOT NULL,

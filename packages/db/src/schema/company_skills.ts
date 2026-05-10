@@ -9,6 +9,13 @@ import {
 } from "drizzle-orm/pg-core";
 import { companies } from "./companies.js";
 
+/**
+ * company_skills 表 —— 公司级技能/能力定义。
+ *
+ * 定义 Agent 可以使用的技能（如代码审查、部署、数据分析等）。
+ * 技能通过 markdown 描述具体行为，支持文件清单（fileInventory）
+ * 和兼容性声明。slug 用于引用，key 用于编程访问。
+ */
 export const companySkills = pgTable(
   "company_skills",
   {

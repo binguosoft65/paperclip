@@ -3,6 +3,7 @@ import { companies } from "./companies.js";
 import { issues } from "./issues.js";
 import { labels } from "./labels.js";
 
+/** issue_labels 表 —— Issue 与标签的多对多关联。 */
 export const issueLabels = pgTable(
   "issue_labels",
   {

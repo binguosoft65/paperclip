@@ -1,3 +1,4 @@
+-- 创建 instance_settings 表：实例级全局配置
 CREATE TABLE "instance_settings" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"singleton_key" text DEFAULT 'default' NOT NULL,

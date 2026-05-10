@@ -1,5 +1,10 @@
 import { pgTable, uuid, text, timestamp, jsonb, uniqueIndex } from "drizzle-orm/pg-core";
 
+/**
+ * user_sidebar_preferences 表 —— 用户侧边栏偏好（全局）。
+ *
+ * 记录用户在实例级侧边栏中的公司排序偏好。
+ */
 export const userSidebarPreferences = pgTable(
   "user_sidebar_preferences",
   {

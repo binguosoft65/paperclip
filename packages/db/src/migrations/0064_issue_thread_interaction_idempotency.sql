@@ -1,3 +1,4 @@
+-- issue_thread_interactions 添加 idempotency_key 列：幂等性支持
 ALTER TABLE "issue_thread_interactions" ADD COLUMN IF NOT EXISTS "idempotency_key" text;--> statement-breakpoint
 CREATE UNIQUE INDEX IF NOT EXISTS "issue_thread_interactions_company_issue_idempotency_uq"
   ON "issue_thread_interactions" USING btree ("company_id","issue_id","idempotency_key")

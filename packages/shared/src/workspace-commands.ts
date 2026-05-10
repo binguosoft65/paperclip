@@ -1,3 +1,9 @@
+/**
+ * 工作空间命令（Workspace Command）解析和匹配工具。
+ * 从工作空间运行配置（workspaceRuntime）中解析服务/任务定义，
+ * 并支持将命令定义与运行时服务进行匹配评分。
+ */
+
 import type { WorkspaceCommandDefinition, WorkspaceRuntimeService } from "./types/workspace-runtime.js";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -20,6 +26,12 @@ function slugify(value: string | null | undefined) {
   return normalized.length > 0 ? normalized : null;
 }
 
+/**
+ * 推导工作空间命令的唯一 ID。
+ * 优先使用显式指定的 ID（经过 slugify 处理），
+ * 否则通过 kind + name 组合生成，
+ * 最后回退为 kind + 序号。
+ */
 function deriveWorkspaceCommandId(input: {
   kind: WorkspaceCommandDefinition["kind"];
   explicitId: string | null;

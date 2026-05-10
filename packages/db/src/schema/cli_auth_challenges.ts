@@ -3,6 +3,13 @@ import { authUsers } from "./auth.js";
 import { companies } from "./companies.js";
 import { boardApiKeys } from "./board_api_keys.js";
 
+/**
+ * cli_auth_challenges 表 —— CLI 认证挑战。
+ *
+ * 使用挑战-响应机制安全地认证 CLI 工具。
+ * 用户在 CLI 中发起挑战，在 Board 管理面板中批准，
+ * 完成安全的密钥交换流程。
+ */
 export const cliAuthChallenges = pgTable(
   "cli_auth_challenges",
   {

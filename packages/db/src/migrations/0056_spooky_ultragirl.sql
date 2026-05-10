@@ -1,3 +1,4 @@
+-- 创建 company_user_sidebar_preferences 表：公司内项目排序偏好
 CREATE TABLE "company_user_sidebar_preferences" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"company_id" uuid NOT NULL,

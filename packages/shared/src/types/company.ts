@@ -1,3 +1,9 @@
+/**
+ * 公司（Company）实体类型。
+ * 公司是 Paperclip 中的顶级组织单元，包含 Agent、项目、Issue 等资源。
+ * 公司可设置 Issue 编号前缀、预算、品牌色等属性。
+ */
+
 import type { CompanyStatus, PauseReason } from "../constants.js";
 
 export interface Company {

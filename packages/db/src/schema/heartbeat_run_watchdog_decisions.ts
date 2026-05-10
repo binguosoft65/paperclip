@@ -4,6 +4,13 @@ import { companies } from "./companies.js";
 import { heartbeatRuns } from "./heartbeat_runs.js";
 import { issues } from "./issues.js";
 
+/**
+ * heartbeat_run_watchdog_decisions 表 —— 看门狗决策记录。
+ *
+ * 当 Agent 运行超时或出现异常时，看门狗（Watchdog）机制
+ * 检查运行状态并做出决策（如重试、暂停、升级为 Issue）。
+ * snoozed_until 字段支持临时静音以避免重复告警。
+ */
 export const heartbeatRunWatchdogDecisions = pgTable(
   "heartbeat_run_watchdog_decisions",
   {

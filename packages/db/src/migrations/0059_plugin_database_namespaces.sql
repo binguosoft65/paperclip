@@ -1,3 +1,4 @@
+-- 创建插件数据库命名空间和迁移记录表：支持插件独立数据库管理
 CREATE TABLE IF NOT EXISTS "plugin_database_namespaces" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"plugin_id" uuid NOT NULL,

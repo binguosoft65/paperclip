@@ -1,3 +1,4 @@
+-- activity_log 添加 run_id 列：关联活动日志到具体的 Agent 运行
 ALTER TABLE "activity_log" ADD COLUMN "run_id" uuid;--> statement-breakpoint
 ALTER TABLE "activity_log" ADD CONSTRAINT "activity_log_run_id_heartbeat_runs_id_fk" FOREIGN KEY ("run_id") REFERENCES "public"."heartbeat_runs"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 CREATE INDEX "activity_log_run_id_idx" ON "activity_log" USING btree ("run_id");--> statement-breakpoint

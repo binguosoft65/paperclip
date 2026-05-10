@@ -1,3 +1,4 @@
+-- 创建 project_workspaces 表：项目工作空间（代码仓库/目录）管理
 CREATE TABLE "project_workspaces" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"company_id" uuid NOT NULL,

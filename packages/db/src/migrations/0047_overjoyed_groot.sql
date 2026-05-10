@@ -1,3 +1,4 @@
+-- 创建 feedback_exports 表：用户反馈数据导出到外部系统
 CREATE TABLE IF NOT EXISTS "feedback_exports" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"company_id" uuid NOT NULL,

@@ -2,6 +2,13 @@ import { pgTable, uuid, text, integer, timestamp, index, uniqueIndex } from "dri
 import { companies } from "./companies.js";
 import { agents } from "./agents.js";
 
+/**
+ * assets 表 —— 文件/资源存储。
+ *
+ * 管理所有上传文件的元数据（图片、附件等）。
+ * 文件实际存储在 provider 指定的后端（如本地文件系统、S3 等），
+ * objectKey 是存储端的唯一路径。
+ */
 export const assets = pgTable(
   "assets",
   {

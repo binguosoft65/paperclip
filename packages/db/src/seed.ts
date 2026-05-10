@@ -1,3 +1,10 @@
+/**
+ * seed.ts —— 开发/演示数据库种子数据。
+ *
+ * 创建一个示例公司及其组织架构，包含 CEO Agent、工程师 Agent、
+ * 目标和项目，以及示例 Issue（用于开发和演示环境）。
+ * 要求 DATABASE_URL 环境变量指向可用的数据库实例。
+ */
 import { createDb } from "./client.js";
 import { companies, agents, goals, projects, issues } from "./schema/index.js";
 

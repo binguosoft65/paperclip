@@ -1,3 +1,4 @@
+-- 创建 issue_labels 关联表和 labels 表：Issue 标签分类系统
 CREATE TABLE "issue_labels" (
 	"issue_id" uuid NOT NULL,
 	"label_id" uuid NOT NULL,

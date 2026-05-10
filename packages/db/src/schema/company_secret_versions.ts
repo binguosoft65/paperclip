@@ -2,6 +2,13 @@ import { pgTable, uuid, text, timestamp, integer, jsonb, index, uniqueIndex } fr
 import { agents } from "./agents.js";
 import { companySecrets } from "./company_secrets.js";
 
+/**
+ * company_secret_versions 表 —— 密钥版本管理。
+ *
+ * 支持密钥轮换和版本回滚。每次更新密钥时创建新版本，
+ * 支持吊销（revokedAt）单个版本而不影响其他版本。
+ * valueSha256 用于内容去重和完整性校验。
+ */
 export const companySecretVersions = pgTable(
   "company_secret_versions",
   {

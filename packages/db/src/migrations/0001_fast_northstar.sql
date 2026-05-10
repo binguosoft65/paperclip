@@ -1,3 +1,4 @@
+-- 添加 agent_runtime_state 表：Agent 运行时状态的一对一存储
 CREATE TABLE "agent_runtime_state" (
 	"agent_id" uuid PRIMARY KEY NOT NULL,
 	"company_id" uuid NOT NULL,

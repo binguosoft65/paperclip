@@ -1,6 +1,15 @@
 import { boolean, index, integer, pgTable, text, timestamp, uuid, uniqueIndex } from "drizzle-orm/pg-core";
 import { companies } from "./companies.js";
 
+/**
+ * budget_policies 表 —— 预算策略配置。
+ *
+ * 支持多层级预算控制（公司级、项目级、Agent 级）。
+ * scope_type + scope_id 确定预算作用域，
+ * window_kind 定义时间窗口（'monthly'、'weekly'、'daily'）。
+ * 超过 warn_percent 时发出告警，hardStopEnabled 为 true 时
+ * 达到上限后自动暂停相关 Agent 或项目。
+ */
 export const budgetPolicies = pgTable(
   "budget_policies",
   {

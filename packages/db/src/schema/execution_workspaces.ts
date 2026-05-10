@@ -12,6 +12,14 @@ import { issues } from "./issues.js";
 import { projectWorkspaces } from "./project_workspaces.js";
 import { projects } from "./projects.js";
 
+/**
+ * execution_workspaces 表 —— 运行时工作空间（执行沙箱）。
+ *
+ * 当 Agent 开始执行 Issue 时，从项目工作空间派生（fork）出
+ * 执行工作空间。每个执行工作空间绑定到具体的 Issue，
+ * 有自己的分支（branchName）、工作目录和生命周期。
+ * 支持自动清理（cleanupEligibleAt）。
+ */
 export const executionWorkspaces = pgTable(
   "execution_workspaces",
   {

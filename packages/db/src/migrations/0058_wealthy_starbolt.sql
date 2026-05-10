@@ -1,3 +1,4 @@
+-- heartbeat_runs 添加 liveness_state/liveness_reason 列：Agent 健康状态追踪
 ALTER TABLE "heartbeat_runs" ADD COLUMN IF NOT EXISTS "liveness_state" text;--> statement-breakpoint
 ALTER TABLE "heartbeat_runs" ADD COLUMN IF NOT EXISTS "liveness_reason" text;--> statement-breakpoint
 ALTER TABLE "heartbeat_runs" ADD COLUMN IF NOT EXISTS "continuation_attempt" integer DEFAULT 0 NOT NULL;--> statement-breakpoint

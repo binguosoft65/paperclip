@@ -1,3 +1,4 @@
+-- 创建 company_logos 表：公司 Logo 关联管理
 CREATE TABLE "company_logos" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"company_id" uuid NOT NULL,

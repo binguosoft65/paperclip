@@ -1,3 +1,4 @@
+-- 创建 issue_inbox_archives 表：用户收件箱归档管理
 CREATE TABLE "issue_inbox_archives" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"company_id" uuid NOT NULL,

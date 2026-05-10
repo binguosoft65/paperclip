@@ -2,6 +2,13 @@ import { pgTable, uuid, text, timestamp, jsonb, index } from "drizzle-orm/pg-cor
 import { companies } from "./companies.js";
 import { agents } from "./agents.js";
 
+/**
+ * approvals 表 —— 审批请求。
+ *
+ * Agent 在某些关键操作（如预算超支、新 Agent 入职、高风险操作）
+ * 时需要请求人工审批。审批流程通过此表记录，支持不同类型
+ * 的审批负载和决策追踪。
+ */
 export const approvals = pgTable(
   "approvals",
   {

@@ -1,3 +1,4 @@
+-- 创建 finance_events 表：财务事件（计费/收入）记录
 CREATE TABLE "finance_events" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"company_id" uuid NOT NULL,

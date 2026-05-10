@@ -4,6 +4,12 @@ import { agents } from "./agents.js";
 import { documents } from "./documents.js";
 import { heartbeatRuns } from "./heartbeat_runs.js";
 
+/**
+ * document_revisions 表 —— 文档版本历史。
+ *
+ * 每次修改文档时创建新版本，保留完整内容和变更摘要。
+ * 支持版本对比和回滚。
+ */
 export const documentRevisions = pgTable(
   "document_revisions",
   {

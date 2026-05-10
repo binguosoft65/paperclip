@@ -1,3 +1,10 @@
+/**
+ * migrate.ts —— 数据库迁移 CLI 入口。
+ *
+ * 从配置文件或环境变量解析数据库连接，
+ * 检查迁移状态并自动应用所有待处理的迁移。
+ * 可独立运行：node migrate.ts
+ */
 import { applyPendingMigrations, inspectMigrations } from "./client.js";
 import { resolveMigrationConnection } from "./migration-runtime.js";
 

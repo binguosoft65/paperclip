@@ -4,6 +4,14 @@ import { companies } from "./companies.js";
 import { invites } from "./invites.js";
 import { agents } from "./agents.js";
 
+/**
+ * join_requests 表 —— 加入申请。
+ *
+ * 用户或 Agent 接受邀请后提交的加入请求。
+ * 如果公司需要审批（requireBoardApprovalForNewAgents），
+ * 申请将处于 pending_approval 状态等待人工批准。
+ * 支持密钥认领流程（claimSecretHash）。
+ */
 export const joinRequests = pgTable(
   "join_requests",
   {

@@ -1,3 +1,9 @@
+/**
+ * 访问控制相关实体类型定义。
+ * 包括公司成员、权限授权、邀请、加入请求等。
+ * 支持 Agent 和用户两种主体类型，权限精确到操作级别。
+ */
+
 import type {
   AgentAdapterType,
   CompanyStatus,
@@ -12,6 +18,7 @@ import type {
   PrincipalType,
 } from "../constants.js";
 
+/** 公司成员关系：将主体（Agent/用户）与公司关联 */
 export interface CompanyMembership {
   id: string;
   companyId: string;

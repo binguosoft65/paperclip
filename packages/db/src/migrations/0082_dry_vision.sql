@@ -1,3 +1,4 @@
+-- 创建 company_secret_bindings 表：密钥绑定到消费目标的注入配置
 CREATE TABLE IF NOT EXISTS "company_secret_bindings" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"company_id" uuid NOT NULL,

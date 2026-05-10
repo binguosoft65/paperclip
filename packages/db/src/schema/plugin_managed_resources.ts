@@ -2,6 +2,13 @@ import { pgTable, uuid, text, timestamp, jsonb, index, uniqueIndex } from "drizz
 import { companies } from "./companies.js";
 import { plugins } from "./plugins.js";
 
+/**
+ * plugin_managed_resources 表 —— 插件托管资源。
+ *
+ * 插件可以在 Paperclip 中创建和管理资源实体（如板、项目等），
+ * 通过此表跟踪插件创建的资源及其默认配置。
+ * resourceKind + resourceKey 唯一标识一个资源类型下的特定资源。
+ */
 export const pluginManagedResources = pgTable(
   "plugin_managed_resources",
   {

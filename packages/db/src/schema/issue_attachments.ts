@@ -4,6 +4,11 @@ import { issues } from "./issues.js";
 import { assets } from "./assets.js";
 import { issueComments } from "./issue_comments.js";
 
+/**
+ * issue_attachments 表 —— Issue 附件关联。
+ *
+ * 将资源（assets）关联到 Issue，可选关联到具体评论。
+ */
 export const issueAttachments = pgTable(
   "issue_attachments",
   {

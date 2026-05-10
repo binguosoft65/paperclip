@@ -2,6 +2,12 @@ import { pgTable, uuid, text, timestamp, index, uniqueIndex } from "drizzle-orm/
 import { companies } from "./companies.js";
 import { issues } from "./issues.js";
 
+/**
+ * issue_read_states 表 —— 用户 Issue 阅读状态。
+ *
+ * 记录用户最近阅读 Issue 的时间，用于 UI 显示
+ * 未读标记和变更高亮。
+ */
 export const issueReadStates = pgTable(
   "issue_read_states",
   {

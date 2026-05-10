@@ -1,6 +1,11 @@
 import { pgTable, uuid, text, timestamp, index, uniqueIndex } from "drizzle-orm/pg-core";
 import { companies } from "./companies.js";
 
+/**
+ * inbox_dismissals 表 —— 用户收件箱已读/忽略记录。
+ *
+ * 记录用户已忽略的系统通知项，避免重复展示。
+ */
 export const inboxDismissals = pgTable(
   "inbox_dismissals",
   {

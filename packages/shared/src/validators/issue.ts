@@ -1,3 +1,8 @@
+/**
+ * Issue（任务）相关 API 请求体的 Zod 校验模式。
+ * 涵盖 Issue 的创建、更新、评论、执行策略、线程交互等校验逻辑。
+ */
+
 import { z } from "zod";
 import {
   ISSUE_EXECUTION_DECISION_OUTCOMES,
@@ -33,6 +38,11 @@ export const ISSUE_EXECUTION_WORKSPACE_PREFERENCES = [
   "agent_default",
 ] as const;
 
+/**
+ * 执行工作空间策略配置：定义了 Issue 执行时工作空间的分配方式。
+ * 支持 project_primary（项目主工作区）/ git_worktree（Git 工作树）/
+ * adapter_managed（适配器托管）/ cloud_sandbox（云端沙箱）。
+ */
 const executionWorkspaceStrategySchema = z
   .object({
     type: z.enum(["project_primary", "git_worktree", "adapter_managed", "cloud_sandbox"]).optional(),
@@ -67,6 +77,11 @@ const issueExecutionStagePrincipalBaseSchema = z.object({
   userId: z.string().optional().nullable(),
 });
 
+/**
+ * Issue 执行 stage 参与主体校验：
+ * - agent 类型必须提供 agentId，不能提供 userId
+ * - user 类型必须提供 userId，不能提供 agentId
+ */
 export const issueExecutionStagePrincipalSchema = issueExecutionStagePrincipalBaseSchema
   .superRefine((value, ctx) => {
     if (value.type === "agent") {

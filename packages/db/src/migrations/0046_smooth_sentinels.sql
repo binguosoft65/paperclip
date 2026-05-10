@@ -1,3 +1,4 @@
+-- document_revisions 添加 title 列：支持版本级标题变更
 ALTER TABLE "document_revisions" ADD COLUMN IF NOT EXISTS "title" text;--> statement-breakpoint
 ALTER TABLE "document_revisions" ADD COLUMN IF NOT EXISTS "format" text;--> statement-breakpoint
 ALTER TABLE "document_revisions" ALTER COLUMN "format" SET DEFAULT 'markdown';

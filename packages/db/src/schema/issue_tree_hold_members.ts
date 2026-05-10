@@ -5,6 +5,12 @@ import { heartbeatRuns } from "./heartbeat_runs.js";
 import { issues } from "./issues.js";
 import { issueTreeHolds } from "./issue_tree_holds.js";
 
+/**
+ * issue_tree_hold_members 表 —— 树阻塞的具体成员 Issue。
+ *
+ * 记录在树阻塞范围内的各个 Issue 及其执行状态快照，
+ * 用于在恢复执行时重建上下文。
+ */
 export const issueTreeHoldMembers = pgTable(
   "issue_tree_hold_members",
   {

@@ -2,6 +2,12 @@ import { pgTable, uuid, text, timestamp, index, uniqueIndex } from "drizzle-orm/
 import { companies } from "./companies.js";
 import { issues } from "./issues.js";
 
+/**
+ * issue_inbox_archives 表 —— 用户收件箱归档记录。
+ *
+ * 用户手动将 Issue 从收件箱移除（归档），
+ * 不影响 Issue 本身状态，仅用于个性化视图管理。
+ */
 export const issueInboxArchives = pgTable(
   "issue_inbox_archives",
   {

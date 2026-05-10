@@ -1,3 +1,9 @@
+/**
+ * 项目（Project）实体类型及相关类型定义。
+ * 项目是组织工作的容器，包含代码仓库（workspace）、环境配置、
+ * 执行策略和多个目标引用。
+ */
+
 import type { PauseReason, ProjectStatus } from "../constants.js";
 import type {
   ProjectExecutionWorkspacePolicy,

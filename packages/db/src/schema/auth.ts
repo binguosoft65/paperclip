@@ -1,5 +1,12 @@
 import { pgTable, text, timestamp, boolean } from "drizzle-orm/pg-core";
 
+/**
+ * user 表 —— 人类用户身份认证（基于 Better Auth）。
+ *
+ * 与 Agent 不同，用户是人类操作者。用户通过 email/password
+ * 或 OAuth 认证登录后访问 Board（管理面板）。
+ * 每个用户可以属于多个公司（通过 company_memberships 关联）。
+ */
 export const authUsers = pgTable("user", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
@@ -10,6 +17,10 @@ export const authUsers = pgTable("user", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull(),
 });
 
+/**
+ * session 表 —— 用户登录会话。
+ * 与 Better Auth 集成，记录每个活跃登录会话。
+ */
 export const authSessions = pgTable("session", {
   id: text("id").primaryKey(),
   expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
@@ -21,6 +32,10 @@ export const authSessions = pgTable("session", {
   userId: text("user_id").notNull().references(() => authUsers.id, { onDelete: "cascade" }),
 });
 
+/**
+ * account 表 —— 第三方 OAuth 账号绑定。
+ * 支持 GitHub、Google 等多 provider 登录。
+ */
 export const authAccounts = pgTable("account", {
   id: text("id").primaryKey(),
   accountId: text("account_id").notNull(),
@@ -37,6 +52,10 @@ export const authAccounts = pgTable("account", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull(),
 });
 
+/**
+ * verification 表 —— 验证码/令牌存储。
+ * 用于邮箱验证、密码重置等流程。
+ */
 export const authVerifications = pgTable("verification", {
   id: text("id").primaryKey(),
   identifier: text("identifier").notNull(),

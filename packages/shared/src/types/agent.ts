@@ -1,3 +1,9 @@
+/**
+ * Agent（智能体）实体类型及相关类型定义。
+ * Agent 是 Paperclip 中的核心执行单元，由适配器（adapter）驱动，
+ * 可以执行 Issue、运行常规模板、操作工作空间。
+ */
+
 import type {
   AgentAdapterType,
   ModelProfileKey,
@@ -10,10 +16,15 @@ import type {
   PrincipalPermissionGrant,
 } from "./access.js";
 
+/** Agent 的基本权限配置 */
 export interface AgentPermissions {
   canCreateAgents: boolean;
 }
 
+/**
+ * Agent 模型配置文件（对应 MODEL_PROFILE_KEYS 中的预设键）。
+ * 每个配置包含启用状态、显示标签和适配器配置（如 API 地址、模型名称等）。
+ */
 export interface AgentModelProfileConfig {
   enabled?: boolean;
   label?: string;

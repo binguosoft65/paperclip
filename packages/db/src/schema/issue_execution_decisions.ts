@@ -4,6 +4,12 @@ import { issues } from "./issues.js";
 import { agents } from "./agents.js";
 import { heartbeatRuns } from "./heartbeat_runs.js";
 
+/**
+ * issue_execution_decisions 表 —— Issue 执行决策记录。
+ *
+ * 在 Issue 执行流程的关键决策点（如 PR 审查结果、是否合并等）
+ * 记录决策内容，支持审计追踪。
+ */
 export const issueExecutionDecisions = pgTable(
   "issue_execution_decisions",
   {

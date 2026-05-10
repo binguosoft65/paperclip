@@ -1,3 +1,19 @@
+/**
+ * client.ts —— 数据库客户端与迁移引擎核心。
+ *
+ * 职责：
+ * 1. 创建 Drizzle ORM 数据库实例（createDb）
+ * 2. 管理数据库迁移生命周期（inspectMigrations、applyPendingMigrations）
+ * 3. 提供迁移历史修复工具（reconcilePendingMigrationHistory）
+ * 4. 提供数据库引导工具（migratePostgresIfEmpty）
+ * 5. 提供数据库创建工具（ensurePostgresDatabase）
+ *
+ * 迁移策略说明：
+ * - 空数据库使用 Drizzle Kit 的标准 migrate 流程
+ * - 有迁移历史但存在未应用迁移时，手动执行 SQL 语句
+ * - 迁移状态通过 __drizzle_migrations 表持久化
+ * - 支持 hash 和 name 两种列名模式（兼容旧版 Drizzle Kit）
+ */
 import { createHash } from "node:crypto";
 import { drizzle as drizzlePg } from "drizzle-orm/postgres-js";
 import { migrate as migratePg } from "drizzle-orm/postgres-js/migrator";

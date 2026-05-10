@@ -1,3 +1,9 @@
+/**
+ * Issue（任务）实体类型及相关类型定义。
+ * Issue 是 Paperclip 中的核心工作单元，支持层级结构（父子 Issue）、
+ * 执行策略、审批流程、评论交互等丰富的协作功能。
+ */
+
 import type {
   IssueCommentAuthorType,
   IssueCommentMetadataRowType,

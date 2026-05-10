@@ -1,3 +1,4 @@
+-- 创建 issue_read_states 表：用户 Issue 阅读状态追踪
 CREATE TABLE "issue_read_states" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"company_id" uuid NOT NULL,

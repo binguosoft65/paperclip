@@ -4,6 +4,13 @@ import { approvals } from "./approvals.js";
 import { budgetPolicies } from "./budget_policies.js";
 import { companies } from "./companies.js";
 
+/**
+ * budget_incidents 表 —— 预算违规事件。
+ *
+ * 当实际消费超过预算策略设定的阈值时创建此记录。
+ * 支持阈值类型（threshold_type）：'warn'（警告）、'hard_stop'（强制停止）。
+ * 关联到审批单（approvalId），需要人工审批解除。
+ */
 export const budgetIncidents = pgTable(
   "budget_incidents",
   {

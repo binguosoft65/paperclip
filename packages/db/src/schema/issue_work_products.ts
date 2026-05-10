@@ -14,6 +14,13 @@ import { issues } from "./issues.js";
 import { projects } from "./projects.js";
 import { workspaceRuntimeServices } from "./workspace_runtime_services.js";
 
+/**
+ * issue_work_products 表 —— Issue 产出物（如 PR、部署等）。
+ *
+ * 记录 Agent 完成 Issue 后产生的具体产出物，
+ * 包括 Pull Request、部署记录、构建产物等。
+ * is_primary 标记主要产出物，供 UI 展示。
+ */
 export const issueWorkProducts = pgTable(
   "issue_work_products",
   {

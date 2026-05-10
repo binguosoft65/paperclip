@@ -2,6 +2,11 @@ import { pgTable, uuid, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
 import { companies } from "./companies.js";
 import { assets } from "./assets.js";
 
+/**
+ * company_logos 表 —— 公司 Logo 关联。
+ *
+ * 每个公司最多有一个 Logo，通过 assets 表存储实际图片文件。
+ */
 export const companyLogos = pgTable(
   "company_logos",
   {

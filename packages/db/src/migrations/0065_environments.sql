@@ -1,3 +1,4 @@
+-- 创建 environments 表：Agent 执行环境配置（本地、Docker、远程等）
 CREATE TABLE "environments" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"company_id" uuid NOT NULL,

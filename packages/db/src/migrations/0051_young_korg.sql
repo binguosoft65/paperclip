@@ -1,3 +1,4 @@
+-- 启用 pg_trgm 扩展：支持全文模糊搜索
 CREATE EXTENSION IF NOT EXISTS pg_trgm;--> statement-breakpoint
 CREATE INDEX "issue_comments_body_search_idx" ON "issue_comments" USING gin ("body" gin_trgm_ops);--> statement-breakpoint
 CREATE INDEX "issues_title_search_idx" ON "issues" USING gin ("title" gin_trgm_ops);--> statement-breakpoint

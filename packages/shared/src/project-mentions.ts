@@ -1,3 +1,9 @@
+/**
+ * Markdown 提及（Mention）协议工具。
+ * 支持四种提及类型：Project、Agent、User、Skill。
+ * 使用 URI scheme 格式嵌入在 Markdown 链接中，如 [name](project://id?c=color)。
+ */
+
 export const PROJECT_MENTION_SCHEME = "project://";
 export const AGENT_MENTION_SCHEME = "agent://";
 export const USER_MENTION_SCHEME = "user://";

@@ -1,3 +1,4 @@
+-- 创建 routine_runs 表：定时任务执行历史记录
 CREATE TABLE IF NOT EXISTS "routine_runs" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"company_id" uuid NOT NULL,

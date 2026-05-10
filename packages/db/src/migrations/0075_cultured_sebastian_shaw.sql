@@ -1,3 +1,4 @@
+-- issues 表添加 monitor_* 列：Issue 执行结果监工机制
 ALTER TABLE "issues" ADD COLUMN IF NOT EXISTS "monitor_next_check_at" timestamp with time zone;--> statement-breakpoint
 ALTER TABLE "issues" ADD COLUMN IF NOT EXISTS "monitor_wake_requested_at" timestamp with time zone;--> statement-breakpoint
 ALTER TABLE "issues" ADD COLUMN IF NOT EXISTS "monitor_last_triggered_at" timestamp with time zone;--> statement-breakpoint

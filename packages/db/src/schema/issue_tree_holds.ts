@@ -4,6 +4,13 @@ import { companies } from "./companies.js";
 import { heartbeatRuns } from "./heartbeat_runs.js";
 import { issues } from "./issues.js";
 
+/**
+ * issue_tree_holds 表 —— Issue 树阻塞/暂停机制。
+ *
+ * 当需要暂停整个 Issue 子树（父 Issue 及其子任务）的执行时，
+ * 创建一条阻塞记录。这类似于"暂停"或"冻结"操作，
+ * 用于协调依赖关系或处理异常情况。
+ */
 export const issueTreeHolds = pgTable(
   "issue_tree_holds",
   {

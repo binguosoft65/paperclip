@@ -11,6 +11,13 @@ import {
 import { companies } from "./companies.js";
 import { projects } from "./projects.js";
 
+/**
+ * project_workspaces 表 —— 项目工作空间定义。
+ *
+ * 项目工作空间是项目级别的代码/文件管理单元。
+ * 支持多种来源类型：local_path（本地目录）、github（GitHub 仓库）等。
+ * is_primary 标志区分主工作空间和辅助工作空间。
+ */
 export const projectWorkspaces = pgTable(
   "project_workspaces",
   {

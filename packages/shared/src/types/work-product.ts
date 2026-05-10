@@ -1,3 +1,5 @@
+/** Issue 工作产物：执行 Issue 后产生的交付物（预览链接/PR/构件等） */
+
 export type IssueWorkProductType =
   | "preview_url"
   | "runtime_service"

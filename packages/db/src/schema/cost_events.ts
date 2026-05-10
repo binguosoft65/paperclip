@@ -6,6 +6,13 @@ import { projects } from "./projects.js";
 import { goals } from "./goals.js";
 import { heartbeatRuns } from "./heartbeat_runs.js";
 
+/**
+ * cost_events 表 —— 成本事件明细。
+ *
+ * 记录每次 AI 模型调用的成本明细，包括 Token 用量和花费。
+ * 支持多 provider（openai、anthropic 等）和多维度聚合查询。
+ * 是费用计算和预算管控的基础数据源。
+ */
 export const costEvents = pgTable(
   "cost_events",
   {

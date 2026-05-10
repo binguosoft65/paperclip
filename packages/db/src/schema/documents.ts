@@ -2,6 +2,12 @@ import { pgTable, uuid, text, integer, timestamp, index } from "drizzle-orm/pg-c
 import { companies } from "./companies.js";
 import { agents } from "./agents.js";
 
+/**
+ * documents 表 —— 文档（最新版本快照）。
+ *
+ * 管理公司级文档，支持版本历史（关联 document_revisions）。
+ * latest_body 是当前最新内容，支持全文搜索。
+ */
 export const documents = pgTable(
   "documents",
   {

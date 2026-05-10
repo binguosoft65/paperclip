@@ -1,3 +1,9 @@
+/**
+ * 遥测事件跟踪函数。
+ * 每个函数封装对应业务事件的数据收集和上报逻辑。
+ * 对私有数据（如 sourceRef）进行哈希处理后再上报。
+ */
+
 import type { TelemetryClient } from "./client.js";
 
 export function trackInstallStarted(client: TelemetryClient): void {

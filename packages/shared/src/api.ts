@@ -1,5 +1,7 @@
+/** API 路由路径前缀 */
 export const API_PREFIX = "/api";
 
+/** 核心 API 路由表：集中定义所有后端端点路径，确保前后端路由一致 */
 export const API = {
   health: `${API_PREFIX}/health`,
   companies: `${API_PREFIX}/companies`,

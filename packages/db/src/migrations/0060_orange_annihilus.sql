@@ -1,3 +1,4 @@
+-- 创建 issue_reference_mentions 表：Issue 跨引用关系图谱
 CREATE TABLE IF NOT EXISTS "issue_reference_mentions" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"company_id" uuid NOT NULL,

@@ -1,3 +1,4 @@
+-- 创建 project_goals 关联表：项目与目标的多对多关系
 CREATE TABLE "project_goals" (
 	"project_id" uuid NOT NULL,
 	"goal_id" uuid NOT NULL,

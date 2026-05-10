@@ -1,3 +1,4 @@
+-- 创建 company_secret_versions 表：密钥版本化管理
 CREATE TABLE "company_secret_versions" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"secret_id" uuid NOT NULL,

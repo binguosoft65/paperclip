@@ -1,3 +1,4 @@
+-- 创建 issue_relations 表：Issue 间依赖/阻塞关系
 CREATE TABLE "issue_relations" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"company_id" uuid NOT NULL,

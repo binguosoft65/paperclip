@@ -1,3 +1,4 @@
+-- 添加 Routine 执行去重唯一索引：防止同一 Routine 多次创建相同 Issue
 CREATE UNIQUE INDEX IF NOT EXISTS "issues_open_routine_execution_uq" ON "issues" USING btree ("company_id","origin_kind","origin_id") WHERE "issues"."origin_kind" = 'routine_execution'
           and "issues"."origin_id" is not null
           and "issues"."hidden_at" is null

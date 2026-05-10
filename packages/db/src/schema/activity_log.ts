@@ -3,6 +3,13 @@ import { companies } from "./companies.js";
 import { agents } from "./agents.js";
 import { heartbeatRuns } from "./heartbeat_runs.js";
 
+/**
+ * activity_log 表 —— 统一活动审计日志。
+ *
+ * 记录系统中所有重要操作的审计追踪。
+ * 支持多种实体类型的操作记录（创建、更新、删除等），
+ * 关联 Actor（谁做的）和 Agent/Run 上下文。
+ */
 export const activityLog = pgTable(
   "activity_log",
   {

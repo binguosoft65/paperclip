@@ -1,3 +1,4 @@
+-- 创建 assets 表：文件/资源存储元数据管理
 CREATE TABLE "assets" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"company_id" uuid NOT NULL,

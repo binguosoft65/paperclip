@@ -1,3 +1,4 @@
+-- 创建 issue_thread_interactions 表：Issue 线程交互（Agent-用户对话）
 CREATE TABLE IF NOT EXISTS "issue_thread_interactions" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"company_id" uuid NOT NULL,

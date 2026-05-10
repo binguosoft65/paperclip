@@ -1,3 +1,5 @@
+/** 工作空间操作记录：记录工作空间准备、部署和清理阶段的执行日志 */
+
 export type WorkspaceOperationPhase =
   | "worktree_prepare"
   | "workspace_provision"

@@ -1,6 +1,13 @@
 import { pgTable, uuid, text, timestamp, jsonb, index, uniqueIndex } from "drizzle-orm/pg-core";
 import { companies } from "./companies.js";
 
+/**
+ * invites 表 —— 公司邀请。
+ *
+ * 用于邀请用户或 Agent 加入公司。
+ * 支持不同的加入方式（allowedJoinTypes），
+ * 可设置过期时间和默认角色。
+ */
 export const invites = pgTable(
   "invites",
   {

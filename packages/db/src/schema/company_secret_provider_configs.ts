@@ -3,6 +3,12 @@ import { pgTable, uuid, text, timestamp, jsonb, index, uniqueIndex, boolean } fr
 import { companies } from "./companies.js";
 import { agents } from "./agents.js";
 
+/**
+ * company_secret_provider_configs 表 —— 密钥提供者配置。
+ *
+ * 配置密钥的存储后端（如 local_encrypted、AWS Secrets Manager、
+ * Vault 等）。每个公司可以有多个提供者，isDefault 标记默认提供者。
+ */
 export const companySecretProviderConfigs = pgTable(
   "company_secret_provider_configs",
   {

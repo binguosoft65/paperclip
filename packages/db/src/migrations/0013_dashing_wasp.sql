@@ -1,3 +1,4 @@
+-- issues 表添加 execution_run_id 列：追踪 Issue 执行工作流的运行记录
 ALTER TABLE "issues" ADD COLUMN "execution_run_id" uuid;--> statement-breakpoint
 ALTER TABLE "issues" ADD COLUMN "execution_agent_name_key" text;--> statement-breakpoint
 ALTER TABLE "issues" ADD COLUMN "execution_locked_at" timestamp with time zone;--> statement-breakpoint

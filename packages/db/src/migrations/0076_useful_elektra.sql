@@ -1,3 +1,4 @@
+-- 创建 plugin_managed_resources 表：插件托管资源管理
 CREATE TABLE IF NOT EXISTS "plugin_managed_resources" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"company_id" uuid NOT NULL,

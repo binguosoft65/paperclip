@@ -1,3 +1,4 @@
+-- 创建 approval_comments 表：审批流程的讨论/评论功能
 CREATE TABLE "approval_comments" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"company_id" uuid NOT NULL,

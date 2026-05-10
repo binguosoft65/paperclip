@@ -1,3 +1,4 @@
+-- 创建 Better Auth account 表：第三方 OAuth 账号绑定
 CREATE TABLE "account" (
 	"id" text PRIMARY KEY NOT NULL,
 	"account_id" text NOT NULL,

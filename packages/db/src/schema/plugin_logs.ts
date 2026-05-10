@@ -9,15 +9,12 @@ import {
 import { plugins } from "./plugins.js";
 
 /**
- * `plugin_logs` table — structured log storage for plugin workers.
+ * plugin_logs 表 —— 插件日志存储。
  *
- * Each row stores a single log entry emitted by a plugin worker via
- * `ctx.logger.info(...)` etc. Logs are queryable by plugin, level, and
- * time range to support the operator logs panel and debugging workflows.
- *
- * Rows are inserted by the host when handling `log` notifications from
- * the worker process. A capped retention policy can be applied via
- * periodic cleanup (e.g. delete rows older than 7 days).
+ * 存储插件 Worker 通过 `ctx.logger.info()` 等接口发出的结构化日志。
+ * 支持按插件、级别和时间范围查询，用于操作员日志面板和调试。
+ * 由宿主进程在处理 Worker 的 `log` 通知时写入。
+ * 建议通过定时清理策略限制日志保留时间（如删除 7 天前的日志）。
  *
  * @see PLUGIN_SPEC.md §26 — Observability
  */

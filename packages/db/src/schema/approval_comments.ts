@@ -3,6 +3,11 @@ import { companies } from "./companies.js";
 import { approvals } from "./approvals.js";
 import { agents } from "./agents.js";
 
+/**
+ * approval_comments 表 —— 审批评论/讨论。
+ *
+ * 审批过程中的交流记录，支持 Agent 和用户的混合讨论。
+ */
 export const approvalComments = pgTable(
   "approval_comments",
   {

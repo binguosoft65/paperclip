@@ -11,12 +11,11 @@ import {
 import type { PluginCategory, PluginStatus, PaperclipPluginManifestV1 } from "@paperclipai/shared";
 
 /**
- * `plugins` table — stores one row per installed plugin.
+ * plugins 表 —— 插件注册表。每个安装的插件对应一行。
  *
- * Each plugin is uniquely identified by `plugin_key` (derived from
- * the manifest `id`). The full manifest is persisted as JSONB in
- * `manifest_json` so the host can reconstruct capability and UI
- * slot information without loading the plugin package.
+ * 插件通过 plugin_key 唯一标识（从 manifest id 派生）。
+ * 完整的 manifest 以 JSONB 格式持久化在 manifest_json 中，
+ * 宿主无需加载插件包即可重建其能力和 UI 插槽信息。
  *
  * @see PLUGIN_SPEC.md §21.3
  */

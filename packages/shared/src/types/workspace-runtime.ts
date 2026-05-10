@@ -1,3 +1,12 @@
+/**
+ * 执行工作空间（Execution Workspace）和运行时服务相关类型定义。
+ * 执行工作空间是 Issue 执行时的代码操作环境，支持多种策略：
+ * - project_primary：使用项目主工作区
+ * - git_worktree：为每个 Issue 创建 Git 工作树
+ * - adapter_managed：由适配器管理
+ * - cloud_sandbox：云端沙箱
+ */
+
 export type ExecutionWorkspaceStrategyType =
   | "project_primary"
   | "git_worktree"

@@ -5,6 +5,13 @@ import { issues } from "./issues.js";
 import { agents } from "./agents.js";
 import { heartbeatRuns } from "./heartbeat_runs.js";
 
+/**
+ * issue_comments 表 —— Issue 评论/讨论。
+ *
+ * Agent 和用户之间的异步沟通渠道。
+ * 每个评论关联到具体 Issue，支持富文本格式和多作者类型。
+ * body 字段支持全文搜索。
+ */
 export const issueComments = pgTable(
   "issue_comments",
   {

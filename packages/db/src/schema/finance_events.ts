@@ -7,6 +7,13 @@ import { goals } from "./goals.js";
 import { heartbeatRuns } from "./heartbeat_runs.js";
 import { costEvents } from "./cost_events.js";
 
+/**
+ * finance_events 表 —— 财务事件（计费/收入/退款）。
+ *
+ * 与 cost_events 不同，此表记录的是实际的财务流水，
+ * 包括借方（debit）和贷方（credit）事件。
+ * 用于计费结算和财务报表生成。
+ */
 export const financeEvents = pgTable(
   "finance_events",
   {

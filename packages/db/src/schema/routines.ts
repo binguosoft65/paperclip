@@ -19,6 +19,14 @@ import { goals } from "./goals.js";
 import { heartbeatRuns } from "./heartbeat_runs.js";
 import type { RoutineRevisionSnapshotV1, RoutineVariable } from "@paperclipai/shared";
 
+/**
+ * routines 表 —— 定时任务/自动化流程定义。
+ *
+ * Routine 是 Paperclip 的定时工作流引擎——类似 Cron Job，
+ * 但功能更丰富：支持版本管理（revisions）、并发控制策略、
+ * 变量注入、触发条件配置等。Agent 通过 Routine 定期执行
+ * 预设任务或响应外部事件。
+ */
 export const routines = pgTable(
   "routines",
   {
@@ -29,10 +37,23 @@ export const routines = pgTable(
     parentIssueId: uuid("parent_issue_id").references(() => issues.id, { onDelete: "set null" }),
     title: text("title").notNull(),
     description: text("description"),
+    /** 负责执行此 Routine 的 Agent */
     assigneeAgentId: uuid("assignee_agent_id").references(() => agents.id),
     priority: text("priority").notNull().default("medium"),
+    /** active=启用, paused=暂停, archived=归档 */
     status: text("status").notNull().default("active"),
+    /**
+     * 并发策略：
+     * - 'coalesce_if_active'：如果已有活跃运行，合并新触发（默认）
+     * - 'parallel'：允许并行执行
+     * - 'skip_if_active'：如果已有活跃运行则跳过新触发
+     */
     concurrencyPolicy: text("concurrency_policy").notNull().default("coalesce_if_active"),
+    /**
+     * 追赶策略：
+     * - 'skip_missed'：跳过错过的触发（默认）
+     * - 'catch_up'：补上所有错过的执行
+     */
     catchUpPolicy: text("catch_up_policy").notNull().default("skip_missed"),
     variables: jsonb("variables").$type<RoutineVariable[]>().notNull().default([]),
     latestRevisionId: uuid("latest_revision_id"),
@@ -53,6 +74,12 @@ export const routines = pgTable(
   }),
 );
 
+/**
+ * routine_revisions 表 —— Routine 版本快照历史。
+ *
+ * 每次 Routine 内容变更时创建新版本，保留完整快照。
+ * 支持版本对比和回滚（restoredFromRevisionId）。
+ */
 export const routineRevisions = pgTable(
   "routine_revisions",
   {
@@ -86,6 +113,15 @@ export const routineRevisions = pgTable(
   }),
 );
 
+/**
+ * routine_triggers 表 —— Routine 触发器配置。
+ *
+ * 定义 Routine 何时触发执行。支持多种触发器类型：
+ * - 'cron'：基于 Cron 表达式的定时触发
+ * - 'webhook'：通过 Webhook 接收外部事件触发
+ * - 'manual'：手动触发
+ * 一个 Routine 可以有多个触发器。
+ */
 export const routineTriggers = pgTable(
   "routine_triggers",
   {
@@ -121,6 +157,12 @@ export const routineTriggers = pgTable(
   }),
 );
 
+/**
+ * routine_runs 表 —— Routine 执行历史。
+ *
+ * 每次 Routine 触发后的执行记录。支持幂等执行（idempotency_key）、
+ * 合并运行（coalesced_into_run_id）和来源追踪（linked_issue_id）。
+ */
 export const routineRuns = pgTable(
   "routine_runs",
   {

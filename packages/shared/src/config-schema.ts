@@ -1,3 +1,18 @@
+/**
+ * Paperclip 实例配置文件（paperclip.yml）的 Zod 校验模式。
+ * 定义了所有配置项的类型、默认值和交叉验证逻辑。
+ *
+ * 配置文件分为以下几大模块：
+ * - server：服务绑定和部署模式
+ * - llm：大语言模型提供者配置
+ * - database：数据库配置（嵌入式或外部 PostgreSQL）
+ * - auth：认证配置
+ * - storage：文件存储提供者
+ * - secrets：密钥存储
+ * - logging：日志
+ * - telemetry：遥测
+ */
+
 import { z } from "zod";
 import {
   AUTH_BASE_URL_MODES,

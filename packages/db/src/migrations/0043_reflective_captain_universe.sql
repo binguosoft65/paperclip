@@ -1,3 +1,4 @@
+-- 重建 Routine 执行去重索引：添加 origin_fingerprint 维度提升精确度
 DROP INDEX IF EXISTS "issues_open_routine_execution_uq";--> statement-breakpoint
 CREATE UNIQUE INDEX IF NOT EXISTS "issues_open_routine_execution_uq" ON "issues" USING btree ("company_id","origin_kind","origin_id") WHERE "issues"."origin_kind" = 'routine_execution'
           and "issues"."origin_id" is not null
