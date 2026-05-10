@@ -1,3 +1,20 @@
+/**
+ * PluginManagedAgents — 托管 Agent 管理。
+ *
+ * 插件可以在 manifest 中声明 managedAgents，宿主负责在安装/激活时
+ * 自动创建对应的 Agent 记录。这种"声明式 Agent"模式让插件可以扩展
+ * 平台的 AI 能力，无需用户手动配置 Agent。
+ *
+ * ── 托管模式的关键设计 ──
+ * - 声明式：插件 manifest 中声明需要哪些 Agent，宿主负责实现。
+ * - 协调（reconcile）：确保 DB 中的 Agent 记录与 manifest 声明一致。
+ *   如果用户在界面上修改了托管 Agent，下次协调时会重置。
+ * - 生命周期绑定：Agent 随插件的安装/卸载而创建/删除。
+ * - 指令模板变量：插件可以提供模板变量，在创建 Agent 时注入
+ *   （如公司名称、插件版本等）。
+ *
+ * @see PLUGIN_SPEC.md §22 — Managed Agents
+ */
 import { and, eq, ne } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
 import {

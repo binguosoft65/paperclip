@@ -164,11 +164,21 @@ import { environmentRuntimeService } from "./environment-runtime.js";
 import { environmentRunOrchestrator } from "./environment-run-orchestrator.js";
 import type { PluginWorkerManager } from "./plugin-worker-manager.js";
 
+// ── 看门狗（Watchdog）与心跳机制的核心常量 ──
+
+// 实时日志块的最大字节数。8KB 的块在 SSE 推送和内存使用之间取得平衡：
+// 够小以低延迟推送，够大以减少消息数量。用于向浏览器实时流式传输 Run 输出。
 const MAX_LIVE_LOG_CHUNK_BYTES = 8 * 1024;
+// 持久化日志块的最大字符数。64KB 块适合批量写入日志存储（如本地文件），
+// 减少写入次数同时保持单个文件的可管理性。
 const MAX_PERSISTED_LOG_CHUNK_CHARS = 64 * 1024;
+// Run 事件 payload 中字符串字段的最大长度，防止单个字符串过大撑爆事件存储。
 const MAX_RUN_EVENT_PAYLOAD_STRING_CHARS = 16 * 1024;
+// Run 事件 payload 中数组的最大元素数，防止大量重复条目。
 const MAX_RUN_EVENT_PAYLOAD_ARRAY_ITEMS = 50;
 
+// 将 Run 的进展摘要脱敏并截断，用于董事会视图展示。
+// 限制 280 字符（类似 Twitter 的长度），确保概览面板整洁。
 export function redactDetectedSuccessfulRunProgressSummaryForBoard(
   summary: string,
   currentUserRedactionOptions?: CurrentUserRedactionOptions,
@@ -180,19 +190,27 @@ export function redactDetectedSuccessfulRunProgressSummaryForBoard(
 
 const MAX_RUN_EVENT_PAYLOAD_OBJECT_KEYS = 100;
 const MAX_RUN_EVENT_PAYLOAD_DEPTH = 6;
+// 默认最大并发 Run 数，防止单个 Agent 消耗过多系统资源。
 const HEARTBEAT_MAX_CONCURRENT_RUNS_DEFAULT = AGENT_DEFAULT_MAX_CONCURRENT_RUNS;
 const HEARTBEAT_MAX_CONCURRENT_RUNS_MIN = 1;
 const HEARTBEAT_MAX_CONCURRENT_RUNS_MAX = 50;
+// 活跃度记账活动类型 — 仅环境租赁相关的操作不算"有效产出"。
 const LIVENESS_BOOKKEEPING_ACTIVITY_ACTIONS = [
   "environment.lease_acquired",
   "environment.lease_released",
 ];
+// 延迟唤醒（Deferred Wake）上下文键：当 Run 完成但满足续作条件时，
+// 将续作上下文暂存在 wake request 中，避免立即触发新的 Run。
 const DEFERRED_WAKE_CONTEXT_KEY = "_paperclipWakeContext";
+// 批量唤醒评论 ID 列表的上下文键。用于支持一次唤醒携带多个评论通知。
 const WAKE_COMMENT_IDS_KEY = "wakeCommentIds";
 const PAPERCLIP_WAKE_PAYLOAD_KEY = "paperclipWake";
 const PAPERCLIP_HARNESS_CHECKOUT_KEY = "paperclipHarnessCheckedOut";
+// 进程分离错误代码 — 当 Agent 子进程意外断开且无法重新连接时使用。
 const DETACHED_PROCESS_ERROR_CODE = "process_detached";
+// 仓库专用 CWD 哨兵路径，用于区分"在项目中执行"与"仅在仓库根目录执行"。
 const REPO_ONLY_CWD_SENTINEL = "/__paperclip_repo_only__";
+// 托管工作区 Git Clone 的超时时间。10 分钟对于大型仓库克隆是合理阈值。
 const MANAGED_WORKSPACE_GIT_CLONE_TIMEOUT_MS = 10 * 60 * 1000;
 const MAX_INLINE_WAKE_COMMENTS = 8;
 const MAX_INLINE_WAKE_COMMENT_BODY_CHARS = 4_000;
@@ -4960,6 +4978,12 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
     return cancelled;
   }
 
+  // 为失败的 Run 安排有限次数的重试（有界重试，Bounded Retry）。
+  // 使用指数退避策略：重试延迟依次为 2min、10min、30min、2h。
+  // 每次重试前增加 jitter（±25%）以避免心跳同步风暴。
+  // 当重试次数耗尽时，不再自动重试，标记为重试耗尽（retry exhausted）。
+  // 仅在特定 transient 错误（如上游临时不可用）上使用有界重试，
+  // 持久性错误（如配置错误）不会触发此逻辑。
   async function scheduleBoundedRetryForRun(
     run: typeof heartbeatRuns.$inferSelect,
     agent: typeof agents.$inferSelect,
@@ -5368,6 +5392,10 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
     };
   }
 
+  // 将所有到期的定时重试 Run 从 "scheduled_retry" 状态提升为 "queued" 状态。
+  // 这是重试机制的核心调度步骤：定时器到期后，Run 重新进入排队队列，
+  // 等待 startNextQueuedRunForAgent 拾取并执行。
+  // 典型的调用场景：tickTimers 完成后立即调用此函数，确保重试不会延迟到下一个心跳周期。
   async function promoteDueScheduledRetries(now = new Date()) {
     const dueRuns = await db
       .select()
@@ -5531,6 +5559,11 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
     return Number(count ?? 0);
   }
 
+  // 尝试接管一个排队中的 Run — 将状态从 "queued" 变更为 "running"。
+  // 使用数据库级别的乐观锁防止并发接管：通过 UPDATE ... WHERE status = 'queued' AND id = runId，
+  // 如果影响行数为 0，说明其他进程已抢先接管，当前调用直接返回 null。
+  // 接管前会检查依赖就绪状态（dependency readiness），如果依赖未就绪则跳过。
+  // 这是一个关键竞争窗口 — claimQueuedRun 是串行化 Run 执行的唯一入口点。
   async function claimQueuedRun(run: typeof heartbeatRuns.$inferSelect) {
     if (run.status !== "queued") return run;
     const agent = await getAgent(run.agentId);
@@ -6294,6 +6327,10 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
     return { reaped: reaped.length, runIds: reaped };
   }
 
+  // 恢复所有排队中的 Run — 启动时或调度器恢复后调用。
+  // 从 heartbeatRuns 表找到所有 status = "queued" 的 Run，按 Agent 分组，
+  // 对每个 Agent 调用 startNextQueuedRunForAgent 尝试启动。
+  // 用于系统重启后重新拾取之前排队的 Run，以及从外部唤醒中恢复。
   async function resumeQueuedRuns() {
     const queuedRuns = await db
       .select({ agentId: heartbeatRuns.agentId })
@@ -6408,6 +6445,15 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
     }
   }
 
+  // 启动 Agent 的下一个排队 Run — 看门狗的核心调度函数。
+  // 在 Agent 启动锁（withAgentStartLock）内执行，确保同一 Agent 不会并发启动多个 Run。
+  // 调度算法：
+  // 1. 检查 Agent 状态（暂停/终止则跳过）
+  // 2. 根据 maxConcurrentRuns 计算可用槽位
+  // 3. 从排队队列中按优先级排序（依赖就绪 > 进行中 Issue > 普通 Issue > 优先级 > 创建时间）
+  // 4. 依次 claim 直到槽位满或队列空
+  // 优先级排序确保"已经被 Agent 开始处理的 Issue"比新 Issue 先得到执行，
+  // 减少 Issue 级联等待和上下文切换。
   async function startNextQueuedRunForAgent(agentId: string) {
     return withAgentStartLock(agentId, async () => {
       const agent = await getAgent(agentId);
@@ -6481,6 +6527,16 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
     });
   }
 
+  // 执行 Run — 实际启动 adapter 进程并监控其生命周期。
+  // 这是一个异步函数，调用后立即返回，不阻塞调用者。
+  // 执行流程：
+  // 1. 如果 Run 状态是 "queued"，尝试 claim（加锁 + 状态变更为 "running"）
+  // 2. 记录 activeRunExecutions 集合，用于并发控制
+  // 3. 通过 adapter 启动 Agent 子进程，传递执行配置和会话上下文
+  // 4. 监控子进程输出，实时写入日志存储并推送实时事件
+  // 5. 子进程结束后，处理结果（摘要、费用统计、会话持久化）
+  // 6. 根据结果判断是否需要续作（liveness continuation）或重试
+  // 7. 最终状态变更为 "succeeded" / "failed" / "cancelled" / "timed_out"
   async function executeRun(runId: string) {
     let run = await getRun(runId);
     if (!run) return;
@@ -8232,6 +8288,18 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
     await startNextQueuedRunForAgent(promotedRun.agentId);
   }
 
+  // 将 Agent 唤醒请求加入队列 — 所有 Run 的入口点。
+  // 无论来源是定时器（timer）、任务分配（assignment）、手动触发（on_demand）还是自动化（automation），
+  // 都路由到这个统一入口。函数逻辑：
+  // 1. 根据上下文和 payload 丰富 contextSnapshot（提取 issueId、commentId、wakeReason 等）
+  // 2. 检查预算限制（budgetService.getInvocationBlock），如果超预算则抛出冲突异常
+  // 3. 检查 Agent 状态是否可唤醒
+  // 4. 检查心跳策略是否允许（timer 需要 enabled，非 timer 需要 wakeOnDemand）
+  // 5. 解析会话上下文（session before），用于后续的会话恢复
+  // 6. 创建 WakeupRequest 记录（或合并到现有记录），分配 executionRunId
+  // 7. 尝试立即启动排队中的 Run（startNextQueuedRunForAgent）
+  // 这个函数会产生 side effect：创建 wakeup request 并写入数据库，尝试启动 Run。
+  // 如果预算不足或 Agent 不可用，会记录为 "skipped" 状态而不是静默忽略。
   async function enqueueWakeup(agentId: string, opts: WakeupOptions = {}) {
     const source = opts.source ?? "on_demand";
     const triggerDetail = opts.triggerDetail ?? null;
@@ -9416,6 +9484,14 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
 
     buildRunOutputSilence,
 
+    // 心跳定时器轮询函数 — 系统的看门狗（Watchdog）。
+    // 遍历所有 Agent，检查每个 Agent 的心跳间隔是否已到，如果是则触发新的 Run。
+    // 这是 Paperclip 的核心"定时心跳"机制：Agent 按固定间隔（如 60 秒）被唤醒执行任务。
+    // 由外部调度器（如 cron 或 setInterval）定期调用此函数。
+    // 设计考量：
+    // - 全表扫描 agents 表而非按 lastHeartbeatAt 索引查询，因为 Agent 数量通常 < 1000
+    // - 每个 Agent 独立判断间隔，避免"心跳同步"（thundering herd）
+    // - 跳过暂停/终止/待审批的 Agent
     tickTimers: async (now = new Date()) => {
       const allAgents = await db.select().from(agents);
       let checked = 0;
@@ -9448,6 +9524,7 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
         else skipped += 1;
       }
 
+      // 检查所有到期的 Issue Monitor（执行策略中的外部服务监控），触发符合条件的自动续作或服务状态通知。
       const issueMonitors = await tickDueIssueMonitors(now);
 
       return {

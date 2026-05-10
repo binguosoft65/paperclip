@@ -50,6 +50,14 @@ import { logger } from "../middleware/logger.js";
  *
  * This is intentionally simpler than `RegisteredTool`, exposing only
  * what agents need to decide whether and how to call a tool.
+ *
+ * ── 为什么需要两个不同的类型 ──
+ * RegisteredTool（在 tool-registry 中）包含内部实现细节，如
+ * execute 函数引用和插件内部 ID。AgentToolDescriptor 是 Agent 看到的
+ * 公共接口，只包含名称、描述和参数 schema。这种分离确保：
+ * 1) Agent 不能直接调用 execute 绕过权限检查。
+ * 2) 内部实现变更不影响 Agent 的工具发现 API。
+ * 3) 工具列表可以在不同 Agent 类型间安全共享。
  */
 export interface AgentToolDescriptor {
   /** Fully namespaced tool name (e.g. `"acme.linear:search-issues"`). */
@@ -242,6 +250,12 @@ export function createPluginToolDispatcher(
   /**
    * Attempt to register tools for a plugin by looking up its manifest
    * from the DB. No-ops gracefully if the plugin or manifest is missing.
+   *
+   * ── 为什么从数据库读取而不是从内存缓存 ──
+   * 生命周期事件触发时，插件的 manifest 可能还没有被加载器缓存
+   * （例如服务器刚启动时恢复状态）。直接从 DB 读取确保了无论何种
+   * 场景都能获取到最新的 manifest 数据。这也是 registerFromDb 这个
+   * 命名中 "Db" 的由来 —— 强调数据来源。
    */
   async function registerFromDb(pluginId: string): Promise<void> {
     if (!db) {
@@ -286,6 +300,21 @@ export function createPluginToolDispatcher(
   // Lifecycle event handlers
   // -----------------------------------------------------------------------
 
+  /**
+   * 处理插件启用事件：注册插件的工具到工具注册表。
+   *
+   * ── 为什么使用 fire-and-forget（异步但不等待） ──
+   * 生命周期管理器的事件处理器是同步的（EventEmitter 的默认行为），
+   * 不能 await 异步操作。如果这里阻塞等待，会拖慢整个生命周期状态机。
+   * 使用 void registerFromDb().catch() 模式：
+   * 1) 不阻塞事件循环，状态机可以继续处理其他插件的转换。
+   * 2) 异步注册失败不影响插件状态转换 —— 工具注册是"副作用"而非"核心操作"。
+   * 3) .catch() 确保未捕获的 Promise 拒绝不会触发 unhandledRejection。
+   *
+   * ── 失败后果 ──
+   * 如果注册失败，该插件的工具对 Agent 不可见。管理员需要手动触发
+   * 恢复操作（如重新启用插件）。这个降级策略优于阻塞状态机。
+   */
   function handlePluginEnabled(payload: { pluginId: string; pluginKey: string }): void {
     log.debug({ pluginId: payload.pluginId, pluginKey: payload.pluginKey }, "plugin enabled — registering tools");
     // Async registration from DB — we fire-and-forget since the lifecycle
@@ -298,11 +327,31 @@ export function createPluginToolDispatcher(
     });
   }
 
+  /**
+   * 处理插件禁用事件：从工具注册表中移除该插件的所有工具。
+   *
+   * ── 同步 vs 异步 ──
+   * 与 handlePluginEnabled 不同，这里的注销操作是纯同步的 ——
+   * 只需要从内存 Map 中删除条目，不涉及 I/O 操作。
+   * 因此不需要 fire-and-forget 模式。
+   *
+   * ── 使用 pluginKey 而非 pluginId ──
+   * 工具注册表的命名空间基于 pluginKey（人类可读的唯一标识符），
+   * 而非 UUID 类型的 pluginId。这是因为工具名称格式是
+   * "<pluginKey>:<toolName>"，Agent 看到的是 pluginKey 而非 pluginId。
+   */
   function handlePluginDisabled(payload: { pluginId: string; pluginKey: string; reason?: string }): void {
     log.debug({ pluginId: payload.pluginId, pluginKey: payload.pluginKey }, "plugin disabled — unregistering tools");
     registry.unregisterPlugin(payload.pluginKey);
   }
 
+  /**
+   * 处理插件卸载事件：从工具注册表中移除该插件的所有工具。
+   *
+   * 与 handlePluginDisabled 的行为相同，但触发条件不同：
+   * disabled 是临时停用（可恢复），unloaded 是永久移除（不可恢复）。
+   * 从工具注册的角度看，两者效果一致 —— 工具不再可用。
+   */
   function handlePluginUnloaded(payload: { pluginId: string; pluginKey: string; removeData: boolean }): void {
     log.debug({ pluginId: payload.pluginId, pluginKey: payload.pluginKey }, "plugin unloaded — unregistering tools");
     registry.unregisterPlugin(payload.pluginKey);
@@ -322,6 +371,12 @@ export function createPluginToolDispatcher(
       log.info("initializing plugin tool dispatcher");
 
       // Step 1: Load tools from all currently-ready plugins
+      // ── 为什么分两步初始化 ──
+      // 先全量加载（Step 1）再订阅增量事件（Step 2），而不是只用事件订阅。
+      // 原因：在订阅事件之前，可能已经有 ready 插件运行了（如服务器重启恢复），
+      // 这些插件不会触发 plugin.enabled 事件，必须通过全量扫描加载。
+      // 两步法确保了初始化后所有 ready 插件的工具都可用，同时后续状态变更
+      // 也能通过事件订阅增量更新。
       if (db) {
         const pluginRegistry = pluginRegistryService(db);
         const readyPlugins = await pluginRegistry.listByStatus("ready") as PluginRecord[];
@@ -377,9 +432,12 @@ export function createPluginToolDispatcher(
         unloadedListener = null;
       }
 
-      // Note: we do NOT clear the registry here because teardown may be
-      // called during graceful shutdown where in-flight tool calls should
-      // still be able to resolve their tool entries.
+      // ── 为什么 teardown 不清空注册表 ──
+      // teardown 可能在优雅关闭期间被调用，此时可能还有正在执行的
+      // 工具调用（in-flight tool calls）。这些调用在关闭过程中仍需要
+      // 通过注册表查找工具的元数据（如命名空间、参数 schema）来完成响应。
+      // 如果清空注册表，in-flight 调用会因找不到工具而失败。
+      // 注册表会在进程退出时自动释放，无需显式清空。
 
       initialized = false;
       log.info("plugin tool dispatcher torn down");
@@ -393,6 +451,22 @@ export function createPluginToolDispatcher(
       return registry.getTool(namespacedName);
     },
 
+    /**
+     * executeTool — 执行一个插件工具。
+     *
+     * ── 路由流程 ──
+     * 1. registry.executeTool 根据 namespacedName（如 "acme.linear:search-issues"）
+     *    解析出 pluginKey 和 toolName。
+     * 2. 在注册表中查找对应的 RegisteredTool，获取其 execute 函数引用。
+     * 3. 通过 workerManager 将调用转发到对应插件的 worker 进程（RPC）。
+     * 4. worker 进程执行工具逻辑，返回结果。
+     * 5. 结果包含路由元数据（pluginId、pluginKey），供调用方追溯。
+     *
+     * ── 参数校验 ──
+     * 参数验证由底层 registry.executeTool 处理，使用 JSON Schema
+     * 对 parameters 进行校验。如果不匹配 schema，会在执行前抛错，
+     * 避免无效参数到达 worker 进程。
+     */
     async executeTool(
       namespacedName: string,
       parameters: unknown,

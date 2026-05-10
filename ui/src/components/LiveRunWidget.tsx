@@ -1,3 +1,13 @@
+// LiveRunWidget — 在 Issue 详情页中展示该 Issue 关联的实时运行记录。
+// 功能：
+// 1. 每 3 秒轮询获取该 Issue 的 Live Runs 和 Active Run
+// 2. 去重合并两个数据源（live + active 可能有重叠）
+// 3. 支持查看运行中的实时对话日志（transcript）
+// 4. 支持取消正在进行的 Run
+// 5. 提供快速跳转到 Run 详情的链接
+// 设计决策：使用实时轮询而非 SSE，因为 Widget 是嵌入在 Issue 页中的，
+// 如果使用 SSE 通道会增加连接管理复杂度，轮询更简单可靠。
+
 import { useMemo, useState } from "react";
 import { Link } from "@/lib/router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -30,6 +40,7 @@ export function LiveRunWidget({ issueId, companyId }: LiveRunWidgetProps) {
   const queryClient = useQueryClient();
   const [cancellingRunIds, setCancellingRunIds] = useState(new Set<string>());
 
+  // 查询该 Issue 的所有 Live Runs（不包含 active run 可能重复的数据源）
   const { data: liveRuns } = useQuery({
     queryKey: queryKeys.issues.liveRuns(issueId),
     queryFn: () => heartbeatsApi.liveRunsForIssue(issueId),
@@ -37,6 +48,7 @@ export function LiveRunWidget({ issueId, companyId }: LiveRunWidgetProps) {
     refetchInterval: 3000,
   });
 
+  // 查询该 Issue 的当前活跃 Run（可能有正在运行中的 Run）
   const { data: activeRun } = useQuery({
     queryKey: queryKeys.issues.activeRun(issueId),
     queryFn: () => heartbeatsApi.activeRunForIssue(issueId),

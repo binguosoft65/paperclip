@@ -26,6 +26,11 @@
  * client factory and manifest validator — this store trusts that the caller
  * has already been authorised.
  *
+ * ── 为什么删除的 job 标记为 paused 而非硬删除 ──
+ * 保留历史审计：如果插件移除了某个 job 声明，只是不再调度新执行，
+ * 但已有运行记录保存在 plugin_job_runs 表中，不可丢失。
+ * paused 状态允许将来恢复而不丢失 job 配置历史。
+ *
  * @see PLUGIN_SPEC.md §17 — Scheduled Jobs
  * @see PLUGIN_SPEC.md §21.3 — `plugin_jobs` / `plugin_job_runs` tables
  */

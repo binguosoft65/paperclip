@@ -12,8 +12,12 @@ import { cn } from "@/lib/utils";
 import { useTranslation } from "react-i18next";
 import { t as i18nt } from "../i18n";
 
+// 系统通知语调枚举。与 Issue 评论的演示语调保持一致（ISSUE_COMMENT_PRESENTATION_TONES）。
+// label 属性必须传入（不能仅依赖颜色），保证无障碍访问时语音/色盲用户也能辨识严重程度。
 export type SystemNoticeTone = "neutral" | "info" | "success" | "warning" | "danger";
 
+// 支持 5 种元数据类型：纯文本（text）、代码（code）、Issue 链接、Agent 链接、运行记录（run）。
+// 每种类型有不同的渲染方式（纯文字/可点击链接/代码块），满足系统通知的结构化展示需求。
 export type SystemNoticeMetadataRow =
   | { kind: "text"; label: string; value: string }
   | { kind: "code"; label: string; value: string }
@@ -21,6 +25,7 @@ export type SystemNoticeMetadataRow =
   | { kind: "agent"; label: string; name: string; href?: string }
   | { kind: "run"; label: string; runId: string; href?: string; status?: string };
 
+// 元数据分组，支持按主题分区。title 可选，无标题时直接展示行列表。
 export type SystemNoticeMetadataSection = {
   title?: string;
   rows: SystemNoticeMetadataRow[];
@@ -113,6 +118,9 @@ function formatTimestamp(ts: string) {
   }
 }
 
+// 根据元数据类型选择不同的渲染方式。设计权衡：
+// - 相同布局（固定宽度的 label 列 + 自适应值列）保证视觉一致性
+// - 不同类型的元数据有不同的交互行为（如 issue/agent/run 支持链接跳转）
 function MetadataRow({ row, tone }: { row: SystemNoticeMetadataRow; tone: ToneTokens }) {
   return (
     <div className="grid grid-cols-[7.5rem_1fr] gap-x-3 gap-y-0.5 px-3 py-1.5 text-xs">

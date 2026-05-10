@@ -40,12 +40,19 @@ export function InstanceSettings() {
     ]);
   }, [setBreadcrumbs]);
 
+  // 心跳仪表板：每 15 秒轮询一次所有 Agent 的心跳状态。
+  // 短轮询间隔是为了及时反映 Agent 的在线/离线状态变更，
+  // 但 15 秒的间隔也避免了过于频繁的请求给服务端带来压力。
   const heartbeatsQuery = useQuery({
     queryKey: queryKeys.instance.schedulerHeartbeats,
     queryFn: () => heartbeatsApi.listInstanceSchedulerAgents(),
     refetchInterval: 15_000,
   });
 
+  // 单个 Agent 心跳开关的切换操作。
+  // 通过读取 Agent 当前 runtimeConfig 中的 heartbeat 嵌套对象，
+  // 翻转 enabled 字段后写入，保留其余 runtimeConfig 配置不变。
+  // 这是"合并更新"模式——只修改心跳配置，不干扰 Agent 的其他运行时设置。
   const toggleMutation = useMutation({
     mutationFn: async (agentRow: InstanceSchedulerHeartbeatAgent) => {
       const agent = await agentsApi.get(agentRow.id, agentRow.companyId);
@@ -79,6 +86,10 @@ export function InstanceSettings() {
     },
   });
 
+  // 批量禁用所有 Agent 的心跳：遍历所有开启了心跳的 Agent，
+  // 逐个调用 API 关闭。使用 Promise.allSettled 而非 all 是为了：
+  // 即使部分请求失败，也不会阻塞其他 Agent 的关闭操作，
+  // 最后汇总失败的个数并返回第一条错误信息。
   const disableAllMutation = useMutation({
     mutationFn: async (agentRows: InstanceSchedulerHeartbeatAgent[]) => {
       const enabled = agentRows.filter((a) => a.heartbeatEnabled);
@@ -132,12 +143,16 @@ export function InstanceSettings() {
     },
   });
 
+  // 汇总统计：活跃 Agent（调度器正在运行）、已禁用（调度器停止）、
+  // 开启了定时心跳（heartbeatEnabled）的数量，用于仪表板顶部状态栏。
   const agents = heartbeatsQuery.data ?? [];
   const activeCount = agents.filter((agent) => agent.schedulerActive).length;
   const disabledCount = agents.length - activeCount;
   const enabledCount = agents.filter((agent) => agent.heartbeatEnabled).length;
   const anyEnabled = enabledCount > 0;
 
+  // 按公司分组展示 Agent 列表。
+  // 同一公司的 Agent 放在同一个卡片组中，方便管理员按组织维度管理心跳。
   const grouped = useMemo(() => {
     const map = new Map<string, { companyName: string; agents: InstanceSchedulerHeartbeatAgent[] }>();
     for (const agent of agents) {

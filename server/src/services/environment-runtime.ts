@@ -43,6 +43,9 @@ import {
 import { collectSecretRefPaths } from "./json-schema-secret-refs.js";
 import { buildWorkspaceRealizationRecordFromDriverInput } from "./workspace-realization.js";
 
+// 构建租约上下文元数据：从已持久化的执行工作空间中提取 ID 和 mode，
+// 这些信息会在租约获取时记录到 lease.metadata 中，
+// 用于租约释放时还原工作空间关联关系
 export function buildEnvironmentLeaseContext(input: {
   persistedExecutionWorkspace: Pick<ExecutionWorkspace, "id" | "mode"> | null;
 }) {
@@ -52,6 +55,9 @@ export function buildEnvironmentLeaseContext(input: {
   };
 }
 
+// 从插件 lease metadata 中剥离所有 secret_ref 类型的值。
+// 租约元数据会持久化到数据库，不能包含敏感信息（如 API token）。
+// 同时在清理空对象（secret_ref 被移除后可能留下空父级），保持 metadata 整洁
 function stripSecretRefValuesFromPluginLeaseMetadata(input: {
   metadata: Record<string, unknown> | null | undefined;
   schema: Record<string, unknown> | null | undefined;
@@ -80,6 +86,7 @@ function stripSecretRefValuesFromPluginLeaseMetadata(input: {
     if (!Object.prototype.hasOwnProperty.call(cursor, leafKey)) continue;
     delete cursor[leafKey];
 
+    // 递归向上清理空对象
     for (let index = parents.length - 1; index >= 0; index -= 1) {
       const { container, key } = parents[index]!;
       const value = container[key];
@@ -414,12 +421,9 @@ function createSandboxEnvironmentDriver(
 
         const workerConfig = stripSandboxProviderEnvelope(parsed.config);
         const storedConfig = storedParsed.config;
-        // Ad-hoc tests (heartbeatRunId === null) must never resume an existing
-        // provider lease. If they did, releasing the test lease at the end of
-        // the probe would tear down the live heartbeat run that owns it.
-        // We also filter out leases whose policy is not reuse_by_environment
-        // so any non-reusable lease (including ad-hoc test leases that
-        // landed in the table from older code paths) cannot be matched.
+        // 临界业务规则：临时探测（heartbeatRunId === null）不得复用已有 provider 租约，
+        // 否则探测结束时释放租约会销毁正在运行的 heartbeat 所占用的沙箱。
+        // 同时只考虑 policy=reuse_by_environment 的租约——排除了临时探测产生的 ephemeral 租约
         const reusableExistingLeases = parsed.config.reuseLease && input.heartbeatRunId !== null
           ? (await environmentsSvc.listLeases(input.environment.id))
               .filter((lease) => lease.leasePolicy === "reuse_by_environment")
@@ -465,9 +469,9 @@ function createSandboxEnvironmentDriver(
           },
         );
 
-        // Ad-hoc test leases are never publishable for reuse: storing them
-        // as `reuse_by_environment` would let a concurrent heartbeat resume
-        // the test's provider lease and lose its sandbox when the test ends.
+        // 临时探测（heartbeatRunId === null）的租约策略永远设为 ephemeral，
+        // 不允许 publish 为 reuse_by_environment。否则并发 heartbeat 可能误复用探测沙箱，
+        // 探测结束时触发级联释放导致正在运行的任务丢失沙箱
         const resolvedLeasePolicy = parsed.config.reuseLease && input.heartbeatRunId !== null
           ? "reuse_by_environment"
           : "ephemeral";
@@ -497,11 +501,8 @@ function createSandboxEnvironmentDriver(
         });
       }
 
-      // Built-in sandbox provider path. Same guard as the plugin-backed path:
-      // ad-hoc tests (heartbeatRunId === null) must never resume an existing
-      // provider lease, or releasing the test lease will terminate the live
-      // heartbeat run that shares it. Filter to leases whose policy is
-      // reuse_by_environment so non-reusable rows can never be matched.
+      // 内置沙箱 provider 路径，与插件路径一致的临时探测隔离策略：
+      // 只查询 policy=reuse_by_environment 的租约，避免误匹配临时探测租约
       const reusableProviderLeaseId = parsed.config.reuseLease && input.heartbeatRunId !== null
         ? (await environmentsSvc
             .listLeases(input.environment.id)
@@ -521,8 +522,7 @@ function createSandboxEnvironmentDriver(
         reusableProviderLeaseId,
       });
 
-      // Same ephemeral-policy-for-tests guard as the plugin-backed path:
-      // ad-hoc test leases must not be publishable for reuse.
+      // 临时探测租约不可 publish 为可复用，逻辑同插件路径
       const resolvedLeasePolicy = parsed.config.reuseLease && input.heartbeatRunId !== null
         ? "reuse_by_environment"
         : "ephemeral";
@@ -580,6 +580,8 @@ function createSandboxEnvironmentDriver(
       } catch {
         cleanupStatus = "failed";
       }
+      // retain_on_failure 策略：run 失败时保留沙箱连接，方便人工进入调试。
+      // 此时 releasedAt 置 null，沙箱不会被立即销毁
       const releaseStatus = input.lease.leasePolicy === "retain_on_failure" && input.status === "failed"
         ? "retained" as const
         : input.status;

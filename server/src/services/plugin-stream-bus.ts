@@ -5,6 +5,12 @@
  * each event to all connected SSE clients that match the (pluginId, channel,
  * companyId) tuple.
  *
+ * ── 设计说明 ──
+ * 基于内存的 pub/sub，意味着 SSE 流数据在同一进程内传播。
+ * 如果未来需要多进程部署，需要替换为分布式 pub/sub（如 Redis）。
+ * 三部分复合键 (pluginId, channel, companyId) 用于隔离不同插件
+ * 和不同公司的流数据，防止跨租户数据泄露。
+ *
  * @see PLUGIN_SPEC.md §19.8 — Real-Time Streaming
  */
 

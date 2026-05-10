@@ -39,6 +39,8 @@ export interface EnvironmentCapabilities {
   sandboxProviders: Record<SandboxEnvironmentProvider, EnvironmentProviderCapability>;
 }
 
+// 远程管理型适配器列表：这些 adapter 支持在远程环境（SSH/沙箱）中执行 agent 工作负载。
+// 非此列表的适配器（如 process、http）只能运行在本地环境
 const REMOTE_MANAGED_ADAPTERS = new Set<AgentAdapterType>([
   "acpx_local",
   "claude_local",
@@ -53,6 +55,8 @@ export function adapterSupportsRemoteManagedEnvironments(adapterType: string): b
   return REMOTE_MANAGED_ADAPTERS.has(adapterType as AgentAdapterType);
 }
 
+// 根据 adapter 类型返回其支持的 driver 列表：
+// 远程管理型支持 local + ssh + sandbox，普通型仅 local
 export function supportedEnvironmentDriversForAdapter(adapterType: string): EnvironmentDriver[] {
   return adapterSupportsRemoteManagedEnvironments(adapterType)
     ? ["local", "ssh", "sandbox"]

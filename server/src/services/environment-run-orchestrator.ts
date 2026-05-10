@@ -162,6 +162,9 @@ export function environmentRunOrchestrator(
    * Resolve the selected environment for a run. Ensures a local default
    * exists and resolves the priority chain:
    *   execution workspace config > issue settings > project policy > agent default > company default
+   *
+   * 默认环境 ID (defaultEnvironmentId) 指 Local 环境——如果未选择任何其他环境，
+   * 系统会确保 Local 环境存在并返回之。这是最后的降级保障
    */
   async function resolveEnvironment(input: {
     companyId: string;
@@ -171,6 +174,8 @@ export function environmentRunOrchestrator(
     const environmentId =
       input.selectedEnvironmentId || input.defaultEnvironmentId;
 
+    // 如果最终落到默认环境，用 ensureLocalEnvironment（自动创建+缓存）
+    // 其他环境走普通 getById 查询
     const environment =
       environmentId === input.defaultEnvironmentId
         ? await environmentsSvc.ensureLocalEnvironment(input.companyId)
@@ -188,6 +193,7 @@ export function environmentRunOrchestrator(
       });
     }
 
+    // 只有 active 状态的环境可以执行 run
     if (environment.status !== "active") {
       throw new EnvironmentRunError("environment_inactive", `Environment "${environment.name}" is not active (status: ${environment.status}).`, {
         environmentId: environment.id,

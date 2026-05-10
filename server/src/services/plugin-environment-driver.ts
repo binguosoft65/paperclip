@@ -1,3 +1,21 @@
+/**
+ * PluginEnvironmentDriver — 插件声明的环境/沙箱驱动适配层。
+ *
+ * 插件可以通过 manifest 声明 environmentDrivers，提供自定义的
+ * 运行环境（如 SSH 连接、Docker 容器、k8s pod 等）。
+ * 这个模块提供了发现、验证和执行这些驱动的宿主端逻辑。
+ *
+ * ── 驱动类型 ──
+ * - sandbox_provider: 沙箱提供者，Agent 代码执行环境。
+ * - environment_driver: 环境驱动，项目构建/部署环境。
+ *
+ * ── 安全边界 ──
+ * 所有与环境驱动的交互都通过 worker RPC 进行，宿主不直接操作
+ * 环境资源。插件的 worker 进程负责实际的资源管理（创建/销毁/探活），
+ * 宿主只做参数校验和结果转发。
+ *
+ * @see PLUGIN_SPEC.md §18 — Environment Drivers
+ */
 import type { Db } from "@paperclipai/db";
 import type {
   EnvironmentProbeResult,

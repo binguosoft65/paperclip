@@ -7,9 +7,9 @@ export const instanceSettings = pgTable(
     id: uuid("id").primaryKey().defaultRandom(),
     /** 单例键，唯一索引保证只有一行是 "default" */
     singletonKey: text("singleton_key").notNull().default("default"),
-    /** 通用配置（主题、语言、默认值等） */
+    /** 通用配置（主题、语言、默认值等），JSONB 类型支持按字段部分更新 */
     general: jsonb("general").$type<Record<string, unknown>>().notNull().default({}),
-    /** 实验性功能开关配置 */
+    /** 实验性功能开关配置，与 general 分离的设计便于区分稳定功能与测试中功能 */
     experimental: jsonb("experimental").$type<Record<string, unknown>>().notNull().default({}),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),

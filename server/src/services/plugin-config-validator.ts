@@ -5,6 +5,19 @@
  * declared in a plugin's manifest. This ensures that invalid configuration is
  * rejected at the API boundary, not discovered later at worker startup.
  *
+ * ── 设计选择：Ajv vs Zod ──
+ * manifest 验证使用 Zod，但 config 验证使用 Ajv。原因：
+ * 1) instanceConfigSchema 来自插件 manifest，是 JSON Schema 格式，
+ *    Zod 不支持直接解析 JSON Schema（需要转换）。
+ * 2) Ajv 是 JSON Schema 的参考实现，支持 JSON Schema 的所有特性
+ *    （$ref、if/then/else 等），这些 Zod 不完全支持。
+ * 3) ajv-formats 提供了 format 关键字支持（如 email、uri）。
+ *
+ * ── secret-ref format ──
+ * 插件可以声明配置字段类型为 "secret-ref"，表示该字段的值应该
+ * 是一个 Paperclip 秘密的 UUID，而非明文值。这个 format 只做 UI
+ * 层面的提示 —— UUID 的实际验证在 secret 解析器中完成。
+ *
  * @module server/services/plugin-config-validator
  */
 

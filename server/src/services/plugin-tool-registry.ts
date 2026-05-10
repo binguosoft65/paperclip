@@ -202,6 +202,16 @@ export interface PluginToolRegistry {
  * - `byNamespace`: namespaced name → `RegisteredTool` for O(1) lookups.
  * - `byPlugin`: pluginId → Set of namespaced names for efficient per-plugin ops.
  *
+ * ── 为什么是纯内存存储 ──
+ * 工具声明来自插件 manifest，manifest 本身已经持久化在数据库的
+ * PluginRecord.manifestJson 字段中。工具注册表只是一个运行时索引，
+ * 用于快速查找和路由，不需要独立持久化。当服务器重启时，所有插件
+ * 会重新加载 manifest 并重新注册工具。
+ *
+ * 双索引设计（byNamespace + byPlugin）：
+ * - byNamespace 提供了 O(1) 的名称解析（Agent 调用工具时使用）。
+ * - byPlugin 提供了高效的批量操作（插件禁用/卸载时一次性清除所有工具）。
+ *
  * @param workerManager - The worker manager used to dispatch `executeTool` RPC
  *   calls to plugin workers. If not provided, `executeTool` will throw.
  *

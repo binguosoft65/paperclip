@@ -69,6 +69,9 @@ async function runGit(args: string[], cwd: string) {
   return await execFileAsync("git", ["-C", cwd, ...args], { cwd });
 }
 
+// 关闭前 Git 就绪检查：检查工作空间是否有未提交变更、未推送 commit、
+// 是否已合入基准分支等。返回的 warnings 不阻断关闭，仅提醒用户。
+// blockingReasons 才会阻断关闭流程
 async function inspectGitCloseReadiness(workspace: ExecutionWorkspace): Promise<{
   git: ExecutionWorkspaceCloseGitReadiness | null;
   warnings: string[];
@@ -89,6 +92,7 @@ async function inspectGitCloseReadiness(workspace: ExecutionWorkspace): Promise<
     return { git: null, warnings };
   }
 
+  // 如果磁盘上的路径已不存在（如手动删除），Git 检查跳过，仅返回已知元信息
   if (!(await pathExists(workspacePath))) {
     warnings.push(`Workspace path "${workspacePath}" does not exist, so Paperclip cannot inspect git status before close.`);
     return {
@@ -745,6 +749,8 @@ export function executionWorkspaceService(db: Db) {
     },
 
     clearEnvironmentSelection: async (companyId: string, environmentId: string) => {
+      // 删除环境时的级联清理：遍历公司所有执行工作空间，将引用该环境的配置重置为 null。
+      // 使用事务保证一致性：防止部分工作空间更新成功而另部分失败导致引用不完整
       return db.transaction(async (tx) => {
         const rows = await tx
           .select({

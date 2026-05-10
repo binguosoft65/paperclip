@@ -1,3 +1,19 @@
+/**
+ * PluginHostServices — RPC handler factory for plugin worker → host bridge calls.
+ *
+ * 当插件 worker 调用 ctx.companies.list()、ctx.issues.get() 等宿主 API 时，
+ * JSON-RPC 请求通过 bridge 到达宿主端。这个模块为每个插件生成对应的
+ * HostServices 对象，包含所有宿主 API 的 handler 实现。
+ *
+ * ── 为什么每个插件单独的 HostServices ──
+ * 1) 隔离不同插件的权限：每个插件只能看到自己有权访问的数据。
+ * 2) 能力门控：HostServices 的每个方法都通过 PluginCapabilityValidator
+ *    检查插件是否声明了对应的能力。
+ * 3) 作用域隔离：查询时自动添加 pluginId、companyId 等过滤条件。
+ *
+ * @see PLUGIN_SPEC.md §14 — Host Services
+ * @see host-client-factory.ts — SDK-side client implementation
+ */
 import type { Db } from "@paperclipai/db";
 import {
   agentTaskSessions as agentTaskSessionsTable,

@@ -21,6 +21,15 @@ import { NotFoundPage } from "./NotFound";
  * `/:companyPrefix/plugins/:pluginId` when the plugin declares a page slot
  * and is enabled for that company.
  *
+ * ── 路由解析逻辑 ──
+ * 支持两种 URL 模式：
+ * 1. /:companyPrefix/plugins/:pluginId — 通过 pluginId 直接匹配。
+ * 2. /:companyPrefix/plugins/* — 通过 pluginRoutePath 通配符匹配。
+ *
+ * ── 为什么需要 routeSidebar ──
+ * 当插件提供了 routeSidebar 插槽时，侧边栏提供返回按钮（back affordance），
+ * 顶栏只需显示页面标题。否则，顶栏显示面包屑导航（Plugins > 插件名）。
+ *
  * @see doc/plugins/PLUGIN_SPEC.md §19.2 — Company-Context Routes
  * @see doc/plugins/PLUGIN_SPEC.md §24.4 — Company-Context Plugin Page
  */

@@ -57,6 +57,17 @@ function scopeConditions(
  * `plugin_state` table. Each plugin's data is strictly namespaced by
  * `pluginId` so plugins cannot read or write each other's state.
  *
+ * ── 五部分复合键设计 ──
+ * (pluginId, scopeKind, scopeId, namespace, stateKey)
+ * - pluginId: 隔离不同插件的数据。
+ * - scopeKind: 作用域类型（instance / company / project）。
+ * - scopeId: 作用域 ID（companyId 或 projectId），instance 时为 null。
+ * - namespace: 插件内部的命名空间，用于逻辑分组。
+ * - stateKey: 具体的 key。
+ *
+ * 这种设计允许插件在不同的作用域层级存储状态，而不需要多个表。
+ * 例如：插件可以在 instance 级别存全局配置，在公司级别存每个公司的设置。
+ *
  * This service implements the server-side backing for the `ctx.state` SDK
  * client exposed to plugin workers. The host is responsible for:
  * - enforcing `plugin.state.read` capability before calling `get` / `list`

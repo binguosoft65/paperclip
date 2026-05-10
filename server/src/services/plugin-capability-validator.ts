@@ -16,6 +16,15 @@
  *    access. If a plugin attempts an operation it did not declare, the
  *    call is rejected with a 403 error.
  *
+ * ── 能力模型的设计原则 ──
+ * 每个操作（如 "companies.list"）映射到一个或多个必需的能力
+ * （如 ["companies.read"]）。这种映射表模式（OPERATION_CAPABILITIES）
+ * 提供了显式的声明式安全模型：
+ * - 插件必须声明它需要的能力（manifest.capabilities）。
+ * - 宿主根据 OPERATION_CAPABILITIES 检查声明是否完整。
+ * - 运行时每次 bridge 调用都做检查，确保"声明即所得"。
+ * - 新增操作时必须在映射表中注册，防止遗漏安全检查。
+ *
  * @see PLUGIN_SPEC.md §15 — Capability Model
  * @see host-client-factory.ts — SDK-side capability gating
  */

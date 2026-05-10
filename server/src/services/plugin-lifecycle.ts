@@ -75,6 +75,16 @@ import { logger } from "../middleware/logger.js";
  *   upgrade_pending → uninstalled (reject upgrade and uninstall)
  *
  *   uninstalled → installed (reinstall)
+ *
+ * ── 设计考量 ──────────────────────────────────────────────
+ * - disabled → error 不允许：禁用态不应再产生运行时错误，
+ *   因为 worker 已在 disable 时被停止。
+ * - error → disabled 不允许：从错误恢复的唯一路径是通过重试
+ *   回到 ready，而不是先进入 disabled。
+ * - upgrade_pending 是一个中间态：新能力需要管理员审批，
+ *   审批通过才进入 ready，拒绝则进入 uninstalled。
+ * - uninstalled → installed 是唯一允许的"重新安装"路径，
+ *   只有已卸载的插件才能重新安装。
  */
 const VALID_TRANSITIONS: Record<string, readonly PluginStatus[]> = {
   installed: ["ready", "error", "uninstalled"],
@@ -87,6 +97,12 @@ const VALID_TRANSITIONS: Record<string, readonly PluginStatus[]> = {
 
 /**
  * Check whether a transition from `from` → `to` is valid.
+ *
+ * ── 设计说明 ──
+ * 使用可选链 (?.includes) 和空值合并 (?? false) 而不是直接判断：
+ * 如果 from 不在 VALID_TRANSITIONS 中（例如新增了状态但未更新映射表），
+ * 可选链返回 undefined，?? false 确保返回 false 而非 undefined。
+ * 这是一种防御性编程模式，防止遗漏状态映射导致静默跳过校验。
  */
 function isValidTransition(from: PluginStatus, to: PluginStatus): boolean {
   return VALID_TRANSITIONS[from]?.includes(to) ?? false;
@@ -322,7 +338,12 @@ export function pluginLifecycleManager(
   const registry = pluginRegistryService(db);
   const pluginLoaderInstance = loaderArg ?? pluginLoader(db);
   const emitter = new EventEmitter();
-  emitter.setMaxListeners(100); // plugins may have many listeners; 100 is a safe upper bound
+  // ── 设置最大监听器数量 ──
+  // 每个生命周期事件会被多个下游服务监听（job-scheduler、tool-dispatcher、
+  // event-bus、UI 推送等），默认的 10 个上限不够用。
+  // 100 是一个安全的经验值：既防止遗忘 removeListener 导致的内存泄漏，
+  // 又足以支持当前和可预见的未来的订阅者数量。
+  emitter.setMaxListeners(100);
 
   const log = logger.child({ service: "plugin-lifecycle" });
 
@@ -394,6 +415,12 @@ export function pluginLifecycleManager(
    * Stop the worker for a plugin if one is running.
    * This is a best-effort operation — if no worker manager is configured
    * or no worker is running, it silently succeeds.
+   *
+   * ── 为什么是 best-effort ──
+   * worker 进程可能已经崩溃（例如段错误），此时 stopWorker 调用会失败。
+   * 但这不应阻止状态机的继续推进 —— 插件需要能够从异常状态中恢复，
+   * 即使底层进程已经不存在。静默失败确保了状态机不会因为 worker
+   * 管理的副作用而卡住。
    */
   async function stopWorkerIfRunning(
     pluginId: string,
@@ -414,6 +441,16 @@ export function pluginLifecycleManager(
     }
   }
 
+  /**
+   * Activate a plugin's runtime when transitioning to the "ready" state.
+   *
+   * ── 设计考量 ──
+   * 通过 hasRuntimeServices() + loadSingle() 双方法检查来判断当前
+   * PluginLoader 是否支持运行时激活。这是为了兼容两种加载器模式：
+   * 1) 有运行时服务的加载器（需要启动 worker 进程）；
+   * 2) 纯状态管理的加载器（例如测试环境，不需要实际启动进程）。
+   * 如果不支持运行时激活，静默跳过（return void），不阻塞状态转换。
+   */
   async function activateReadyPlugin(pluginId: string): Promise<void> {
     const supportsRuntimeActivation =
       typeof pluginLoaderInstance.hasRuntimeServices === "function"
@@ -431,6 +468,15 @@ export function pluginLifecycleManager(
     }
   }
 
+  /**
+   * Deactivate a plugin's runtime when transitioning away from the "ready" state.
+   *
+   * ── 去激活策略 ──
+   * 优先使用 PluginLoader 的 unloadSingle() 进行有序卸载（释放资源、刷写缓冲区、
+   * 断开连接），这是最优雅的关闭路径。如果加载器不支持运行时去激活，
+   * 回退到 stopWorkerIfRunning() —— 直接停止 worker 进程。
+   * 这种双层降级策略确保了：无论是哪种加载器实现，都能正确清理资源。
+   */
   async function deactivatePluginRuntime(
     pluginId: string,
     pluginKey: string,
@@ -460,6 +506,16 @@ export function pluginLifecycleManager(
      * validated. It marks the plugin as ready in the database and immediately
      * triggers the plugin loader to start the worker process.
      *
+     * ── 流程说明 ──
+     * 1. 先执行状态转换（transition），持久化到数据库。
+     * 2. 再激活运行时（activateReadyPlugin），启动 RPC worker。
+     * 3. 最后发出 plugin.loaded + plugin.enabled 两个事件。
+     *
+     * 先持久化后激活是有意为之的：即使 worker 启动失败，
+     * 数据库状态已经更新，下游服务可以通过 status_changed 事件感知。
+     * 如果反过来（先启动 worker 再持久化），worker 启动成功后但
+     * 持久化失败会导致状态不一致 —— worker 在跑但数据库标记为 installed。
+     *
      * @param pluginId - The UUID of the plugin to load.
      * @returns The updated plugin record.
      */
@@ -485,6 +541,12 @@ export function pluginLifecycleManager(
      * Similar to load(), this method transitions the plugin to 'ready' and starts
      * its worker, but it specifically targets plugins that are currently disabled.
      *
+     * ── 边界条件 ──
+     * 只有 disabled、error、upgrade_pending 三种状态可以 enable。
+     * 注意：installed → ready 必须走 load() 而非 enable()，
+     * 因为新安装的插件需要完整的首次激活流程（包括 manifest 校验、
+     * 工具注册等），enable 假定这些已经完成。
+     *
      * @param pluginId - The UUID of the plugin to enable.
      * @returns The updated plugin record.
      */
@@ -509,6 +571,22 @@ export function pluginLifecycleManager(
     },
 
     // -- disable ----------------------------------------------------------
+    /**
+     * disable — 将运行中的插件切换到 disabled 状态。
+     *
+     * ── 停用流程 ──
+     * 1. 先停止运行时（deactivatePluginRuntime），确保 worker 不再处理请求。
+     * 2. 再执行状态转换（transition），持久化到数据库。
+     * 3. 最后发出 plugin.disabled 事件。
+     *
+     * 先停运行时再持久化的顺序与 load() 相反，这是有意为之：
+     * 如果先更新数据库再停进程，数据库已经标记为 disabled 但
+     * worker 仍在运行，存在短暂的"已禁用但仍在执行任务"窗口期。
+     * 对于需要严格停止的场景（如安全违规），先停进程更安全。
+     *
+     * 仅允许从 ready 状态进入 disabled，因为其他状态（如 error、installed）
+     * 本来就没有运行中的 worker，不需要 disable。
+     */
     async disable(pluginId: string, reason?: string): Promise<PluginRecord> {
       const plugin = await requirePlugin(pluginId);
 
@@ -532,6 +610,20 @@ export function pluginLifecycleManager(
     },
 
     // -- unload -----------------------------------------------------------
+    /**
+     * unload — 卸载插件（软删除或硬删除）。
+     *
+     * ── 删除策略 ──
+     * - removeData=false（默认）：软删除。将状态标记为 uninstalled，
+     *   保留数据库记录用于历史审计。支持重新安装（uninstalled → installed）。
+     * - removeData=true：硬删除。级联删除所有关联数据（配置、设置、job 记录等），
+     *   不可逆。仅在用户明确确认时使用。
+     *
+     * ── 特殊处理：已卸载插件再次调用 unload ──
+     * 如果插件状态已经是 uninstalled 且 removeData=true，执行硬删除。
+     * 这允许先软删除（状态变为 uninstalled），用户后悔后再执行硬删除。
+     * 但如果没有传 removeData=true，抛 BadRequest，防止重复软删除。
+     */
     async unload(
       pluginId: string,
       removeData = false,
@@ -588,10 +680,21 @@ export function pluginLifecycleManager(
     },
 
     // -- markError --------------------------------------------------------
+    /**
+     * markError — 将插件标记为错误状态。
+     *
+     * ── 为什么先停运行时再转换状态 ──
+     * 插件进入 error 状态意味着其 worker 可能处于不稳定状态。
+     * 先调用 deactivatePluginRuntime() 确保：
+     * 1) 不会有新的 RPC 请求被路由到这个有问题的 worker。
+     * 2) worker 的 crash loop（崩溃循环重启）被终止。
+     * 3) 资源被及时释放，避免泄漏。
+     *
+     * workerManager 的指数退避自动重启机制在这里被有意覆盖：
+     * markError 是管理员或系统有意将插件下线，不应触发自动恢复。
+     * 从 error 恢复的唯一路径是通过 enable() 手动触发。
+     */
     async markError(pluginId: string, error: string): Promise<PluginRecord> {
-      // Stop the worker — the plugin is in an error state and should not
-      // continue running. The worker manager's auto-restart is disabled
-      // because we are intentionally taking the plugin offline.
       const plugin = await requirePlugin(pluginId);
       await deactivatePluginRuntime(pluginId, plugin.pluginKey);
 
@@ -605,6 +708,17 @@ export function pluginLifecycleManager(
     },
 
     // -- markUpgradePending -----------------------------------------------
+    /**
+     * markUpgradePending — 标记插件需要升级审批。
+     *
+     * ── 为什么需要这个中间态 ──
+     * 当插件升级引入了新的能力（capabilities）时，不能直接进入 ready，
+     * 因为新能力可能带来安全风险或资源消耗变化。
+     * upgrade_pending 状态给了管理员审查新能力并决定是否批准的机会。
+     *
+     * 去激活运行时是为了在审批期间不运行旧版本，防止"已升级但未审批"
+     * 的中间状态下旧 worker 继续处理请求。
+     */
     async markUpgradePending(pluginId: string): Promise<PluginRecord> {
       const plugin = await requirePlugin(pluginId);
       await deactivatePluginRuntime(pluginId, plugin.pluginKey);
@@ -630,6 +744,12 @@ export function pluginLifecycleManager(
      *    to await operator approval (worker stays stopped).
      * 5. If no new capabilities are added, transitions the plugin back to `ready`
      *    with the updated version and manifest metadata.
+     *
+     * ── 能力对比的逻辑 ──
+     * 升级时比较新旧 manifest 的 capabilities 数组差异：
+     * - 如果新版本有新增能力（旧版本中没有的能力），需要管理员审批。
+     * - 如果只是版本号变化但能力集不变（bugfix、性能优化），直接进入 ready。
+     * - 如果新版本移除了某些能力，不需要审批 —— 移除能力不会带来新的风险。
      *
      * @param pluginId - The UUID of the plugin to upgrade.
      * @param version - Optional target version specifier.
@@ -709,6 +829,19 @@ export function pluginLifecycleManager(
     },
 
     // -- startWorker ------------------------------------------------------
+    /**
+     * startWorker — 手动启动插件的 worker 进程。
+     *
+     * ── 与 load/enable 的区别 ──
+     * startWorker 不改变插件的生命周期状态，它假设插件已经在 ready 状态，
+     * 只是需要启动（或重启）底层 worker。这种分离允许：
+     * 1) 服务器启动时，先从数据库恢复所有 ready 插件的状态，再逐个启动 worker。
+     * 2) 不改变插件的"就绪"标记，只控制运行时进程。
+     * 3) 可以在不修改插件状态的情况下调试 worker 问题。
+     *
+     * 如果没有配置 workerManager，抛 BadRequest —— 不静默跳过，
+     * 因为调用方期望 worker 确实被启动。
+     */
     async startWorker(
       pluginId: string,
       options: WorkerStartOptions,
@@ -746,6 +879,17 @@ export function pluginLifecycleManager(
     },
 
     // -- stopWorker -------------------------------------------------------
+    /**
+     * stopWorker — 手动停止插件的 worker 进程，不改变生命周期状态。
+     *
+     * ── 使用场景 ──
+     * 主要用于服务器优雅关闭（graceful shutdown）期间，
+     * 逐个停止所有插件的 worker。插件在数据库中的状态保持不变（仍是 ready），
+     * 以便下次启动时可以自动恢复所有 worker。
+     *
+     * 与 disable 的区别：stopWorker 只停止进程，不修改数据库记录。
+     * 与 startWorker 对称：都只操作运行时，不触及生命周期。
+     */
     async stopWorker(pluginId: string): Promise<void> {
       if (!workerManager) return; // No worker manager — nothing to stop
 

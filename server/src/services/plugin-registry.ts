@@ -36,6 +36,13 @@ import { conflict, notFound } from "../errors.js";
 /**
  * Detect if a Postgres error is a unique-constraint violation on the
  * `plugins_plugin_key_idx` unique index.
+ *
+ * ── 为什么需要这个函数 ──
+ * 插件安装使用 manifest.id 作为 pluginKey（唯一标识符），
+ * 不允许重名安装。但是"已安装重试"和"重装（先卸载再安装）"
+ * 需要区分：重装时如果旧记录是 uninstalled 状态，允许复用。
+ * 直接依赖 Postgres 的错误码 + 约束名比先查询再判断更可靠 ——
+ * 避免了竞态条件（TOCTOU）。
  */
 function isPluginKeyConflict(error: unknown): boolean {
   if (typeof error !== "object" || error === null) return false;
@@ -135,6 +142,17 @@ export function pluginRegistryService(db: Db) {
      * The caller is expected to have already resolved and validated the
      * manifest from the package.  This method persists the plugin row and
      * assigns the next install order.
+     *
+     * ── 重装策略 ──
+     * 如果 pluginKey 已存在且状态为 uninstalled（软删除），执行重装：
+     * - 复用原有数据库行（id 不变），更新版本和 manifest。
+     * - 这样插件的作用域数据（配置、设置、job 记录）保持稳定。
+     * - 如果插件被硬删除（removeData=true），记录已不存在，
+     *   下次安装会创建新行。
+     *
+     * ── 竞态处理 ──
+     * 先用 getByKey 查询可避免大部分冲突，但在高并发下仍可能有
+     * 并发的 insert。因此 insert 操作也捕获 23505 错误兜底。
      */
     install: async (input: InstallPlugin, manifest: PaperclipPluginManifestV1) => {
       const existing = await getByKey(manifest.id);

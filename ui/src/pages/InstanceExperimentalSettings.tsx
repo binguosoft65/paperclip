@@ -138,6 +138,9 @@ export function InstanceExperimentalSettings() {
     queryFn: () => instanceSettingsApi.getExperimental(),
   });
 
+  // 实验性功能开关变更的通用 mutation。
+  // 成功后同时刷新 health 接口缓存，因为部分实验性功能（如 environments）
+  // 会影响健康检查接口返回的状态信息。
   const toggleMutation = useMutation({
     mutationFn: async (patch: PatchInstanceExperimentalSettings) =>
       instanceSettingsApi.updateExperimental(patch),
@@ -210,12 +213,18 @@ export function InstanceExperimentalSettings() {
     experimentalQuery.data?.enableIssueGraphLivenessAutoRecovery === true;
   const lookbackHours =
     experimentalQuery.data?.issueGraphLivenessAutoRecoveryLookbackHours ?? 24;
+  // 回看小时数的前端校验。后端约束为 1~720 小时（即 30 天），
+  // 前端也做同样限制以避免无效请求抵达服务器。
+  // 720 小时的限制基于业务考虑：极少需要回溯超过 30 天的活性检测数据。
   const parsedLookbackHours = Number.parseInt(lookbackHoursDraft, 10);
   const lookbackHoursIsValid =
     Number.isInteger(parsedLookbackHours) && parsedLookbackHours >= 1 && parsedLookbackHours <= 720;
   const recoveryActionPending =
     toggleMutation.isPending || previewMutation.isPending || runRecoveryMutation.isPending;
 
+  // 开启自动恢复前的预览：先获取预览数据再弹出确认对话框，
+  // 让管理员在了解影响范围后再决定是否真正启用。
+  // 这是重要的安全设计——避免管理员在不知情的情况下开启可能产生大量升级 Issue 的功能。
   function previewForEnable() {
     if (!lookbackHoursIsValid) {
       setActionError(t("experimental.lookbackError"));
@@ -224,6 +233,8 @@ export function InstanceExperimentalSettings() {
     previewMutation.mutate(parsedLookbackHours);
   }
 
+  // "仅启用"：开启功能但不立即执行恢复，适用于管理员想先准备环境
+  // 或等待非高峰时段再执行的场景。
   function enableOnly() {
     if (!lookbackHoursIsValid) return;
     toggleMutation.mutate({
@@ -234,6 +245,8 @@ export function InstanceExperimentalSettings() {
     });
   }
 
+  // "启用并执行"：开启功能后立即执行一次恢复任务，适用于管理员确认后马上处理。
+  // 两个操作通过 onSuccess 链式串行执行，保证先保存配置再触发恢复。
   function enableAndRun() {
     if (!lookbackHoursIsValid) return;
     toggleMutation.mutate({

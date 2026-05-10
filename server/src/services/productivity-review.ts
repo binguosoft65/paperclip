@@ -20,6 +20,12 @@ import {
 } from "./recovery/model-profile-hint.js";
 import { RECOVERY_ORIGIN_KINDS } from "./recovery/origins.js";
 
+// 生产力审查（Productivity Review）模块 — 自动检测 Agent 的工作效率异常。
+// 当 Agent 出现以下模式时自动创建 Review Issue 通知相关负责人：
+// 1. no_comment_streak: 连续多次 Run 完成但没有创建任何 Issue 评论（Agent 可能没有有效产出）
+// 2. long_active_duration: Issue 长时间保持 active 状态但没有明显进展
+// 3. high_churn: 短时间内大量 Run 启动/结束，但没有相应的评论或产出（可能陷入重复循环）
+
 export const PRODUCTIVITY_REVIEW_ORIGIN_KIND = RECOVERY_ORIGIN_KINDS.issueProductivityReview;
 export const DEFAULT_PRODUCTIVITY_REVIEW_NO_COMMENT_STREAK_RUNS = 10;
 export const DEFAULT_PRODUCTIVITY_REVIEW_LONG_ACTIVE_HOURS = 6;

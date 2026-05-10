@@ -52,6 +52,12 @@ interface Subscription {
  *   `"plugin.acme."`. The wildcard `*` is only supported as a trailing token.
  *
  * No full glob syntax is supported — only trailing `*` after a `.` separator.
+ *
+ * ── 为什么只支持尾部通配符 ──
+ * 1. 避免复杂的 glob 匹配带来的性能开销。
+ * 2. 防止过度宽泛的匹配（如 "plugin.*.*"）导致事件风暴。
+ * 3. 尾部通配符（"plugin.foo.*"）的语义清晰：订阅某个插件发出的所有事件。
+ * 4. 不支持前缀通配符（如 "*.created"），因为这会匹配到不相关的事件类型。
  */
 function matchesPattern(eventType: string, pattern: string): boolean {
   if (pattern === eventType) return true;
@@ -168,6 +174,13 @@ export function createPluginEventBus(): PluginEventBus {
    * Subscribers are called concurrently (Promise.all). Each handler's errors
    * are caught individually and collected in the returned `errors` array so a
    * single misbehaving plugin cannot interrupt delivery to other plugins.
+   *
+   * ── 隔离策略 ──
+   * 每个 handler 的错误被单独捕获并收集到 errors 数组中，而不是让
+   * Promise.all 整体拒绝。这意味着：
+   * 1) 一个插件的订阅者抛出异常，不影响其他插件的投递。
+   * 2) 调用方可以检查 errors 数组，决定是否重试或记录告警。
+   * 3) 即使所有 handler 都失败了，事件投递本身也算"成功"（没有抛出）。
    */
   async function emit(event: PluginEvent): Promise<PluginEventBusEmitResult> {
     const errors: Array<{ pluginId: string; error: unknown }> = [];
@@ -207,6 +220,14 @@ export function createPluginEventBus(): PluginEventBus {
   /**
    * Return a scoped handle for a specific plugin. The handle exposes only the
    * plugin's own subscription list and enforces the plugin namespace on `emit`.
+   *
+   * ── 为什么需要 ScopedPluginEventBus ──
+   * 每个插件应该只能看到自己的订阅和发出自己命名空间的事件。
+   * ScopedPluginEventBus 通过闭包捕获 pluginId，确保：
+   * 1) 插件不能访问其他插件的订阅列表（隔离）。
+   * 2) 插件发出的事件自动加上 "plugin.<pluginId>." 前缀（防伪造）。
+   * 3) 插件不能发出 "plugin." 前缀的事件（防跨命名空间欺骗）。
+   * 这种设计遵循最小权限原则（Principle of Least Privilege）。
    */
   function forPlugin(pluginId: string): ScopedPluginEventBus {
     return {

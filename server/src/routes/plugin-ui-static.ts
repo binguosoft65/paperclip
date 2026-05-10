@@ -22,6 +22,12 @@
  * - Other files receive `Cache-Control: public, max-age=0, must-revalidate`
  *   with ETag-based conditional request support.
  *
+ * ── 为什么 devUiUrl 需要 SSRF 保护 ──
+ * 开发模式下，插件 UI 可能由外部 dev server 提供（如 Vite）。
+ * devUiUrl 允许插件指定这个地址。但必须限制只能访问本地回环地址
+ * （127.0.0.1、localhost），防止插件开发者将 URL 指向内部服务，
+ * 通过宿主服务器发起 SSRF 攻击。
+ *
  * @module server/routes/plugin-ui-static
  * @see doc/plugins/PLUGIN_SPEC.md §19.0.3 — Bundle Serving
  * @see doc/plugins/PLUGIN_SPEC.md §25.4.5 — Frontend Cache Invalidation

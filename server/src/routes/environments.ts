@@ -44,17 +44,22 @@ export function environmentRoutes(
   const projects = projectService(db);
   const secrets = secretService(db);
 
+  // 防御性深拷贝：确保后续 config 合并不会突变原始引用
   function parseObject(value: unknown): Record<string, unknown> {
     return value && typeof value === "object" && !Array.isArray(value)
       ? (value as Record<string, unknown>)
       : {};
   }
 
+  // 旧版权限检查：部分 agent 通过 canCreateAgents 标志隐式获得环境管理权限。
+  // 新版应走显式 grant，此函数只作为向后兼容的 fallback
   function canCreateAgents(agent: { permissions: Record<string, unknown> | null | undefined }) {
     if (!agent.permissions || typeof agent.permissions !== "object") return false;
     return Boolean((agent.permissions as Record<string, unknown>).canCreateAgents);
   }
 
+  // 环境变更权限断言：三层降级——1) board local admin/instance admin 透传；
+  // 2) 拥有 environments:manage 显式 grant 的用户；3) 拥有 canCreateAgents 旧权限的 agent
   async function assertCanMutateEnvironments(req: Request, companyId: string) {
     assertCompanyAccess(req, companyId);
 
@@ -84,6 +89,8 @@ export function environmentRoutes(
     throw forbidden("Missing permission: environments:manage");
   }
 
+  // 读权限检查（不同于写权限）：board 用户即使没有 manage 权限仍可看到环境列表，
+  // 但 config 会被脱敏。agent 必须拥有 environments:manage 才能读取 config
   async function actorCanReadEnvironmentConfigurations(req: Request, companyId: string) {
     assertCompanyAccess(req, companyId);
 
@@ -99,6 +106,8 @@ export function environmentRoutes(
     return allowedByGrant || canCreateAgents(actorAgent);
   }
 
+  // 对无权查看 config 的调用者返回脱敏数据：config 和 metadata 字段置空，
+  // 并添加 configRedacted/metadataRedacted 标记以便前端区分"无配置"和"被脱敏"
   function redactEnvironmentForRestrictedView<T extends {
     config: Record<string, unknown>;
     metadata: Record<string, unknown> | null;
@@ -112,6 +121,8 @@ export function environmentRoutes(
     };
   }
 
+  // 构建环境变更的操作审计摘要，只记录变更字段的元信息（如 config 的顶级 key 数量），
+  // 不记录敏感值本身，满足审计合规要求的同时避免暴露凭据
   function summarizeEnvironmentUpdate(
     patch: Record<string, unknown>,
     environment: {
@@ -146,6 +157,8 @@ export function environmentRoutes(
     return details;
   }
 
+  // 列出公司所有环境。支持按 status/driver 过滤。
+  // 无 manage 权限的用户仅能看到脱敏后的环境元信息
   router.get("/companies/:companyId/environments", async (req, res) => {
     const companyId = req.params.companyId as string;
     assertCompanyAccess(req, companyId);
@@ -161,6 +174,8 @@ export function environmentRoutes(
     res.json(rows.map((environment) => redactEnvironmentForRestrictedView(environment)));
   });
 
+  // 返回当前环境能力的完整清单：所有 adapter 类型对每种 driver/provider 的支持状态，
+  // 以及已注册插件沙箱 provider 的 schema 供前端渲染动态表单
   router.get("/companies/:companyId/environments/capabilities", async (req, res) => {
     const companyId = req.params.companyId as string;
     assertCompanyAccess(req, companyId);
@@ -191,6 +206,8 @@ export function environmentRoutes(
     ));
   });
 
+  // 创建环境。config 经过 normalizeEnvironmentConfigForPersistence 处理，
+  // 将明文的 SSH 私钥自动转为 secret_ref 存储，避免凭据以明文落库
   router.post("/companies/:companyId/environments", validate(createEnvironmentSchema), async (req, res) => {
     const companyId = req.params.companyId as string;
     await assertCanMutateEnvironments(req, companyId);
@@ -229,6 +246,7 @@ export function environmentRoutes(
     res.status(201).json(environment);
   });
 
+  // 按 ID 获取单个环境。脱敏规则同列表接口
   router.get("/environments/:id", async (req, res) => {
     const environment = await svc.getById(req.params.id as string);
     if (!environment) {
@@ -244,6 +262,8 @@ export function environmentRoutes(
     res.json(redactEnvironmentForRestrictedView(environment));
   });
 
+  // 查询环境的所有租约。仅限有 manage 权限的调用者，
+  // 因为租约中可能包含 provider 层面的敏感信息（如 providerLeaseId）
   router.get("/environments/:id/leases", async (req, res) => {
     const environment = await svc.getById(req.params.id as string);
     if (!environment) {
@@ -261,6 +281,7 @@ export function environmentRoutes(
     res.json(leases);
   });
 
+  // 查询单个租约。同上需要 manage 权限
   router.get("/environment-leases/:leaseId", async (req, res) => {
     const lease = await svc.getLeaseById(req.params.leaseId as string);
     if (!lease) {
@@ -275,6 +296,10 @@ export function environmentRoutes(
     res.json(lease);
   });
 
+  // 更新环境。config 合并策略：
+  // - 如果同时更改 driver，config 完全替换为新值（不同 driver 的 schema 不同）
+  // - 如果仅更改 config 字段，做深层合并（partial update）
+  // - 机密字段（SSH 私钥）自动转为 secret_ref
   router.patch("/environments/:id", validate(updateEnvironmentSchema), async (req, res) => {
     const existing = await svc.getById(req.params.id as string);
     if (!existing) {
@@ -334,6 +359,10 @@ export function environmentRoutes(
     res.json(environment);
   });
 
+  // 删除环境。级联清理三步：
+  // 1) 清除所有执行工作空间对该环境的引用
+  // 2) 清除 issue 和 project 的环境选择
+  // 3) 如果该环境有 SSH 私钥 secret，一并删除以免残留凭据
   router.delete("/environments/:id", async (req, res) => {
     const existing = await svc.getById(req.params.id as string);
     if (!existing) {
@@ -374,6 +403,8 @@ export function environmentRoutes(
     res.json(removed);
   });
 
+  // 探测已保存环境的连通性（probe）。
+  // 用于 SSH 连接测试和沙箱 provider 状态检查
   router.post("/environments/:id/probe", async (req, res) => {
     const environment = await svc.getById(req.params.id as string);
     if (!environment) {
@@ -403,6 +434,8 @@ export function environmentRoutes(
     res.json(probe);
   });
 
+  // 探测未保存的环境配置（probe-config），允许用户在保存前测试连接性。
+  // 使用 ""unsaved"" 作为虚拟环境 ID，不持久化任何数据
   router.post(
     "/companies/:companyId/environments/probe-config",
     validate(probeEnvironmentConfigSchema),

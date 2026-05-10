@@ -1,5 +1,16 @@
+// Run 活跃度分类器（Run Liveness Classifier）。
+// 核心职责：判断一个 Run 是否"活着"（即 Agent 在有效推进），还是卡住了、需要人工介入。
+// 活跃度状态直接影响后续是否触发自动恢复、续作或告警。
+// 分类依据：Run 的结果文本、Issue 状态、Agent 产生的实际产出（评论、文档、工作成果等）。
+
 import type { HeartbeatRunStatus, IssueStatus, RunLivenessState } from "@paperclipai/shared";
 
+// 活跃度的"可操作性"分类，用于指导下一步行动决策。
+// - runnable: Run 产出有效，正常继续
+// - manager_review: 需要人工审核（涉及风险操作或降级建议）
+// - blocked_external: 被外部因素阻塞（凭证、密钥等）
+// - approval_required: 需要审批
+// - unknown: 无法判断
 export type RunLivenessActionability =
   | "runnable"
   | "manager_review"
@@ -13,6 +24,9 @@ export interface RunLivenessIssueInput {
   description: string | null;
 }
 
+// 活跃度的证据输入 — 衡量 Agent 是否产生了实际价值产出。
+// 统计期间内的各类活动数量，用于区分"忙"和"有效推进"。
+// 例如：只产生了 activity 事件但没有新的文档修订，可能表明 Agent 在做无用功。
 export interface RunLivenessEvidenceInput {
   issueCommentsCreated: number;
   documentRevisionsCreated: number;

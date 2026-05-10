@@ -15,6 +15,10 @@ import type {
   PluginMigrationRecord,
 } from "@paperclipai/shared";
 
+// ── SQL 安全相关常量 ──
+// IDENTIFIER_RE: 校验 PostgreSQL 标识符合法性，防止 SQL 注入。
+// 只允许字母、数字、下划线，不允许特殊字符或多字节字符。
+// MAX_POSTGRES_IDENTIFIER_LENGTH: PostgreSQL 标识符最大长度为 63 字节。
 const IDENTIFIER_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const MAX_POSTGRES_IDENTIFIER_LENGTH = 63;
 
@@ -25,6 +29,21 @@ export type PluginDatabaseRuntimeResult<T = Record<string, unknown>> = {
   rowCount?: number;
 };
 
+/**
+ * 为插件生成唯一且确定性的数据库 schema 命名空间。
+ *
+ * ── 设计考量 ──
+ * 每个插件拥有独立的 Postgres schema（命名空间），实现存储隔离。
+ * 命名格式：plugin_{slug}_{hash}，例如 plugin_linear_abc123def0。
+ *   - slug: 从 pluginKey 派生，可读性强，便于 DBA 识别。
+ *   - hash: SHA-256 前 10 字符，确保唯一性，防止命名冲突。
+ *   - 总长度：截断至 63 字符（PostgreSQL 标识符上限）。
+ *
+ * ── 为什么需要 hash ──
+ * pluginKey 是人为定义的字符串（如 "acme.linear"），可能被自定义
+ * 为任何值。hash 保证了即使在 slug 被手动缩短后，两个不同的
+ * pluginKey 也不会碰撞到同一个命名空间。
+ */
 export function derivePluginDatabaseNamespace(
   pluginKey: string,
   namespaceSlug?: string,
@@ -169,6 +188,21 @@ function assertNoBannedSql(statement: string): void {
   }
 }
 
+/**
+ * 验证插件迁移 SQL 语句的合法性。
+ *
+ * ── 安全边界 ──
+ * 1. 禁止 DROP/TRUNCATE — Phase 1 不允许破坏性操作，防止插件误删数据。
+ * 2. 只允许 DDL（CREATE/ALTER/COMMENT）— 迁移文件只能改结构，不能改数据。
+ * 3. 必须使用完全限定 schema 名（如 "plugin_xxx.table"），防止插件
+ *    操作宿主或其他插件的表。
+ * 4. 引用 public schema 的表只能是白名单中的核心表，且只能只读引用
+ *   （FROM/JOIN/REFERENCES），不能修改。
+ * 5. 禁止危险操作：CREATE EXTENSION、CREATE FUNCTION、GRANT、COPY 等。
+ *
+ * 这些限制确保了插件数据库操作的安全性，即使插件被攻破，攻击者
+ * 也无法通过 SQL 注入影响宿主或其他插件的数据。
+ */
 export function validatePluginMigrationStatement(
   statement: string,
   namespace: string,

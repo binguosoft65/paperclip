@@ -119,6 +119,8 @@ export function parseIssueExecutionWorkspaceSettings(raw: unknown): IssueExecuti
   };
 }
 
+// 环境 ID 解析优先级链：执行工作空间配置 > issue 设置 > 项目策略 > agent 默认 > 公司默认（Local）。
+// 任何上层显式设置为 null 表示"不使用该层配置"而非"覆盖为 null"，会跳过该层
 export function resolveExecutionWorkspaceEnvironmentId(input: {
   projectPolicy: ProjectExecutionWorkspacePolicy | null;
   issueSettings: IssueExecutionWorkspaceSettings | null;

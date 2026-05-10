@@ -14,6 +14,12 @@
  * All routes require board-level authentication, and sensitive instance-wide
  * mutations such as install/upgrade require instance-admin privileges.
  *
+ * ── 路由注册顺序 ──
+ * 静态路由（/ui-contributions、/local-folders 等）在参数化路由
+ * （/:pluginId/tools 等）之前注册。这是 Express 路由匹配的特性：
+ * 如果参数化路由先注册，它会匹配所有请求包括 /ui-contributions，
+ * 导致 404 或错误匹配。静态路由必须先注册。
+ *
  * @module server/routes/plugins
  * @see doc/plugins/PLUGIN_SPEC.md for the full plugin specification
  */

@@ -45,6 +45,10 @@ const ENVIRONMENT_SUPPORT_ROWS = AGENT_ADAPTER_TYPES.map((adapterType) => ({
   support: getAdapterEnvironmentSupport(adapterType),
 }));
 
+// 将前端表单状态转为 API payload。
+// SSH 模式：如果用户输入了新私钥明文（sshPrivateKey），则不发送 privateKeySecretRef；
+// 如果用户从下拉列表选择了已保存的 secret，则发送 secret_ref 结构由服务端解析。
+// 注意：二者互斥，不能同时发送
 function buildEnvironmentPayload(form: EnvironmentFormState) {
   return {
     name: form.name.trim(),

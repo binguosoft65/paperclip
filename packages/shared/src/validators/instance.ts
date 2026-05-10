@@ -18,6 +18,9 @@ function presetSchema<T extends readonly number[]>(presets: T, label: string) {
   );
 }
 
+// 备份保留策略使用预设值而非自由输入，原因有二：
+// 1. 避免管理员设置不合理参数导致磁盘爆满或数据过早被清理；
+// 2. 预设值可枚举，前端展示为按钮组而非输入框，降低用户犯错概率。
 export const backupRetentionPolicySchema = z.object({
   dailyDays: presetSchema(DAILY_RETENTION_PRESETS, "dailyDays").default(DEFAULT_BACKUP_RETENTION.dailyDays),
   weeklyWeeks: presetSchema(WEEKLY_RETENTION_PRESETS, "weeklyWeeks").default(DEFAULT_BACKUP_RETENTION.weeklyWeeks),
@@ -35,6 +38,9 @@ export const instanceGeneralSettingsSchema = z.object({
 
 export const patchInstanceGeneralSettingsSchema = instanceGeneralSettingsSchema.partial();
 
+// 实验性设置全部默认关闭，需要管理员手动开启。
+// issueGraphLivenessAutoRecoveryLookbackHours 限制在 1~720 小时（30天），
+// 避免过大的回看窗口导致性能问题或无意义的旧数据扫描。
 export const instanceExperimentalSettingsSchema = z.object({
   enableEnvironments: z.boolean().default(false),
   enableIsolatedWorkspaces: z.boolean().default(false),

@@ -29,6 +29,12 @@
  *    scheduling when plugins start/stop. On registration, the scheduler
  *    computes `nextRunAt` for all active jobs that don't already have one.
  *
+ * ── 设计限制 ──
+ * - 基于 setInterval 而非分布式调度器，只适用于单进程部署。
+ * - 30 秒 tick 意味着精度为 ±30 秒，不适合秒级精度需求。
+ * - 最大 10 个并发 job 执行（DEFAULT_MAX_CONCURRENT_JOBS），
+ *   防止大量 job 同时执行耗尽系统资源。
+ *
  * @see PLUGIN_SPEC.md §17 — Scheduled Jobs
  * @see ./plugin-job-store.ts — Persistence layer
  * @see ./cron.ts — Cron parsing utilities

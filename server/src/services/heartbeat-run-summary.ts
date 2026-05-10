@@ -1,5 +1,10 @@
+// resultJson 摘要字段的最大长度（字符数）。摘要用于前端展示和 Issue 评论，
+// 过长的内容会被截断以避免数据库开销和 UI 溢出。500 字符足够表达一次 Run 的关键结论。
 export const HEARTBEAT_RUN_RESULT_SUMMARY_MAX_CHARS = 500;
+// stdout/stderr 等详细输出在摘要中的截断阈值。4K 字符足以看清错误堆栈而不会撑爆 JSON。
 export const HEARTBEAT_RUN_RESULT_OUTPUT_MAX_CHARS = 4_096;
+// resultJson 在数据库列中的安全大小上限。超过 64KB 的 resultJson 会被截断处理，
+// 防止极端情况下一行数据占用过多页面缓存或网络带宽。
 export const HEARTBEAT_RUN_SAFE_RESULT_JSON_MAX_BYTES = 64 * 1024;
 
 function truncateSummaryText(value: unknown, maxLength = HEARTBEAT_RUN_RESULT_SUMMARY_MAX_CHARS) {
@@ -17,6 +22,8 @@ function readCommentText(value: unknown) {
   return trimmed.length > 0 ? trimmed : null;
 }
 
+// 合并 resultJson 与 summary：如果 resultJson 中没有 summary 字段，将显式传入的 summary 注入进去。
+// 这确保即使 adapter 返回的 resultJson 缺少摘要，系统也能从其他地方（如 Run 的 error 字段）构造摘要。
 export function mergeHeartbeatRunResultJson(
   resultJson: Record<string, unknown> | null | undefined,
   summary: string | null | undefined,
@@ -35,6 +42,7 @@ export function mergeHeartbeatRunResultJson(
     return baseResult;
   }
 
+  // 如果 resultJson 已有 summary，不覆盖 — adapter 返回的 summary 优先级更高。
   if (readCommentText(baseResult.summary)) {
     return baseResult;
   }
@@ -96,6 +104,9 @@ export function summarizeHeartbeatRunResultJson(
   return Object.keys(summary).length > 0 ? summary : null;
 }
 
+// 从 resultJson 中提取适合作为 Issue 评论的文本。
+// 优先使用 summary，降级到 result，再降级到 message。
+// 用于在 Issue 线程中自动生成 Run 完成后的总结评论。
 export function buildHeartbeatRunIssueComment(
   resultJson: Record<string, unknown> | null | undefined,
 ): string | null {

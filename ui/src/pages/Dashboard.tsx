@@ -1,3 +1,15 @@
+// 仪表盘概览页面 — 公司级管理视图。
+// 功能模块：
+// 1. 四个关键指标卡片（Agent 数量、任务进度、月度费用、待审批数）
+// 2. 四个趋势图表（运行活动、优先级分布、状态分布、成功率）
+// 3. 最近活动日志（含新活动动画效果）
+// 4. 最近任务列表
+// 5. 活跃 Agent 面板
+// 6. 预算告警横幅
+// 7. 插件插槽（dashboardWidget）
+// 数据策略：使用 React Query 管理多个独立查询，每项数据独立刷新，
+// 避免单次大查询的开销，同时利用缓存减少重复请求。
+
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link } from "@/lib/router";
@@ -28,6 +40,8 @@ import { PageSkeleton } from "../components/PageSkeleton";
 import type { Agent, Issue } from "@paperclipai/shared";
 import { PluginSlotOutlet } from "@/plugins/slots";
 
+// 最近活动数量限制 — 只显示最近 10 条活动记录。
+// 更多历史活动应通过活动日志页面查看。
 const DASHBOARD_ACTIVITY_LIMIT = 10;
 
 function getRecentIssues(issues: Issue[]): Issue[] {
@@ -93,6 +107,7 @@ export function Dashboard() {
   const recentIssues = issues ? getRecentIssues(issues) : [];
   const recentActivity = useMemo(() => (activity ?? []).slice(0, 10), [activity]);
 
+  // 切换公司时重置活动动画状态，避免上一家公司的活动污染新公司的视图。
   useEffect(() => {
     for (const timer of activityAnimationTimersRef.current) {
       window.clearTimeout(timer);
@@ -103,6 +118,12 @@ export function Dashboard() {
     setAnimatedActivityIds(new Set());
   }, [selectedCompanyId]);
 
+  // 活动动画效果：当有新的活动记录（通过轮询发现）出现时，短暂高亮（约 1 秒）。
+  // 这种"淡入"效果让用户感知到实时更新的到来，而不会像闪烁一样突兀。
+  // 逻辑：
+  // 1. 首次加载时标记所有已见活动为 "hydrated"，不触发动画
+  // 2. 后续轮询中，发现新 ID 时加入 animatedActivityIds 集合
+  // 3. 980ms 后从集合中移除，CSS 动画结束
   useEffect(() => {
     if (recentActivity.length === 0) return;
 
@@ -154,6 +175,9 @@ export function Dashboard() {
     return map;
   }, [agents]);
 
+  // 实体名称映射表：将 activityLog 中的 entityId 解析为人类可读的名称。
+  // 由于活动日志只存储 entityId 和 entityType，需要额外的查找映射来展示实体名称。
+  // 前缀如 "issue:" / "agent:" / "project:" 用于区分不同类型的同名实体。
   const entityNameMap = useMemo(() => {
     const map = new Map<string, string>();
     for (const i of issues ?? []) map.set(`issue:${i.id}`, i.identifier ?? i.id.slice(0, 8));
@@ -162,6 +186,7 @@ export function Dashboard() {
     return map;
   }, [issues, agents, projects]);
 
+  // 实体标题映射表：仅 Issue 需要标题显示，Agent 和 Project 的名称已在 entityNameMap 中。
   const entityTitleMap = useMemo(() => {
     const map = new Map<string, string>();
     for (const i of issues ?? []) map.set(`issue:${i.id}`, i.title);

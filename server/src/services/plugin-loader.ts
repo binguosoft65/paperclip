@@ -71,6 +71,8 @@ export const NPM_PLUGIN_PACKAGE_PREFIX = "paperclip-plugin-";
  *
  * @see PLUGIN_SPEC.md §8.1 — On-Disk Layout
  */
+// 插件安装目录固定为 ~/.paperclip/plugins/，与主程序数据目录统一，
+// 便于多实例共享同一套插件，也方便运维备份和清理。
 export const DEFAULT_LOCAL_PLUGIN_DIR = path.join(
   os.homedir(),
   ".paperclip",
@@ -511,6 +513,9 @@ export interface PluginLoader {
  *
  * @see PLUGIN_SPEC.md §10 — Package Contract
  */
+// 命名约定有两个入口：非 scoped 包用 paperclip-plugin- 前缀，
+// scoped 包用 @scope/plugin- 前缀。这种双轨设计是为了兼容 npm 生态中
+// 不同组织的发布习惯——大组织通常用 @scope 发布而非常规前缀。
 export function isPluginPackageName(name: string): boolean {
   if (name.startsWith(NPM_PLUGIN_PACKAGE_PREFIX)) return true;
   // Also accept scoped packages like @acme/plugin-linear or @paperclipai/plugin-*
@@ -810,7 +815,9 @@ export function pluginLoader(
     let resolvedPackageName: string;
 
     if (localPath) {
-      // Local path install — validate the directory exists
+      // 本地路径安装：不走 npm，直接从开发目录读取。
+      // 用于开发场景，省去 npm install 步骤，文件变更后重启 worker 即可。
+      // validate the directory exists
       const absLocalPath = path.resolve(localPath);
       if (!existsSync(absLocalPath)) {
         throw new Error(`Local plugin path does not exist: ${absLocalPath}`);
@@ -836,9 +843,10 @@ export function pluginLoader(
       );
 
       try {
-        // Use execFile (not exec) to avoid shell injection from package name/version.
-        // --ignore-scripts prevents preinstall/install/postinstall hooks from
-        // executing arbitrary code on the host before manifest validation.
+        // 使用 execFile（而非 exec）避免 shell 注入：package name/version 来自用户输入，
+        // execFile 直接传参列表，不经过 shell 解析，参数中的特殊字符不会被解释为命令。
+        // --ignore-scripts 阻止 preinstall/install/postinstall 钩子在 manifest 校验前
+        // 执行任意代码——这是关键的安全防线，因为 manifest 校验后才确认该包是否合法。
         await execFileAsync(
           "npm",
           ["install", spec, "--prefix", targetInstallDir, "--save", "--ignore-scripts"],
@@ -882,6 +890,9 @@ export function pluginLoader(
     const manifest = await loadManifestFromPath(manifestPath);
 
     // Step 4: Reject incompatible plugin API versions
+    // API 版本不兼容时直接拒绝安装，而非尝试适配。
+    // 因为插件 API（host→worker RPC 协议、事件格式等）是向后不兼容的，
+    // 宿主只能在自己的支持集中选择，无法自动升级/降级插件端的 API 版本。
     if (!manifestValidator.getSupportedVersions().includes(manifest.apiVersion)) {
       throw new Error(
         `Plugin ${manifest.id} declares apiVersion ${manifest.apiVersion} which is not supported by this host. ` +
@@ -890,6 +901,9 @@ export function pluginLoader(
     }
 
     // Step 5: Validate manifest capabilities are consistent
+    // capability 一致性校验确保：如果一个插件声明了"需要事件订阅"等特性，
+    // 那它 manifest 中必须同时声明 `events.subscribe` 的 capability。
+    // 这是防止插件"暗含未声明权限"的关键检查——manifest 必须如实反映其行为。
     const capResult = capabilityValidator.validateManifestCapabilities(manifest);
     if (!capResult.allowed) {
       throw new Error(
@@ -898,6 +912,8 @@ export function pluginLoader(
       );
     }
 
+    // 检查页面路由路径冲突：当前插件的 routePath 不能与已安装插件重复。
+    // 因为 frontend 按 routePath 匹配插件 slot，冲突会导致路由歧义。
     await assertPageRoutePathsAvailable(manifest);
 
     // Step 6: Reject plugins that require a newer host than the running server
@@ -1311,6 +1327,8 @@ export function pluginLoader(
       // Step 6: Persist install record and apply plugin-owned schema migrations
       // in one database transaction. If migration validation fails, the plugin
       // row, namespace record, migration ledger, and created schema all roll back.
+      // 安装与数据库迁移在同一个事务中执行：迁移失败时整个安装回滚，
+      // 不会留下"装了插件但 schema 没建好"的不一致状态。
       const installDb = manifest.database ? migrationDb : db;
       await installDb.transaction(async (tx) => {
         const txDb = tx as unknown as Db;
@@ -1778,6 +1796,8 @@ export function pluginLoader(
       // 1. Resolve worker entrypoint
       // ------------------------------------------------------------------
       const packageRoot = resolvePluginPackageRoot(activePlugin, localPluginDir);
+      // 刷新 manifest：从磁盘重新读取，确保最新版本被加载。
+      // 对于本地路径安装的开发场景，manifest 可能在安装后又被修改过。
       activePlugin = await refreshPluginManifestFromPackage(activePlugin, packageRoot);
       manifest = activePlugin.manifestJson;
       const workerEntrypoint = resolveWorkerEntrypoint(activePlugin, localPluginDir);
@@ -1785,6 +1805,8 @@ export function pluginLoader(
       // ------------------------------------------------------------------
       // 2. Apply restricted database migrations before worker startup
       // ------------------------------------------------------------------
+      // 插件的数据库迁移在 worker 启动前执行，确保 worker 启动时就能访问其 schema。
+      // 迁移失败是整个激活流程的错误——不启动没有数据库的 worker。
       const databaseNamespace = manifest.database
         ? (await pluginDatabaseService(migrationDb).applyMigrations(pluginId, manifest, packageRoot))?.namespaceName ?? null
         : null;
@@ -1792,11 +1814,16 @@ export function pluginLoader(
       // ------------------------------------------------------------------
       // 3. Build host handlers for this plugin
       // ------------------------------------------------------------------
+      // hostHandlers 是 worker→host 调用（如 config.get, state.set）的反向 RPC 处理器。
+      // 每个插件的 handler 集合都是独立的，scope 到该插件的 pluginId，
+      // 防止 A 插件的 worker 通过 handler 访问 B 插件的命名空间。
       const hostHandlers = buildHostHandlers(pluginId, manifest);
 
       // ------------------------------------------------------------------
       // 4. Retrieve plugin config (if any)
       // ------------------------------------------------------------------
+      // 配置可能为空（首次安装尚未设置），此时传空对象给 worker，
+      // worker 端应使用 manifest 中 instanceConfigSchema 定义的默认值。
       let config: Record<string, unknown> = {};
       try {
         const configRow = await registry.getConfig(pluginId);
@@ -1829,6 +1856,8 @@ export function pluginLoader(
       // Repo-local plugin installs can resolve workspace TS sources at runtime
       // (for example @paperclipai/shared exports). Run those workers through
       // the tsx loader so first-party example plugins work in development.
+      // 开发模式下的特殊处理：monorepo 内的示例插件使用 TypeScript 源码分发，
+      // 需要通过 tsx loader 才能在 Node.js 中直接执行 .ts 入口文件。
       if (activePlugin.packagePath && existsSync(DEV_TSX_LOADER_PATH)) {
         workerOptions.execArgv = ["--import", DEV_TSX_LOADER_PATH];
       }
@@ -1846,6 +1875,8 @@ export function pluginLoader(
       // ------------------------------------------------------------------
       const jobDeclarations = manifest.jobs ?? [];
       if (jobDeclarations.length > 0) {
+        // 将 manifest 中声明的 job 同步到 plugin_jobs 表，然后注册到调度器。
+        // 调度器会根据 cron 表达式计算每个 job 的下次执行时间。
         await jobStore.syncJobDeclarations(pluginId, jobDeclarations);
         await jobScheduler.registerPlugin(pluginId);
         registered.jobs = jobDeclarations.length;
@@ -1870,6 +1901,9 @@ export function pluginLoader(
       // any previous subscriptions for this plugin are preserved if the
       // worker is restarting.
       // ------------------------------------------------------------------
+      // 事件订阅是运行时注册的（worker 启动后通过 SDK 的 ctx.events.on() 发起），
+      // 这里只是为 event bus 创建一个 scope handle，真正的订阅由 worker 初始化后
+      // 通过 RPC 反向调用 host 层注册。
       const _scopedBus = eventBus.forPlugin(pluginKey);
       registered.eventSubscriptions = eventBus.subscriptionCount(pluginKey);
 
@@ -1889,6 +1923,8 @@ export function pluginLoader(
       //
       // We track the count for the result reporting.
       // ------------------------------------------------------------------
+      // Webhook 路由不需要单独的注册步骤：manifest 已持久化到 DB，
+      // 请求到达时路由处理器直接从 DB 读取 manifest 来判断 endpointKey 是否有效。
       const webhookDeclarations = manifest.webhooks ?? [];
       registered.webhooks = webhookDeclarations.length;
 
@@ -1902,6 +1938,8 @@ export function pluginLoader(
       // ------------------------------------------------------------------
       // 8. Register agent tools
       // ------------------------------------------------------------------
+      // 工具注册到 toolRegistry 后，agent service 可以列出和调用插件的工具。
+      // 注册时 key 为 pluginKey（manifest.id），agent service 按 namespaced name 查找。
       const toolDeclarations = manifest.tools ?? [];
       if (toolDeclarations.length > 0) {
         toolDispatcher.registerPluginTools(pluginKey, manifest);

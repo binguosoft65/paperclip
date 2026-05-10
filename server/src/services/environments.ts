@@ -18,21 +18,28 @@ import {
 
 type EnvironmentRow = typeof environments.$inferSelect;
 type EnvironmentLeaseRow = typeof environmentLeases.$inferSelect;
+// 每个公司默认有一个不可删除的 Local 环境，用于无远程/沙箱环境时的降级运行
 const DEFAULT_LOCAL_ENVIRONMENT_NAME = "Local";
 const DEFAULT_LOCAL_ENVIRONMENT_DESCRIPTION =
   "Default execution environment for Paperclip runs on this machine.";
 
+// 防御性拷贝：避免业务代码意外突变数据库行引用。
+// 对于 null/非对象输入返回 fallback，统一 null 和 {} 的行为
 function cloneRecord(value: unknown, fallback: Record<string, unknown> | null = null): Record<string, unknown> | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return fallback;
   return { ...(value as Record<string, unknown>) };
 }
 
+// 安全枚举转换：从数据库字符串转为 TypeScript union type。
+// 遇到未知值抛异常而非静默吞掉，以便尽早发现数据损坏
 function readEnum<T extends string>(value: string | null, allowed: readonly T[], fieldName: string): T | null {
   if (value === null) return null;
   if ((allowed as readonly string[]).includes(value)) return value as T;
   throw new Error(`Unexpected ${fieldName} value: ${value}`);
 }
 
+// DB 行 → 领域对象映射。降级策略：driver/status 为 null 时默认 "local"/"active"，
+// 保持对旧数据的向后兼容
 function toEnvironment(row: EnvironmentRow): Environment {
   return {
     id: row.id,
@@ -111,6 +118,9 @@ export function environmentService(db: Db) {
     },
 
     ensureLocalEnvironment: async (companyId: string): Promise<Environment> => {
+      // 确保每个公司都有一个 Local 环境：尝试插入默认 Local 环境（onConflictDoNothing 防止重复），
+      // 如果插入失败（已存在），则通过 driver+companyId 的唯一约束查询已存在的行。
+      // 这是 run 执行的最低保障环境，确保即使没有任何配置也能在宿主机上运行
       const now = new Date();
       const row = await db
         .insert(environments)
@@ -227,6 +237,9 @@ export function environmentService(db: Db) {
       expiresAt?: Date | null;
       metadata?: Record<string, unknown> | null;
     }): Promise<EnvironmentLease> => {
+      // 创建一个新的活动租约。每个 heartbeat run 在环境中执行时持有一个租约，
+      // 租约策略（leasePolicy）决定释放时的行为：ephemeral 直接释放，
+      // reuse_by_environment 允许后续 run 复用同一 provider 资源
       const now = new Date();
       const row = await db
         .insert(environmentLeases)
@@ -266,6 +279,8 @@ export function environmentService(db: Db) {
         cleanupStatus?: EnvironmentLeaseCleanupStatus;
       },
     ) => {
+      // 释放租约。注意 "retained" 状态的特殊语义：当 run 失败但配置了
+      // retain_on_failure 策略时，保留沙箱/SSH 连接以便人工调试，不设置 releasedAt
       const now = new Date();
       const row = await db
         .update(environmentLeases)
@@ -304,6 +319,8 @@ export function environmentService(db: Db) {
       heartbeatRunId: string,
       status: Extract<EnvironmentLeaseStatus, "released" | "expired" | "failed"> = "released",
     ): Promise<EnvironmentLease[]> => {
+      // 批量释放某个 heartbeat run 的所有活跃租约。当 run 结束、取消或超时时调用。
+      // 仅释放 status=active 的租约，已释放/已过期的保持不变
       const now = new Date();
       const rows = await db
         .update(environmentLeases)

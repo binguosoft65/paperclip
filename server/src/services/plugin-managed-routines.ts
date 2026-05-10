@@ -1,3 +1,18 @@
+/**
+ * PluginManagedRoutines — 托管 Routine 管理。
+ *
+ * 类似托管 Agent，插件可以声明 managedRoutines，宿主自动创建
+ * 对应的定时执行 Routine。这允许插件定义重复执行的任务（如
+ * 每日数据同步、定期清理等），无需用户手动配置。
+ *
+ * ── 与托管 Agent 的区别 ──
+ * - Routine 有执行计划（cron 表达式），Agent 没有。
+ * - Routine 支持 assigneeRef 和 projectRef 解析。
+ * - Routine 支持 concurrencyPolicy（是否允许重叠执行）。
+ * - 插件的 worker 进程直接执行 Routine（通过 runJob RPC）。
+ *
+ * @see PLUGIN_SPEC.md §23 — Managed Routines
+ */
 import { and, eq } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
 import {

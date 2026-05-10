@@ -10,6 +10,13 @@ import { validate } from "../middleware/validate.js";
 import { heartbeatService, instanceSettingsService, logActivity } from "../services/index.js";
 import { assertBoardOrgAccess, getActorInfo } from "./authz.js";
 
+/**
+ * 校验当前请求是否有权管理实例设置。
+ * 业务规则：仅 board 类型主体可操作实例设置；其中本地隐式信任模式（local_implicit）
+ * 或显式标记为 Instance Admin 的用户通过校验，其余 board 主体（如 Agent API Key）拒绝。
+ * 这样设计是为了在本地开发环境（local_trusted 模式）下免除额外管理员配置，
+ * 同时在正式部署中保证只有显式授权的管理员可修改全局配置。
+ */
 function assertCanManageInstanceSettings(req: Request) {
   if (req.actor.type !== "board") {
     throw forbidden("Board access required");
@@ -25,9 +32,9 @@ export function instanceSettingsRoutes(db: Db) {
   const svc = instanceSettingsService(db);
   const heartbeat = heartbeatService(db);
 
+  // GET 可读无需管理员权限，因为通用设置（如键盘快捷键开关）是前端展示偏好，
+  // 所有已认证的组织成员都应有权限读取；仅写入（PATCH）才需要 Instance Admin 权限。
   router.get("/instance/settings/general", async (req, res) => {
-    // General settings (e.g. keyboardShortcuts) are readable by any
-    // authenticated org member or instance admin. Only PATCH requires instance-admin.
     assertBoardOrgAccess(req);
     res.json(await svc.getGeneral());
   });
@@ -62,9 +69,8 @@ export function instanceSettingsRoutes(db: Db) {
     },
   );
 
+  // 实验性设置同样采用"可读不鉴权、可写鉴权"的策略，兼顾浏览可用性与安全管控。
   router.get("/instance/settings/experimental", async (req, res) => {
-    // Experimental settings are readable by any authenticated org member
-    // or instance admin. Only PATCH requires instance-admin.
     assertBoardOrgAccess(req);
     res.json(await svc.getExperimental());
   });
@@ -77,6 +83,8 @@ export function instanceSettingsRoutes(db: Db) {
       const updated = await svc.updateExperimental(req.body);
       const actor = getActorInfo(req);
       const companyIds = await svc.listCompanyIds();
+      // 实验性设置变更同样需要向所有公司广播审计日志，
+      // 因为这些功能（如环境管理、独立工作空间等）会影响所有组织的运行时行为。
       await Promise.all(
         companyIds.map((companyId) =>
           logActivity(db, {
@@ -99,6 +107,8 @@ export function instanceSettingsRoutes(db: Db) {
     },
   );
 
+  // 预览接口不产生实际变更，仅查询指定回看窗口内的问题活性检测结果，
+  // 让管理员在开启自动恢复前了解将会影响哪些 Issue。这是一个安全的只读操作。
   router.post(
     "/instance/settings/experimental/issue-graph-liveness-auto-recovery/preview",
     validate(issueGraphLivenessAutoRecoveryRequestSchema),
@@ -110,6 +120,9 @@ export function instanceSettingsRoutes(db: Db) {
     },
   );
 
+  // 执行自动恢复会创建升级 Issue（escalation issue），涉及跨公司数据变更。
+  // force=true 表示管理员手动触发（而非定时器自动调度），绕过"仅处理未处理"的限制，
+  // 允许对已处理过的 Issue 再次执行恢复扫描。
   router.post(
     "/instance/settings/experimental/issue-graph-liveness-auto-recovery/run",
     validate(issueGraphLivenessAutoRecoveryRequestSchema),
@@ -121,6 +134,8 @@ export function instanceSettingsRoutes(db: Db) {
         force: true,
         lookbackHours: req.body.lookbackHours,
       });
+      // 自动恢复执行的结果需要向所有公司写入审计日志，包含创建的升级数量、跳过数等，
+      // 以便管理员追踪每次自动恢复操作的影响范围。
       const companyIds = await svc.listCompanyIds();
       await Promise.all(
         companyIds.map((companyId) =>

@@ -87,6 +87,20 @@ const CRASH_WINDOW_MS = 10 * 60 * 1_000;
 /** Maximum number of stderr characters retained for worker failure context. */
 const MAX_STDERR_EXCERPT_CHARS = 8_000;
 
+// ── 设计说明 ──────────────────────────────────────────────
+// 优雅关闭三阶段策略（§12.5）：
+//   1. drain (10s) — 发送 shutdown RPC，等待 worker 主动退出。
+//   2. SIGTERM (5s) — drain 超时后发送 SIGTERM，给 worker 最后的机会。
+//   3. SIGKILL (2s) — SIGTERM 无效后强制杀死进程。
+//
+// 崩溃恢复（crash recovery）：
+//   - 指数退避：1s → 2s → 4s → 8s → ... → 5min（MAX）。
+//   - 每次重启增加 25% 随机抖动（jitter），防止多个 worker 同时重启
+//     导致的"雷鸣群"（thundering herd）效应。
+//   - 连续崩溃超过 10 次（MAX_CONSECUTIVE_CRASHES）后停止自动恢复，
+//     需要管理员手动处理。
+//   - 相邻崩溃时间间隔超过 10 分钟（CRASH_WINDOW_MS），重置连续计数。
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -384,6 +398,9 @@ export function createPluginWorkerHandle(
   let supportedMethods: string[] = [];
 
   // Crash tracking for exponential backoff
+  // ── 两个计数器的区别 ──
+  // consecutiveCrashes: 连续崩溃次数（用于退避计算），时间窗口内重置。
+  // totalCrashes: 累计崩溃次数（仅用于诊断和监控），永不重置。
   let consecutiveCrashes = 0;
   let totalCrashes = 0;
   let lastCrashAt: number | null = null;
@@ -395,6 +412,10 @@ export function createPluginWorkerHandle(
   const openStreamChannels = new Map<string, string>();
 
   // Shutdown coordination
+  // ── intentionalStop 的作用 ──
+  // 区分"正常停止"和"意外崩溃"。当 intentionalStop=true 时，
+  // handleProcessExit 不会触发自动重启。这防止了以下场景：
+  // 管理员手动停止 worker，但 crash recovery 又把它重启了。
   let intentionalStop = false;
 
   const rpcTimeoutMs = options.rpcTimeoutMs ?? DEFAULT_RPC_TIMEOUT_MS;
@@ -606,9 +627,12 @@ export function createPluginWorkerHandle(
   // -----------------------------------------------------------------------
 
   function spawnProcess(): ChildProcess {
-    // Security: Do NOT spread process.env into the worker. Plugins should only
-    // receive a minimal, controlled environment to prevent leaking host
-    // secrets (like DATABASE_URL, internal API keys, etc.).
+    // ── 安全考量：不传播 process.env ──
+    // 插件 worker 是独立的子进程，不应继承宿主的环境变量。
+    // 如果直接传播 process.env，插件可以读取到宿主进程的所有环境变量，
+    // 包括 DATABASE_URL、内部 API Key、SECRET 等敏感信息。
+    // 替代方案：显式只传递最小必要集合（PATH、NODE_PATH、TZ、NODE_ENV），
+    // 插件的特定配置通过 WorkerStartOptions.env 传入。
     const workerEnv: Record<string, string> = {
       ...options.env,
       PATH: process.env.PATH ?? "",
@@ -719,6 +743,11 @@ export function createPluginWorkerHandle(
     const now = Date.now();
 
     // Reset consecutive crash counter if enough time passed
+    // ── 为什么需要 CRASH_WINDOW_MS ──
+    // 连续崩溃计数用于指数退避计算。但如果两次崩溃间隔很长（例如几天），
+    // 可能不是同一个问题导致的。重置计数可以避免退避时间无限累积。
+    // 10 分钟的窗口意味着：如果插件稳定运行超过 10 分钟，
+    // 之前的崩溃历史不再影响下一次的退避策略。
     if (lastCrashAt !== null && now - lastCrashAt > CRASH_WINDOW_MS) {
       consecutiveCrashes = 0;
     }

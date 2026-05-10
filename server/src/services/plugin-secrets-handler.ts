@@ -28,6 +28,11 @@
  * - The host handler itself does not cache resolved values. Each call goes
  *   through the secret provider to honour rotation.
  *
+ * ── 为什么不缓存解析后的密钥 ──
+ * 密钥轮换（rotation）是重要的安全实践。如果宿主缓存了解析后的值，
+ * 管理员轮换密钥后，插件可能继续使用旧值。
+ * 每次调用都通过 secret provider 确保获取最新版本。
+ *
  * @see PLUGIN_SPEC.md §22 — Secrets
  * @see host-client-factory.ts — capability gating
  * @see services/secrets.ts — secretService used by agent env bindings

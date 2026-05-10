@@ -22,6 +22,12 @@ import { badRequest } from "../errors.js";
  * The set of plugin API versions this host can accept.
  * When a new API version is introduced, add it here. Old versions should be
  * retained until the host drops support for them.
+ *
+ * ── 版本兼容策略 ──
+ * 使用白名单而非范围比较（如 >= 1 && <= 3）。这意味着：
+ * - 新版本发布后，旧版本不会自动被接受 —— 需要显式添加到数组中。
+ * - 这允许宿主有选择地支持某些版本，即使语义版本兼容。
+ * - 当破坏性变更发生时，可以逐个迁移插件而无需一次性升级所有插件。
  */
 const SUPPORTED_VERSIONS = [PLUGIN_API_VERSION] as const;
 

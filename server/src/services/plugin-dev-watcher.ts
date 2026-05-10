@@ -11,6 +11,17 @@
  * backend across platforms and avoid exhausting file descriptors as quickly in
  * large dev workspaces.
  *
+ * ── 为什么不监听 npm 安装的插件 ──
+ * npm 安装的插件不应该在运行时被修改。只有本地路径（local path）安装的
+ * 插件才需要开发模式的热重载。这是由 PLUGIN_SPEC.md §27.2 规定的
+ * 开发工作流：本地修改 → chokidar 检测到变化 → debounce 500ms →
+ * 重启 worker → 插件重新加载新代码。
+ *
+ * ── 安全考量 ──
+ * watcher 只监听插件 package.json 中 paperclipPlugin 字段声明的
+ * 入口文件（manifest、worker、ui）的父目录。不会监听整个文件系统，
+ * 也不会监听符号链接指向的目录（防止路径穿越攻击）。
+ *
  * @see PLUGIN_SPEC.md §27.2 — Local Development Workflow
  */
 import chokidar, { type FSWatcher } from "chokidar";

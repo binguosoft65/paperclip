@@ -170,6 +170,10 @@ export function InstanceGeneralSettings() {
         </div>
       </section>
 
+      {/* 数据库备份保留策略配置区。
+          保留策略分为日备、周备、月备三个层级，分别对应不同的保留时长。
+          设计权衡：预设值而非自由输入，是为了避免管理员设置不合理值导致磁盘爆满
+          或数据过早被清理；同时降低输入校验的复杂度。 */}
       <section className="rounded-xl border border-border bg-card p-5">
         <div className="space-y-5">
           <div className="space-y-1.5">
@@ -270,6 +274,10 @@ export function InstanceGeneralSettings() {
         </div>
       </section>
 
+      {/* 用户反馈数据共享偏好设置。
+           默认为"prompt"（每次询问），管理员可统一设为"allowed"（始终允许）
+           或"not_allowed"（禁止）。这是隐私合规（如 GDPR）要求的用户控制机制，
+           所有团队成员的新反馈会话将继承此实例级默认值。 */}
       <section className="rounded-xl border border-border bg-card p-5">
         <div className="space-y-4">
           <div className="space-y-1.5">
@@ -352,6 +360,8 @@ export function InstanceGeneralSettings() {
         </div>
       </section>
 
+      {/* 退出登录入口。虽然放在通用设置页面中，但该操作影响的是当前用户会话，
+           而非全局设置。放置于此是为了方便管理员在一个统一的管理界面完成所有操作。 */}
       <section className="rounded-xl border border-border bg-card p-5">
         <div className="flex items-start justify-between gap-4">
           <div className="space-y-1.5">

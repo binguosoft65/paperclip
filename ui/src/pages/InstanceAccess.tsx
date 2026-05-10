@@ -33,23 +33,30 @@ export function InstanceAccess() {
     queryFn: () => accessApi.searchAdminUsers(search),
   });
 
+  // 从搜索结果中匹配当前选中的用户对象，用于展示用户详情。
   const selectedUser = useMemo(
     () => usersQuery.data?.find((user) => user.id === selectedUserId) ?? null,
     [selectedUserId, usersQuery.data],
   );
 
+  // 查询选中用户在所有公司中的访问权限。
+  // enabled: !!selectedUserId 确保了未选择用户时不会发起无效请求。
   const userAccessQuery = useQuery({
     queryKey: queryKeys.access.userCompanyAccess(selectedUserId ?? ""),
     queryFn: () => accessApi.getUserCompanyAccess(selectedUserId!),
     enabled: !!selectedUserId,
   });
 
+  // 默认选中搜索结果中的第一个用户，减少用户操作步骤。
+  // 当 selectedUserId 已被清空但搜索结果不为空时自动回填第一个用户 ID。
   useEffect(() => {
     if (!selectedUserId && usersQuery.data?.[0]) {
       setSelectedUserId(usersQuery.data[0].id);
     }
   }, [selectedUserId, usersQuery.data]);
 
+  // 当选中的用户发生变更时，同步更新已选公司集合（仅 active 状态的成员关系），
+  // 确保未保存的本地修改不会遗留在旧用户的数据上。
   useEffect(() => {
     if (!userAccessQuery.data) return;
     setSelectedCompanyIds(
@@ -61,6 +68,9 @@ export function InstanceAccess() {
     );
   }, [userAccessQuery.data]);
 
+  // 批量更新用户对公司（Company）的访问权限。
+  // selectedCompanyIds 集合表示用户应有权限的公司 ID 集合，
+  // 后端会据此自动增删对应的成员关系记录。这是一个全量替换而非增量更新操作。
   const updateCompanyAccessMutation = useMutation({
     mutationFn: () => accessApi.setUserCompanyAccess(selectedUserId!, [...selectedCompanyIds]),
     onSuccess: async () => {
@@ -70,6 +80,9 @@ export function InstanceAccess() {
     },
   });
 
+  // 实例级管理员（Instance Admin）的授予与撤销。
+  // Instance Admin 拥有全局管理权限（访问所有公司的设置和配置），
+  // 因此操作需谨慎，UI 中通过明确的"提升/移除"按钮区分两种操作意图。
   const setAdminMutation = useMutation({
     mutationFn: async (makeAdmin: boolean) => {
       if (!selectedUserId) throw new Error("No user selected");

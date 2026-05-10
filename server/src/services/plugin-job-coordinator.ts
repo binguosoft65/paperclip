@@ -18,6 +18,12 @@
  * the "glue" between them without adding coupling. This pattern is used
  * throughout Paperclip (e.g. heartbeat service coordinates timers + runs).
  *
+ * ── 为什么不把协调逻辑直接放在生命周期管理器里 ──
+ * 1) 生命周期管理器不应该感知 job 调度器的存在 —— 它的职责只是状态转换。
+ * 2) 调度器也不应该直接依赖生命周期事件 —— 它的职责只是 tick 循环。
+ * 3) 协调器模式使得生命周期、调度器和存储层可以独立测试和替换。
+ *    例如：在测试中可以用 mock 调度器替换真实调度器。
+ *
  * @see PLUGIN_SPEC.md §17 — Scheduled Jobs
  * @see ./plugin-job-scheduler.ts — Scheduler service
  * @see ./plugin-job-store.ts — Persistence layer

@@ -1,3 +1,8 @@
+// 活动日志服务 — 记录系统中所有重要业务操作并推送到多个消费端。
+// 一次 logActivity 调用同时完成三件事（写数据库 + 实时推送 + 插件事件转发），
+// 这是设计上的权衡：simple 但非原子。如果下游推送失败，数据库记录已写入，不会有数据丢失。
+// 调用方不应依赖推送的完成性。
+
 import { randomUUID } from "node:crypto";
 import type { Db } from "@paperclipai/db";
 import { activityLog } from "@paperclipai/db";
@@ -11,6 +16,9 @@ import type { PluginEventBus } from "./plugin-event-bus.js";
 import { instanceSettingsService } from "./instance-settings.js";
 
 const PLUGIN_EVENT_SET: ReadonlySet<string> = new Set(PLUGIN_EVENT_TYPES);
+// 活动日志 action 到插件事件的映射表。
+// 并非所有业务操作都有插件事件对应，只有插件感兴趣的 key 事件才需要注册。
+// action 命名使用下划线（如 "issue_comment_added"），插件事件使用点分隔（如 "issue.comment.created"）。
 const ACTIVITY_ACTION_TO_PLUGIN_EVENT: Readonly<Record<string, PluginEventType>> = {
   issue_comment_added: "issue.comment.created",
   issue_comment_created: "issue.comment.created",
@@ -41,6 +49,8 @@ function eventTypeForActivityAction(action: string): PluginEventType | null {
   return ACTIVITY_ACTION_TO_PLUGIN_EVENT[action.replaceAll(".", "_")] ?? null;
 }
 
+// 发布领域事件到插件事件总线。不等待插件处理完成（fire-and-forget），
+// 因为插件处理不应阻塞主业务流程。插件失败仅记录日志，不影响主流程。
 export function publishPluginDomainEvent(event: PluginEvent): void {
   if (!_pluginEventBus) return;
   void _pluginEventBus.emit(event).then(({ errors }) => {
@@ -62,6 +72,9 @@ export interface LogActivityInput {
   details?: Record<string, unknown> | null;
 }
 
+// 记录一条业务活动日志，同时推送到实时事件通道和插件系统。
+// 数据流：DB（持久化）→ LiveEvent（实时 SSE）→ PluginEvent（插件回调）。
+// details 中的敏感信息会在写入前进行脱敏处理（取决于实例配置的 censorUsernameInLogs）。
 export async function logActivity(db: Db, input: LogActivityInput) {
   const currentUserRedactionOptions = {
     enabled: (await instanceSettingsService(db).getGeneral()).censorUsernameInLogs,
