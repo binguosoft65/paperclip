@@ -2,6 +2,9 @@ import * as p from "@clack/prompts";
 import type { LoggingConfig } from "../config/schema.js";
 import { resolveDefaultLogsDir, resolvePaperclipInstanceId } from "../config/home.js";
 
+// 日志配置交互提示
+// "file" 模式为当前唯一稳定选项，日志输出到实例的 logs 目录
+// "cloud" 模式为预留选项，展示"即将到来"提示后回退到文件模式
 export async function promptLogging(): Promise<LoggingConfig> {
   const defaultLogDir = resolveDefaultLogsDir(resolvePaperclipInstanceId());
   const mode = await p.select({

@@ -5,6 +5,10 @@ import type { PaperclipConfig } from "../config/schema.js";
 import type { CheckResult } from "./index.js";
 import { resolveRuntimeLikePath } from "./path-resolver.js";
 
+// 解密主密钥字符串：支持三种格式
+// 1) 64 字符十六进制串（32 字节）；2) Base64 编码（解码后 32 字节）；
+// 3) 原始 32 字节 UTF-8 字符串
+// 兼容多种密钥格式以避免用户在密钥格式转换上浪费时间
 function decodeMasterKey(raw: string): Buffer | null {
   const trimmed = raw.trim();
   if (!trimmed) return null;

@@ -17,6 +17,8 @@ import {
 } from "../config/home.js";
 import { printPaperclipCliBanner } from "../utils/banner.js";
 
+// 可配置的配置节列表
+// 每个节对应一个交互式提示模块，用户可独立修改
 type Section = "llm" | "database" | "logging" | "server" | "storage" | "secrets";
 
 const SECTION_LABELS: Record<Section, string> = {
@@ -28,6 +30,8 @@ const SECTION_LABELS: Record<Section, string> = {
   secrets: "Secrets",
 };
 
+// 当现有配置损坏或不存在时，generate 默认配置用于修复或重新初始化
+// 注意：此默认值与 onboard quickstart 的默认值保持同步
 function defaultConfig(): PaperclipConfig {
   const instanceId = resolvePaperclipInstanceId();
   return {

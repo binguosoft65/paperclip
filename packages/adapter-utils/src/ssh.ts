@@ -15,6 +15,7 @@ export interface SshConnectionConfig {
   knownHosts: string | null;
   strictHostKeyChecking: boolean;
 }
+// remoteWorkspacePath 是远程服务器上的工作空间根目录，与 remoteCwd 可能相同也可能不同。
 
 export interface SshCommandResult {
   stdout: string;
@@ -30,7 +31,9 @@ export function createSshCommandManagedRuntimeRunner(input: {
   defaultCwd?: string | null;
   maxBufferBytes?: number | null;
 }): CommandManagedRuntimeRunner {
+  // 默认工作目录优先使用指定的 defaultCwd，其次使用 remoteSpec 中的 remoteCwd。
   const defaultCwd = input.defaultCwd?.trim() || input.spec.remoteCwd;
+  // maxBufferBytes 需要是正整数，默认 1MB。单个命令的输出不得超过此限制，防止 OOM。
   const maxBufferBytes =
     typeof input.maxBufferBytes === "number" && Number.isFinite(input.maxBufferBytes) && input.maxBufferBytes > 0
       ? Math.trunc(input.maxBufferBytes)
@@ -50,6 +53,10 @@ export function createSshCommandManagedRuntimeRunner(input: {
       const exportPrefix = envEntries.length > 0
         ? envEntries.map(([key, value]) => `export ${key}=${shellQuote(value)};`).join(" ") + " "
         : "";
+      // 命令组装策略：
+      // 当命令是 sh/bash 时，优先尝试提取 -lc 后的脚本内容直接配合 export 前缀运行，
+      // 避免多余的外层 shell 嵌套；普通命令则用 env 前缀+exec 包装以传递环境变量。
+      // cd 到目标目录 + exec 替换 shell 进程，确保命令在正确的目录和环境变量下执行。
       const commandScript = command === "sh" || command === "bash"
         ? args[0] === "-lc" && typeof args[1] === "string"
           ? `${exportPrefix}${args[1]}`
@@ -59,6 +66,8 @@ export function createSshCommandManagedRuntimeRunner(input: {
         shellQuote(`cd ${shellQuote(cwd)} && ${commandScript}`)
       }`;
 
+      // runSshCommand 成功时 exitCode 恒为 0，因为 SSH 通道本身无错误。
+      // 远程命令的退出码由 SSH 的 stderr/stdout 输出内容推断，而非透传。
       try {
         const result = await runSshCommand(input.spec, remoteCommand, {
           stdin: commandInput.stdin,
@@ -92,6 +101,8 @@ export function createSshCommandManagedRuntimeRunner(input: {
             : String(error);
         if (stdout) await commandInput.onLog?.("stdout", stdout);
         if (stderr) await commandInput.onLog?.("stderr", stderr);
+        // SSH 命令失败时，从异常对象中提取退出码和信号。
+        // failure.killed === true 表示超时杀死，用于 timedOut 标志。
         return {
           exitCode: typeof failure.code === "number" ? failure.code : null,
           signal: typeof failure.signal === "string" ? failure.signal : null,
@@ -138,6 +149,9 @@ interface LocalGitWorkspaceSnapshot {
   deletedPaths: string[];
 }
 
+// shellQuote 使用单引号包裹字符串并用 '\'"'"' 模式转义内部的单引号。
+// 这种模式比双引号更安全，因为它会抑制变量展开、通配符展开等 shell 扩展行为，
+// 防止通过注入 `$()`, ` `` `, `*` 等方式执行恶意命令。
 export function shellQuote(value: string) {
   return `'${value.replace(/'/g, `'\"'\"'`)}'`;
 }
@@ -146,6 +160,9 @@ function isValidShellEnvKey(value: string) {
   return /^[A-Za-z_][A-Za-z0-9_]*$/.test(value);
 }
 
+// 解析 SSH 远程执行规范，支持从 JSON/配置对象中反序列化。
+// 端口必须在 1-65535 范围内；host/username/remoteCwd 不能为空。
+// remoteWorkspacePath 可选，默认为 remoteCwd；strictHostKeyChecking 默认启用安全模式。
 export function parseSshRemoteExecutionSpec(value: unknown): SshRemoteExecutionSpec | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return null;
@@ -235,6 +252,8 @@ async function spawnText(
       reject(error);
     };
 
+    // 输出累积超过 maxBuffer 时直接 SIGTERM 杀死子进程并拒绝 Promise。
+    // 这是为了防止失控进程占用无限内存，同时通过逐字节的 UTF-8 长度计算确保中文字符等多字节编码不被截断。
     const append = (
       streamName: "stdout" | "stderr",
       chunk: unknown,
@@ -253,6 +272,10 @@ async function spawnText(
       }
     };
 
+    // 超时处理采用"优雅终止-强制杀死"两级策略：
+    // 1. 先发 SIGTERM 给子进程 5 秒的优雅退出时间
+    // 2. 5 秒后升级为 SIGKILL 强制终止
+    // 这种策略确保挂起的远程命令不会无限阻塞，同时给进程写入日志的机会。
     let killEscalation: NodeJS.Timeout | null = null;
     const timeout = options.timeout && options.timeout > 0
       ? setTimeout(() => {
@@ -341,6 +364,9 @@ async function resolveCommandPath(command: string): Promise<string | null> {
   }
 }
 
+// 创建临时文件用于存放 SSH 私钥和 known_hosts。使用随机目录前缀防止临时文件泄露。
+// 文件权限由调用方指定（私钥需要 0600），内容追加换行符以兼容 POSIX 工具。
+// 返回 cleanup 函数用于安全删除临时文件。
 async function withTempFile(
   prefix: string,
   contents: string,
@@ -358,6 +384,11 @@ async function withTempFile(
   };
 }
 
+// 构建 SSH 认证参数。
+// 设计权衡：私钥和 known_hosts 写入临时文件（而非通过 stdin 传入），因为 SSH 客户端不支持从管道读取私钥。
+// strictHostKeyChecking 关闭时使用 /dev/null 作为 known_hosts 文件以避免任何主机密钥检查。
+// BatchMode=yes 避免 SSH 在密钥认证失败时回退到交互式密码提示。
+// 临时文件在 cleanup 中统一清理，确保敏感凭证不在磁盘上残留。
 async function createSshAuthArgs(
   config: Pick<SshConnectionConfig, "privateKey" | "knownHosts" | "strictHostKeyChecking">,
 ): Promise<{ args: string[]; cleanup: () => Promise<void> }> {
@@ -395,6 +426,8 @@ async function createSshAuthArgs(
   };
 }
 
+// 默认排除 ._*（Apple Double 文件），这是 macOS 文件系统的元数据产物，在 Linux 远程环境中无用。
+// 此外使用调用方传入的排除列表。
 function tarExcludeArgs(exclude: string[] | undefined): string[] {
   const combined = ["._*", ...(exclude ?? [])];
   return combined.flatMap((entry) => ["--exclude", entry]);
@@ -407,6 +440,7 @@ function tarSpawnEnv(): NodeJS.ProcessEnv {
     COPYFILE_DISABLE: "1",
   };
 }
+// COPYFILE_DISABLE=1 是 macOS 专用环境变量，防止 bsdtar 创建 ._ 前缀的 AppleDouble 扩展属性文件。
 
 async function runSshScript(
   config: SshConnectionConfig,
@@ -848,6 +882,10 @@ export async function runSshCommand(
       }
     }
 
+    // 远程环境变量策略：
+    // 先 source 远程主机的 shell profile（.profile / .bash_profile / .zprofile），
+    // 再用 `env KEY=VAL cmd` 格式传递显式环境变量，确保用户提供的环境变量覆盖任何 profile 中的同名字段。
+    // 这个顺序很重要：如果先设置 env 再 source profile，profile 可能重置 NVM_DIR/HOME 等关键变量。
     // Mirror buildSshSpawnTarget: source login profiles first, then run
     // `env KEY=VAL cmd` so user-supplied identity overrides win over anything
     // a profile re-exports. Without this, a remote profile that resets HOME
@@ -905,6 +943,10 @@ export async function buildSshSpawnTarget(input: {
     .filter((entry): entry is [string, string] => typeof entry[1] === "string")
     .map(([key, value]) => `${key}=${shellQuote(value)}`);
   const remoteCommandParts = [shellQuote(input.command), ...input.args.map((arg) => shellQuote(arg))].join(" ");
+  // buildSshSpawnTarget 与 runSshCommand 的区别：
+  // 此函数用于 spawn 场景（长时间运行的进程），额外加载 NVM 环境并 cd 到工作目录。
+  // 之所以单独加载 NVM_DIR/nvm.sh，是因为 Node.js 项目通常依赖 nvm 管理的 Node 版本。
+  // profile sourcing 使用 >/dev/null 2>&1 抑制 profile 中的错误输出，避免污染 stdout/stderr。
   const remoteScript = [
     'if [ -f "$HOME/.profile" ]; then . "$HOME/.profile" >/dev/null 2>&1 || true; fi',
     'if [ -f "$HOME/.bash_profile" ]; then . "$HOME/.bash_profile" >/dev/null 2>&1 || true; fi',
@@ -931,6 +973,9 @@ export async function buildSshSpawnTarget(input: {
   };
 }
 
+// 通过管道将本地目录的 tar 归档流式传输到远程 SSH 主机并自动解包。
+// 使用了 tar | ssh 管道模式：本地 tar 打包输出到 stdout，SSH 的 stdin 接收数据并在远程解包。
+// 这种方式不需要在 SSH 主机上事先上传文件，适合大目录同步。
 export async function syncDirectoryToSsh(input: {
   spec: SshRemoteExecutionSpec;
   localDir: string;
@@ -1113,6 +1158,12 @@ export async function syncDirectoryFromSsh(input: {
   }
 }
 
+// 将本地工作空间准备到远程 SSH 目标。
+// 设计策略：
+// - 如果本地目录是 Git 仓库，通过 git bundle 导入完整 Git 历史到远程，然后同步工作文件，再清理已删除文件。
+//   这样可以保留 Git 历史，方便远程调试和版本追溯。
+// - 如果不是 Git 仓库，则执行"先清空再同步"策略清空远程目录（保留 .paperclip-runtime 运行时文件），
+//   然后 tar 流式同步所有文件。
 export async function prepareWorkspaceForSshExecution(input: {
   spec: SshRemoteExecutionSpec;
   localDir: string;
@@ -1228,6 +1279,12 @@ export async function stopSshEnvLabFixture(statePath: string): Promise<boolean> 
   return true;
 }
 
+// 启动 SSH 环境实验室 fixture —— 在本地启动一个真实的 sshd 进程用于集成测试。
+// 设计决策：
+// - 如果已有运行的 fixture（PID 存活且进程命令行匹配），复用该 fixture 而非重复创建。
+// - 如果存在 stale fixture（PID 已死），清除其根目录并重新创建。
+// - sshd 以无密码密钥认证方式运行，仅允许创建用户登录。
+// - 所有敏感文件（私钥、known_hosts、sshd_config）权限设为 0600。
 export async function startSshEnvLabFixture(input: {
   statePath: string;
   bindHost?: string;

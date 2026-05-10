@@ -15,6 +15,8 @@ import {
 import { PaperclipApiClient } from "./client.js";
 import { formatErrorResponse, formatTextResponse } from "./format.js";
 
+// MCP 工具定义的内部接口。每个工具包含名称、描述、Zod 校验 schema 和执行函数。
+// schema 在 execute 前完成校验，确保下游收到结构化且类型安全的输入。
 export interface ToolDefinition {
   name: string;
   description: string;
@@ -24,6 +26,9 @@ export interface ToolDefinition {
   }>;
 }
 
+// 工具工厂函数：将 schema 校验与业务执行解耦。
+// parse 失败时抛出 ZodError，被 catch 捕获后统一走 formatErrorResponse，
+// 保证任何工具都不会因未捕获异常而崩溃 MCP 连接。
 function makeTool<TSchema extends z.ZodRawShape>(
   name: string,
   description: string,
@@ -45,11 +50,16 @@ function makeTool<TSchema extends z.ZodRawShape>(
   };
 }
 
+// 将可选的 JSON 字符串安全解析为对象。
+// 传入 undefined/null/空字符串 时返回 undefined，避免 JSON.parse("") 报错。
 function parseOptionalJson(raw: string | undefined | null): unknown {
   if (!raw || raw.trim().length === 0) return undefined;
   return JSON.parse(raw);
 }
 
+// issueId / projectId 使用 min(1) 而非 uuid() 校验，因为 Paperclip 支持短标识符引用和数字 ID，
+// 而 goalId / approvalId 只接受严格 UUID 格式以防止歧义。
+// documentKey 限制 1-64 字符，与服务端存储索引长度对齐。
 const companyIdOptional = z.string().uuid().optional().nullable();
 const agentIdOptional = z.string().uuid().optional().nullable();
 const issueIdSchema = z.string().min(1);
@@ -76,6 +86,7 @@ const listIssuesSchema = z.object({
   q: z.string().optional(),
 });
 
+// limit 上限 500 与服务端分页硬限制一致，防止 LLM 一次请求过多数据导致超时。
 const listCommentsSchema = z.object({
   issueId: issueIdSchema,
   after: z.string().uuid().optional(),
@@ -83,6 +94,7 @@ const listCommentsSchema = z.object({
   limit: z.number().int().positive().max(500).optional(),
 });
 
+// body 上限 524288（512KB）与服务端文档存储字段类型一致，超出将收到服务端 413 错误。
 const upsertDocumentToolSchema = z.object({
   issueId: issueIdSchema,
   key: documentKeySchema,
@@ -179,16 +191,21 @@ const waitForIssueWorkspaceServiceSchema = z.object({
   timeoutSeconds: z.number().int().positive().max(300).optional(),
 });
 
+// 异步等待辅助函数，用于 waitForIssueWorkspaceService 轮询中的间隔控制。
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+// 从心跳上下文中提取当前执行工作空间。心跳上下文是服务端返回的 Compact 结构，
+// 包含 workspace 信息、运行时服务列表以及最近的评论/操作摘要，是 MCP 工具获取运行时状态的主要入口。
 function readCurrentExecutionWorkspace(context: unknown): Record<string, unknown> | null {
   if (!context || typeof context !== "object") return null;
   const workspace = (context as { currentExecutionWorkspace?: unknown }).currentExecutionWorkspace;
   return workspace && typeof workspace === "object" ? workspace as Record<string, unknown> : null;
 }
 
+// 从工作空间对象中安全提取 runtimeServices 数组。
+// 使用类型守卫过滤掉数组中可能存在的 null/非对象项，避免下游 selectRuntimeService 访问属性时报错。
 function readWorkspaceRuntimeServices(workspace: Record<string, unknown> | null): Array<Record<string, unknown>> {
   const raw = workspace?.runtimeServices;
   return Array.isArray(raw)
@@ -196,6 +213,9 @@ function readWorkspaceRuntimeServices(workspace: Record<string, unknown> | null)
     : [];
 }
 
+// 根据 runtimeServiceId 或 serviceName 选择目标运行时服务。
+// 两者都未提供时，优先返回 running/starting 状态的服务——这是最可能对外提供 URL 的实例；
+// 若没有则回退到列表第一个，确保调用方不会拿到空结果但可能获得不可用服务。
 function selectRuntimeService(
   services: Array<Record<string, unknown>>,
   input: { runtimeServiceId?: string | null; serviceName?: string | null },
@@ -211,6 +231,8 @@ function selectRuntimeService(
     ?? null;
 }
 
+// 获取 issue 当前执行工作空间的运行时信息。心跳上下文是轻量级端点，
+// 相比全量 GET /issues/:id 能更快返回，适合在 control/wait 工具中频繁调用。
 async function getIssueWorkspaceRuntime(client: PaperclipApiClient, issueId: string) {
   const context = await client.requestJson("GET", `/issues/${encodeURIComponent(issueId)}/heartbeat-context`);
   const workspace = readCurrentExecutionWorkspace(context);
@@ -367,6 +389,9 @@ export function createToolDefinitions(client: PaperclipApiClient): ToolDefinitio
         );
       },
     ),
+    // waitForIssueWorkspaceService 采用轮询模式，因为容器启动是异步过程。
+    // 每 1 秒检查一次状态，直到服务标记为 running 且 healthStatus 不为 unhealthy。
+    // 超时时限默认 60 秒，调用方可上调至最多 300 秒（5 分钟）。
     makeTool(
       "paperclipWaitForIssueWorkspaceService",
       "Wait until an issue execution workspace runtime service is running and has a URL when one is exposed",
@@ -455,6 +480,8 @@ export function createToolDefinitions(client: PaperclipApiClient): ToolDefinitio
       async ({ issueId, ...body }) =>
         client.requestJson("PATCH", `/issues/${encodeURIComponent(issueId)}`, { body }),
     ),
+    // checkout 时默认允许 ["todo", "backlog", "blocked"] 三种状态的 issue 被签出，
+    // 覆盖大多数 agent 工作流场景。调用方可通过 expectedStatuses 显式指定更严格或更宽松的状态白名单。
     makeTool(
       "paperclipCheckoutIssue",
       "Checkout an issue for an agent",
@@ -561,6 +588,9 @@ export function createToolDefinitions(client: PaperclipApiClient): ToolDefinitio
           `/issues/${encodeURIComponent(issueId)}/approvals/${encodeURIComponent(approvalId)}`,
         ),
     ),
+    // approvalDecision 需要将 action 映射到不同的 API 端点（approve / reject / request-revision / resubmit），
+    // 且不同 action 的请求体结构不同：approve/reject/requestRevision 只带 decisionNote，
+    // resubmit 则携带 payloadJson（解析为 JSON 对象后传给服务端以更新审批内容）。
     makeTool(
       "paperclipApprovalDecision",
       "Approve, reject, request revision, or resubmit an approval",
@@ -596,6 +626,8 @@ export function createToolDefinitions(client: PaperclipApiClient): ToolDefinitio
       "paperclipApiRequest",
       "Make a JSON request to an existing Paperclip /api endpoint for unsupported operations",
       apiRequestSchema,
+      // apiRequest 是兜底工具，允许 LLM 调用尚未封装为独立工具的 API。
+      // 路径必须为 / 开头的相对路径（相对于 /api），且禁止包含 ".." 以防止路径穿越攻击。
       async ({ method, path, jsonBody }) => {
         if (!path.startsWith("/") || path.includes("..")) {
           throw new Error("path must start with / and be relative to /api, and must not contain '..'");

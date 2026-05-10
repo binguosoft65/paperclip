@@ -12,6 +12,9 @@ function maskHomePathUserSegment(value: string) {
   return `${trimmed[0]}${"*".repeat(Math.max(1, Array.from(trimmed).length - 1))}`;
 }
 
+// HOME 路径用户名校验模式：支持 macOS（/Users/xxx）、Linux（/home/xxx）、Windows（C:\Users\xxx）。
+// 用户名部分只保留第一个字符，其余替换为 *。例如 /Users/johndoe → /Users/j******
+// 这样既保留了路径结构可读性，又隐藏了真实用户名。
 const HOME_PATH_PATTERNS = [
   {
     regex: /\/Users\/([^/\\\s]+)/g,

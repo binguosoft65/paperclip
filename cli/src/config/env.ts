@@ -4,7 +4,13 @@ import { randomBytes } from "node:crypto";
 import { config as loadDotenv, parse as parseEnvFileContents } from "dotenv";
 import { resolveConfigPath } from "./store.js";
 
+// Agent JWT Secret 是本地 adapter 认证的核心密钥
+// 服务器和 adapter 进程通过共享此密钥验证彼此身份
+// 该文件管理与配置文件同目录的 .env 文件，持久化该密钥
 const JWT_SECRET_ENV_KEY = "PAPERCLIP_AGENT_JWT_SECRET";
+
+// .env 文件始终保存在 config.json 的同级目录下
+// 这样用户可以将两者一起复制/提交，保持配置完整性
 function resolveEnvFilePath(configPath?: string) {
   return path.resolve(path.dirname(resolveConfigPath(configPath)), ".env");
 }
@@ -47,6 +53,9 @@ export function resolveAgentJwtEnvFile(configPath?: string): string {
   return resolveEnvFilePath(configPath);
 }
 
+// 加载 .env 文件到进程环境变量
+// override: false 确保不会覆盖已在环境中显式设置的值
+// 已加载的文件通过 loadedEnvFiles 集合去重，避免重复加载
 export function loadPaperclipEnvFile(configPath?: string): void {
   loadAgentJwtEnvFile(resolveEnvFilePath(configPath));
 }
@@ -74,6 +83,10 @@ export function readAgentJwtSecretFromEnvFile(filePath = resolveEnvFilePath()): 
   return isNonEmpty(value) ? value!.trim() : null;
 }
 
+// JWT Secret 的保证策略：
+// 1) 优先使用环境变量中已有的值；2) 其次读取 .env 文件中已有值；
+// 3) 如果都没有，生成一个 32 字节随机十六进制串并写入 .env
+// 这样确保每次 onboard/run 后 secret 必然存在，且不会覆盖已有值
 export function ensureAgentJwtSecret(configPath?: string): { secret: string; created: boolean } {
   const existingEnv = readAgentJwtSecretFromEnv(configPath);
   if (existingEnv) {
@@ -109,6 +122,8 @@ export function writePaperclipEnvEntries(entries: Record<string, string>, filePa
   });
 }
 
+// 合并写入 .env 条目：读取现有条目，新条目覆盖旧条目，保留未涉及的条目
+// 非破坏性写入，避免某次写入意外删除之前设置的其他环境变量
 export function mergePaperclipEnvEntries(
   entries: Record<string, string>,
   filePath = resolveEnvFilePath(),

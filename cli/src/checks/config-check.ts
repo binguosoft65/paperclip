@@ -1,6 +1,8 @@
 import { readConfig, configExists, resolveConfigPath } from "../config/store.js";
 import type { CheckResult } from "./index.js";
 
+// 配置文件完整性检查：文件是否存在 + JSON 解析 + schema 校验
+// 这是 doctor 的第一项检查，失败后不继续执行后续检查
 export function configCheck(configPath?: string): CheckResult {
   const filePath = resolveConfigPath(configPath);
 

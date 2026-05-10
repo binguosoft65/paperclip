@@ -3,6 +3,8 @@ import type { PaperclipConfig } from "../config/schema.js";
 import type { CheckResult } from "./index.js";
 import { resolveRuntimeLikePath } from "./path-resolver.js";
 
+// 数据库连接检查：embedded-postgres 仅检查数据目录是否存在（实际连接在启动时建立）
+// external postgres 模式实际执行 SELECT 1 验证连接串有效
 export async function databaseCheck(config: PaperclipConfig, configPath?: string): Promise<CheckResult> {
   if (config.database.mode === "postgres") {
     if (!config.database.connectionString) {

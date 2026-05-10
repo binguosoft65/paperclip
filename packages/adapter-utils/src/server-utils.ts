@@ -57,6 +57,9 @@ function resolveProcessGroupId(child: ChildProcess) {
   return typeof child.pid === "number" && child.pid > 0 ? child.pid : null;
 }
 
+// 向进程发送信号：优先使用进程组（负 PID），确保杀死整个进程组及其子进程。
+// Windows 上不支持进程组信号，回退到直接 kill 子进程。
+// 当子进程创建了自己的子进程时，仅 kill 子进程可能导致孤儿进程无限运行。
 function signalRunningProcess(
   running: Pick<RunningProcess, "child" | "processGroupId">,
   signal: NodeJS.Signals,
@@ -74,12 +77,17 @@ function signalRunningProcess(
   }
 }
 
+// 全局运行进程表，用于跟踪所有活跃子进程以便在清理时统一终止。
 export const runningProcesses = new Map<string, RunningProcess>();
+// 最大捕获输出 4MB：在进程结束前保留完整输出以供分析。
 export const MAX_CAPTURE_BYTES = 4 * 1024 * 1024;
+// 摘录最大 32KB：日志和摘要场景的截断阈值。
 export const MAX_EXCERPT_BYTES = 32 * 1024;
 const TERMINAL_RESULT_SCAN_OVERLAP_CHARS = 64 * 1024;
 const SENSITIVE_ENV_KEY = /(key|token|secret|password|passwd|authorization|cookie)/i;
 const REDACTED_LOG_VALUE = "***REDACTED***";
+// Paperclip 技能目录的候选相对路径。
+// 考虑了两种可能的包深度位置：适配器模块两层或五层深（取决于 monorepo 还是独立包结构）。
 const PAPERCLIP_SKILL_ROOT_RELATIVE_CANDIDATES = [
   "../../skills",
   "../../../../../skills",
@@ -226,6 +234,9 @@ export function appendWithCap(prev: string, chunk: string, cap = MAX_CAPTURE_BYT
   return combined.length > cap ? combined.slice(combined.length - cap) : combined;
 }
 
+// 基于字节数（而非字符数）的字符串截断，确保不截断多字节 UTF-8 字符。
+// 从尾部保留 cap 字节，如果起始位置在 UTF-8 延续字节上（高位为 10xxxxxx），
+// 继续前移直到找到一个字符起始字节，避免生成无效的 UTF-8 序列。
 export function appendWithByteCap(prev: string, chunk: string, cap = MAX_CAPTURE_BYTES) {
   const combined = prev + chunk;
   const bytes = Buffer.byteLength(combined, "utf8");
@@ -965,6 +976,8 @@ export function shapePaperclipWorkspaceEnvForExecution(input: {
   // executionCwd via adapterExecutionTargetRemoteCwd before calling this
   // helper, which always returns a non-empty string. Surface a warning so
   // future callers don't silently regress to the leak.
+  // 安全约束：远程执行目标必须使用远程路径而非本地路径。将本机工作目录 CWD 泄露到远程环境
+  // 会导致 SSH/沙箱环境使用不存在的路径，或者更糟——将敏感的本机路径结构暴露给远程。
   if (executionCwd === null) {
     // eslint-disable-next-line no-console
     console.warn(
@@ -1134,6 +1147,7 @@ async function resolveSpawnTarget(
   if (/\.(cmd|bat)$/i.test(executable)) {
     // Always use cmd.exe for .cmd/.bat wrappers. Some environments override
     // ComSpec to PowerShell, which breaks cmd-specific flags like /d /s /c.
+    // PowerShell 作为 ComSpec 时对 cmd.exe 特有标志的处理不同，这里强制使用 cmd.exe。
     const shell = resolveWindowsCmdShell(env);
     const commandLine = [quoteForCmd(executable), ...args.map(quoteForCmd)].join(" ");
     return {
@@ -1804,6 +1818,8 @@ export async function runChildProcess(
     // These vars leak in when the Paperclip server itself is started from
     // within a Claude Code session (e.g. `npx paperclipai run` in a terminal
     // owned by Claude Code) or when cron inherits a contaminated shell env.
+    // 嵌套保护：如果 Paperclip 服务器是在 Claude Code 会话中启动的，这些环境变量会泄漏到子进程。
+    // 不清除它们会导致子进程中的 `claude` 命令检测到"已在会话中"而拒绝启动。
     const CLAUDE_CODE_NESTING_VARS = [
       "CLAUDECODE",
       "CLAUDE_CODE_ENTRYPOINT",
@@ -1857,6 +1873,11 @@ export async function runChildProcess(
           terminalCleanupKillTimer = null;
         };
 
+        // 终端结果检测和清理模式：
+        // 某些终端适配器（如 REPL、交互式 CLI）在输出特定标志后已经完成工作，但进程仍在运行。
+        // hasTerminalResult 回调检查输出中是否包含"结果完成"标记。
+        // 如果检测到，在 graceMs 延迟后发送 SIGTERM，再 SIGKILL 确保进程彻底终止。
+        // 这样既保留了结果输出，又避免进程无限等待。
         const maybeArmTerminalResultCleanup = () => {
           const terminalCleanup = opts.terminalResultCleanup;
           if (!terminalCleanup || terminalCleanupStarted || timedOut) return;

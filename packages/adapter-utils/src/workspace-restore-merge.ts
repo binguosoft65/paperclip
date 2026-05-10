@@ -211,6 +211,11 @@ export async function captureDirectorySnapshot(
   };
 }
 
+// 基于基线快照的目录合并算法：
+// 1. 计算从运行前到运行后新增/修改/删除的文件集合
+// 2. 删除：仅删除目标目录中与基线匹配且源目录已删除的文件
+// 3. 修改/新增：只复制发生过变化的条目（通过 SHA-256 对比）
+// 这种差异合并比整目录全量同步更高效，特别是大项目中的小改动。
 export async function mergeDirectoryWithBaseline(input: {
   baseline: DirectorySnapshot;
   sourceDir: string;

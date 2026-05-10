@@ -46,6 +46,9 @@ function resolveBackupDir(raw: string): string {
   return path.resolve(expandHomePrefix(raw.trim()));
 }
 
+// db:backup 命令：执行一次数据库备份
+// 连接字符串来源优先级：DATABASE_URL 环境变量 > 配置文件中的 connectionString > embedded-postgres 默认地址
+// 备份目录和保留策略从配置读取，但可通过命令行参数临时覆盖
 export async function dbBackupCommand(opts: DbBackupOptions): Promise<void> {
   printPaperclipCliBanner();
   p.intro(pc.bgCyan(pc.black(" paperclip db:backup ")));

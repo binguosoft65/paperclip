@@ -3,6 +3,10 @@ import pc from "picocolors";
 import { normalizeHostnameInput } from "../config/hostnames.js";
 import { readConfig, resolveConfigPath, writeConfig } from "../config/store.js";
 
+// 向配置添加允许的主机名（仅 authenticated/private 模式下生效）
+// 主机名经过归一化处理（URL 提取 hostname + 小写化）
+// 已存在的主机名不会重复添加，给出提示
+// 添加后需要重启服务器才能生效
 export async function addAllowedHostname(host: string, opts: { config?: string }): Promise<void> {
   const configPath = resolveConfigPath(opts.config);
   const config = readConfig(opts.config);
@@ -31,6 +35,8 @@ export async function addAllowedHostname(host: string, opts: { config?: string }
     );
   }
 
+  // allowed hostname 仅在 authenticated/private 模式下生效
+  // 其他模式下（local_trusted 或 public）主机名限制无意义，给出提示但不过度警告
   if (!(config.server.deploymentMode === "authenticated" && config.server.exposure === "private")) {
     p.log.message(
       pc.dim("Note: allowed hostnames are enforced only in authenticated/private mode."),

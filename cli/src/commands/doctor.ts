@@ -23,6 +23,12 @@ const STATUS_ICON = {
   fail: pc.red("✗"),
 } as const;
 
+// doctor 诊断流程：按顺序执行 9 项检查
+// 顺序依赖：
+// 1) 配置文件检查必须首先通过（后续检查都依赖配置文件）
+// 2) 部署认证检查用于确定环境上下文
+// 3) Agent JWT -> Secrets -> Storage -> Database -> LLM -> Log -> Port
+// 每项检查支持 --repair 自动修复；修复后重新加载 .env 并重新检查
 export async function doctor(opts: {
   config?: string;
   repair?: boolean;
@@ -35,7 +41,7 @@ export async function doctor(opts: {
   loadPaperclipEnvFile(configPath);
   const results: CheckResult[] = [];
 
-  // 1. Config check (must pass before others)
+  // 1. 配置文件检查：必须先通过，后续所有检查依赖有效配置
   const cfgResult = configCheck(opts.config);
   results.push(cfgResult);
   printResult(cfgResult);

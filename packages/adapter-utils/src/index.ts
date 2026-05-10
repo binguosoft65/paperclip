@@ -63,6 +63,8 @@ export {
 export { inferOpenAiCompatibleBiller } from "./billing.js";
 // Keep the root adapter-utils entry browser-safe because the UI imports it.
 // The sandbox callback bridge stays available via its dedicated subpath export.
+// 保持根入口浏览器安全：避免导入 Node.js 特有模块（fs、child_process 等）。
+// 沙箱回调桥类型通过独立的子路径导出，仅服务端代码导入。
 export type {
   SandboxCallbackBridgeRequest,
   SandboxCallbackBridgeResponse,

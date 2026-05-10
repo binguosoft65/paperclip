@@ -50,6 +50,9 @@ const openclawGatewayCLIAdapter: CLIAdapterModule = {
   formatStdoutEvent: printOpenClawGatewayStreamEvent,
 };
 
+// 适配器注册表：将适配器类型字符串映射到对应的 CLI 格式化模块
+// 每个适配器负责将各自的 stdout JSON 事件格式化为可读文本
+// 新增适配器时需要在此注册，否则 heartbeat run 的日志输出将使用 process 适配器回退
 const adaptersByType = new Map<string, CLIAdapterModule>(
   [
     acpxLocalCLIAdapter,
@@ -65,6 +68,7 @@ const adaptersByType = new Map<string, CLIAdapterModule>(
   ].map((a) => [a.type, a]),
 );
 
+// 按类型查找 CLI 适配器；未注册的类型回退到 process 适配器（通用 JSON 格式化）
 export function getCLIAdapter(type: string): CLIAdapterModule {
   return adaptersByType.get(type) ?? processCLIAdapter;
 }

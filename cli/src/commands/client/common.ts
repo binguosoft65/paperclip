@@ -25,6 +25,8 @@ export interface ResolvedClientContext {
   json: boolean;
 }
 
+// 给 CRUD 子命令添加通用选项（config/data-dir/context/profile/api-base/api-key/json/company-id）
+// includeCompany 为 true 时额外添加 --company-id 选项
 export function addCommonClientOptions(command: Command, opts?: { includeCompany?: boolean }): Command {
   command
     .option("-c, --config <path>", "Path to Paperclip config file")

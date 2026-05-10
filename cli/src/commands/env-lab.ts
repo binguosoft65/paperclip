@@ -11,6 +11,7 @@ import {
 } from "@paperclipai/adapter-utils/ssh";
 import { resolvePaperclipInstanceId, resolvePaperclipInstanceRoot } from "../config/home.js";
 
+// env-lab SSH 测试容器状态文件路径：~/.paperclip/instances/<id>/env-lab/ssh-fixture/state.json
 export function resolveEnvLabSshStatePath(instanceId?: string): string {
   const resolvedInstanceId = resolvePaperclipInstanceId(instanceId);
   return path.resolve(
@@ -141,6 +142,9 @@ export async function envLabDoctorCommand(opts: { instance?: string; json?: bool
   p.log.message(`Cleanup: ${pc.dim("pnpm paperclipai env-lab down")}`);
 }
 
+// env-lab 命令组：管理本地的 SSH 环境测试容器
+// 用于模拟 SSH 连接环境，方便 adapter 开发者测试 SSH 相关功能
+// 状态文件保存在实例目录下的 env-lab/ssh-fixture/state.json
 export function registerEnvLabCommands(program: Command) {
   const envLab = program.command("env-lab").description("Deterministic local environment fixtures");
 

@@ -56,8 +56,12 @@ type OnboardOptions = {
 
 type OnboardDefaults = Pick<PaperclipConfig, "database" | "logging" | "server" | "auth" | "storage" | "secrets">;
 
+// 当 bind 指定为 tailnet 但未能检测到 Tailscale 地址时，给出降级提示
+// 配置会保持在 loopback，直到 Tailscale 可用或用户设置 PAPERCLIP_TAILNET_BIND_HOST
 const TAILNET_BIND_WARNING =
   "No Tailscale address was detected during setup. The saved config will stay on loopback until Tailscale is available or PAPERCLIP_TAILNET_BIND_HOST is set.";
+
+// onboard 流程关注的所有环境变量列表，用于自动检测和状态展示
 
 const ONBOARD_ENV_KEYS = [
   "PAPERCLIP_PUBLIC_URL",
@@ -91,6 +95,9 @@ const ONBOARD_ENV_KEYS = [
   "PAPERCLIP_SECRETS_MASTER_KEY_FILE",
 ] as const;
 
+// 以下辅助函数用于将环境变量字符串值安全地解析为目标类型
+// 宽松解析：true/1/yes 均视为 true，false/0/no 均视为 false
+// 无法识别时返回 null 表示"未设置"，与 false 区分开
 function parseBooleanFromEnv(rawValue: string | undefined): boolean | null {
   if (rawValue === undefined) return null;
   const lower = rawValue.trim().toLowerCase();
@@ -116,6 +123,7 @@ function resolvePathFromEnv(rawValue: string | undefined): string | null {
   return path.resolve(expandHomePrefix(rawValue.trim()));
 }
 
+// 格式化服务器绑定信息用于展示：如 "lan (0.0.0.0):3100" 或 "tailnet (detected tailscale address):3100"
 function describeServerBinding(server: Pick<PaperclipConfig["server"], "bind" | "customBindHost" | "host" | "port">): string {
   const bind = server.bind ?? inferBindModeFromHost(server.host);
   const detail =
@@ -127,6 +135,12 @@ function describeServerBinding(server: Pick<PaperclipConfig["server"], "bind" | 
   return `${bind}${detail ? ` (${detail})` : ""}:${server.port}`;
 }
 
+// 从环境变量推导 quickstart 默认配置：允许用户通过环境变量覆盖默认值
+// 设计意图：
+// 1) 如果 --yes 且未指定 --bind，强制 local_trusted 模式，忽略相关网络环境变量（安全策略：本地快速启动不应暴露到网络）
+// 2) 如果指定了 --bind，则使用对应 preset
+// 3) 环境变量中有 DATABASE_URL 则自动选用 external postgres 模式
+// 返回 usedEnvKeys（实际生效的变量）和 ignoredEnvKeys（被忽略的变量及其原因）用于展示
 function quickstartDefaultsFromEnv(opts?: { preferTrustedLocal?: boolean }): {
   defaults: OnboardDefaults;
   usedEnvKeys: string[];
@@ -318,10 +332,19 @@ function quickstartDefaultsFromEnv(opts?: { preferTrustedLocal?: boolean }): {
   return { defaults, usedEnvKeys, ignoredEnvKeys };
 }
 
+// 判断是否可以在 onboard 流程内立即创建 CEO 邀请链接：
+// 需要 authenticated 模式 + 非 embedded-postgres（因为 embedded-postgres 在服务器启动前不可用）
+// 如果使用 embedded-postgres，邀请会在服务器首次启动后生成
 function canCreateBootstrapInviteImmediately(config: Pick<PaperclipConfig, "database" | "server">): boolean {
   return config.server.deploymentMode === "authenticated" && config.database.mode !== "embedded-postgres";
 }
 
+// onboard 主流程设计：
+// 1) 如果已有有效配置 -> 展示配置摘要并询问是否启动（不修改配置）
+// 2) 无配置 -> 选择 quickstart（环境驱动默认值）或 advanced（逐一交互）
+// 3) 所有流程结束后保证：agent JWT secret 已就绪、secrets key 文件已就绪
+// 4) authenticated 模式 + 非 embedded-postgres -> 立即生成 CEO 邀请链接
+// 5) 询问用户是否立即启动服务器
 export async function onboard(opts: OnboardOptions): Promise<void> {
   if (opts.bind && !["loopback", "lan", "tailnet"].includes(opts.bind)) {
     throw new Error(`Unsupported bind preset for onboard: ${opts.bind}. Use loopback, lan, or tailnet.`);

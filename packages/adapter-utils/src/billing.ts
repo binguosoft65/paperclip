@@ -3,6 +3,10 @@ function readEnv(env: NodeJS.ProcessEnv, key: string): string | null {
   return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
 }
 
+// 推断 OpenAI 兼容 API 的提供商。
+// 优先级：显式设置 OPENROUTER_API_KEY > BASE_URL 包含 openrouter 关键词 > fallback 默认值。
+// 设计原因：许多 LLM 提供商使用 OpenAI 兼容 API 格式，但计费方不同。
+// 在存在 OPENROUTER_API_KEY 时必然是 OpenRouter 而非 OpenAI。
 export function inferOpenAiCompatibleBiller(
   env: NodeJS.ProcessEnv,
   fallback: string | null = "openai",

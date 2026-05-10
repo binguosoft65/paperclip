@@ -12,6 +12,16 @@ function cancelled(): never {
   process.exit(0);
 }
 
+// 服务器配置交互提示 — 核心的"可达性 + 部署模式"设置
+// 预设四种模式：
+// - loopback: 127.0.0.1，无认证，适合本地开发
+// - lan: 0.0.0.0，private 网络，需认证
+// - tailnet: 自动检测 Tailscale IP，private 网络，需认证
+// - custom: 手动指定认证模式、暴露方式、主机地址和 public URL
+// 安全约束：
+// - local_trusted 模式强制 loopback 主机
+// - public 暴露模式下必须提供 public base URL
+// - authenticated/private 模式下可选择设置 allowed hostnames
 export async function promptServer(opts?: {
   currentServer?: Partial<ServerConfig>;
   currentAuth?: Partial<AuthConfig>;

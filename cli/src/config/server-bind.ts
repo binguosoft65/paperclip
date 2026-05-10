@@ -11,6 +11,8 @@ import {
 } from "@paperclipai/shared";
 import type { AuthConfig, ServerConfig } from "./schema.js";
 
+// Tailscale IP 检测超时：快速失败，避免在无 tailscale 环境下长时间阻塞
+// 3 秒的超时保证命令行响应速度不受影响
 const TAILSCALE_DETECT_TIMEOUT_MS = 3000;
 
 type BaseServerInput = {
@@ -24,6 +26,9 @@ export function inferConfiguredBind(server?: Partial<ServerConfig>): BindMode {
   return inferBindModeFromHost(server?.customBindHost ?? server?.host);
 }
 
+// 检测 Tailscale IP：优先使用 PAPERCLIP_TAILNET_BIND_HOST 环境变量
+// 环境变量未设置时尝试运行 `tailscale ip -4` 命令获取
+// 失败时返回 undefined，调用方需要回退到 loopback
 export function detectTailnetBindHost(): string | undefined {
   const explicit = process.env.PAPERCLIP_TAILNET_BIND_HOST?.trim();
   if (explicit) return explicit;

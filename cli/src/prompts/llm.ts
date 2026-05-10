@@ -1,6 +1,10 @@
 import * as p from "@clack/prompts";
 import type { LlmConfig } from "../config/schema.js";
 
+// LLM 提供商配置交互提示
+// 当前支持 Claude (Anthropic) 和 OpenAI
+// API Key 以 password 输入（不回显）收集，最终加密存储在 secrets 中
+// 用户可跳过此步骤（LLM 配置非必需 —— 可在运行后随时通过 configure 添加）
 export async function promptLlm(): Promise<LlmConfig | undefined> {
   const configureLlm = await p.confirm({
     message: "Configure an LLM provider now?",

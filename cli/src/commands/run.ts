@@ -32,6 +32,11 @@ interface StartedServer {
   listenPort: number;
 }
 
+// run 命令："一键启动"编排
+// 1) 创建实例目录结构；2) 如果配置不存在，自动触发 onboard（非交互时提示用户先去运行 onboard）；
+// 3) 运行 doctor 全面检查（默认启用 --repair）；4) 导入并启动 Paperclip 服务器；
+// 5) 如果使用 embedded-postgres 且为 authenticated 模式，在服务器启动后生成 CEO 邀请
+// 这样用户只需一个命令即可从零到完整运行
 export async function runCommand(opts: RunOptions): Promise<void> {
   const instanceId = resolvePaperclipInstanceId(opts.instance);
   process.env.PAPERCLIP_INSTANCE_ID = instanceId;
@@ -171,6 +176,10 @@ function ensureDevWorkspaceBuildDeps(projectRoot: string): void {
   }
 }
 
+// 服务器入口加载策略（开发/生产双模式）：
+// 开发模式：查找 monorepo 中的 server/src/index.ts，使用 tsx 直接运行 TypeScript
+// 生产模式：导入已编译的 @paperclipai/server 包
+// 如果两者都不存在，给出明确的错误提示
 async function importServerEntry(): Promise<StartedServer> {
   // Dev mode: try local workspace path (monorepo with tsx)
   const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");

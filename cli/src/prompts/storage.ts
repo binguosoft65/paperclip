@@ -22,6 +22,11 @@ export function defaultStorageConfig(): StorageConfig {
   };
 }
 
+// 存储配置交互提示
+// 两个选项：
+// - local_disk（推荐）：存储在实例根目录下的 data/storage 目录
+// - s3：需要配置 bucket/region/endpoint，支持 S3 兼容存储
+// 选择 local_disk 时隐藏 S3 字段，反之亦然，降低用户认知负担
 export async function promptStorage(current?: StorageConfig): Promise<StorageConfig> {
   const base = current ?? defaultStorageConfig();
 

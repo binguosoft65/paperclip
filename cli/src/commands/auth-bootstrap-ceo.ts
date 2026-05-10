@@ -51,6 +51,12 @@ function resolveBaseUrl(configPath?: string, explicitBaseUrl?: string) {
   return `http://${publicHost}:${port}`;
 }
 
+// 生成一次性 CEO 邀请链接
+// 安全设计：
+// - 生成随机 token（pcp_bootstrap_<48 hex chars>），数据库中仅存 SHA256 哈希值，防止数据库泄露导致 token 泄露
+// - 在创建新邀请前，撤销所有未过期、未使用的旧邀请（防止多个有效邀请）
+// - 过期时间限制在 1~720 小时内（30 天），默认 72 小时
+// - 执行前提：服务器必须在运行且数据库可用
 export async function bootstrapCeoInvite(opts: {
   config?: string;
   force?: boolean;

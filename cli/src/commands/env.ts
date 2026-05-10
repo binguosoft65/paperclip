@@ -36,6 +36,9 @@ function defaultStorageBaseDir(): string {
   return resolveDefaultStorageDir(resolvePaperclipInstanceId());
 }
 
+// env 命令：将配置和运行环境合并，输出完整的部署环境变量
+// 输出包含各变量的来源（env/config/file/default）和缺失标记
+// 最后生成可供 source 的 shell export 块，方便部署使用
 export async function envCommand(opts: { config?: string }): Promise<void> {
   p.intro(pc.bgCyan(pc.black(" paperclip env ")));
 

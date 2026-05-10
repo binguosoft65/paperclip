@@ -55,6 +55,13 @@ function asErrorText(value: unknown): string {
 
 type AdapterType = string;
 
+// 手动触发单个 Agent 的心跳执行并流式查看执行日志
+// 设计思路：
+// 1) 通过 REST API 发送 wakeup 请求，服务器创建 HeartbeatRun 记录
+// 2) 轮询事件流（events）、日志（log）、运行状态（run status）
+// 3) 实时输出 adapter 的标准输出/错误到终端
+// 4) 支持超时控制（--timeout-ms），超时后标记为 timed_out 并退出
+// 5) 调试模式（--debug）直接输出原始 JSON chunk，用于排查适配器层问题
 export async function heartbeatRun(opts: HeartbeatRunOptions): Promise<void> {
   const debug = Boolean(opts.debug);
   const parsedTimeout = Number.parseInt(opts.timeoutMs, 10);

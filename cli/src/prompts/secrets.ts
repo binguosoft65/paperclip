@@ -18,6 +18,12 @@ export function defaultSecretsConfig(): SecretsConfig {
   };
 }
 
+// Secrets 配置交互提示
+// 供应商选择：
+// - local_encrypted（推荐）：加密密钥文件存储，适合单机
+// - aws_secrets_manager / gcp_secret_manager / vault：需外部适配器集成，当前版本未完全打通
+// strictMode：开启后要求敏感环境变量使用 secret ref 而非明文
+// 如果选择非 local_encrypted 供应商，会提示当前版本支持有限
 export async function promptSecrets(current?: SecretsConfig): Promise<SecretsConfig> {
   const base = current ?? defaultSecretsConfig();
 

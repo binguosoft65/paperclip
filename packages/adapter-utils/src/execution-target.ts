@@ -160,6 +160,8 @@ export function adapterExecutionTargetUsesManagedHome(
   return target?.kind === "remote" && target.transport === "sandbox";
 }
 
+// 获取远程执行目标的 CWD。如果是远程目标，使用其 remoteCwd；否则回退到本地 CWD。
+// 这里的设计意图是：远程目标必须有自己的工作目录，不能与本地宿主共享路径。
 export function adapterExecutionTargetRemoteCwd(
   target: AdapterExecutionTarget | null | undefined,
   localCwd: string,
@@ -178,6 +180,8 @@ export function resolveAdapterExecutionTargetCwd(
   return adapterExecutionTargetRemoteCwd(target, localFallbackCwd);
 }
 
+// 远程执行目标都需要启用 Paperclip 桥。桥为沙箱/SSH 内的 Agent CLI 提供反向 API 代理能力。
+// 本地执行不需要桥——CLI 可以直接访问 Paperclip API。
 export function adapterExecutionTargetUsesPaperclipBridge(
   target: AdapterExecutionTarget | null | undefined,
 ): boolean {
@@ -275,6 +279,8 @@ async function ensureSandboxCommandResolvable(
   // the first step honestly reflects whether the binary is on PATH. The
   // sandbox provider is responsible for sourcing login profiles (e2b mirrors
   // SSH's buildSshSpawnTarget) so this and the hello probe agree on PATH.
+  // 注意：这里使用 `command -v` 而非 `which`，因为 `command -v` 是 POSIX 标准，
+  // 且在最小化容器中更可靠（`which` 可能不存在）。
   let probe = await probeSandboxCommandResolvable(command, target);
   if (probe.resolved) return;
   if (probe.timedOut) {
@@ -393,6 +399,8 @@ export async function runAdapterExecutionTargetShellCommand(
         // `sh -lc` after the explicit `env KEY=VAL` overrides, re-sourcing
         // login profiles AFTER the override and silently undoing any
         // identity var (NVM_DIR / PATH / etc.) that a profile re-exports.
+        // 重要：不要在这里再加一层 `sh -lc` 包装。runSshCommand 内部已经做了 profile sourcing + env override，
+        // 再加一层会导致 profile 在 env override 之后再次被 source，覆盖显式设置的环境变量。
         const result = await runSshCommand(target.spec, command, {
           env,
           timeoutMs: (options.timeoutSec ?? 15) * 1000,
@@ -486,6 +494,8 @@ export interface AdapterSandboxInstallCommandCheck {
 // throws — so the rest of the test still runs and reports the post-install
 // state honestly. Caller pushes the check into its result array; the test
 // report shows whether install was attempted and what came back.
+// 此函数的目标是最佳努力（best-effort），不抛出异常。
+// 即使安装失败，测试流程仍应继续，后续的 resolvability probe 会检测 CLI 是否可用。
 export async function maybeRunSandboxInstallCommand(input: {
   runId: string;
   target: AdapterExecutionTarget | null | undefined;
@@ -996,6 +1006,9 @@ export async function startAdapterExecutionTargetPaperclipBridge(input: {
   const target = input.target;
   const onLog = input.onLog ?? (async () => {});
   const hostApiToken = input.hostApiToken?.trim() ?? "";
+  // 桥模式必须提供 API Token。此 Token 用于桥发往 Paperclip API 的请求。
+  // 沙箱内的 CLI 不知道此 Token——它只与桥通信，桥再代理请求到 Paperclip API。
+  // 这样 API Token 不会暴露到沙箱内部。
   if (hostApiToken.length === 0) {
     throw new Error("Sandbox bridge mode requires a host-side Paperclip API token.");
   }

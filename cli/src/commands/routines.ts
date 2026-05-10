@@ -230,6 +230,9 @@ async function openConfiguredDb(configPath: string): Promise<{
   }
 }
 
+// 禁用指定公司所有非归档 routine：紧急操作，用于维护或故障恢复
+// 需要直连数据库 —— 如果是 embedded-postgres，自动启动实例并执行迁移
+// 通过 companyId 隔离，避免影响同一实例中的其他公司
 export async function disableAllRoutinesInConfig(
   options: Pick<RoutinesDisableAllOptions, "config" | "companyId">,
 ): Promise<DisableAllRoutinesResult> {
@@ -330,6 +333,8 @@ export async function disableAllRoutinesCommand(options: RoutinesDisableAllOptio
   );
 }
 
+// routines disable-all：紧急停用指定公司的所有非归档 routine
+// 用于迁移、维护或故障场景，需要数据库直连并自动处理 embedded-postgres 的启动
 export function registerRoutineCommands(program: Command): void {
   const routinesCommand = program.command("routines").description("Local routine maintenance commands");
 

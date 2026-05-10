@@ -1,3 +1,4 @@
+// CLI 版本号直接从 package.json 读取，确保和 npm 包版本一致
 import { createRequire } from "node:module";
 
 type PackageJson = {

@@ -1,5 +1,7 @@
 // ---------------------------------------------------------------------------
 // Minimal adapter-facing interfaces (no drizzle dependency)
+// 本文件是所有适配器模块共享的类型定义，不依赖 drizzle ORM，确保可以被 UI 等前端代码安全导入。
+// 核心设计原则：让适配器模块只依赖纯 TypeScript 类型，避免引入服务端数据库层的负担。
 // ---------------------------------------------------------------------------
 
 import type { SshRemoteExecutionSpec } from "./ssh.js";
@@ -16,6 +18,7 @@ export interface AdapterAgent {
 export interface AdapterRuntime {
   /**
    * Legacy single session id view. Prefer `sessionParams` + `sessionDisplayId`.
+   * 保留 sessionId 是为了向下兼容旧版适配器，新代码应使用 sessionParams 来表达完整的会话状态。
    */
   sessionId: string | null;
   sessionParams: Record<string, unknown> | null;
@@ -25,6 +28,7 @@ export interface AdapterRuntime {
 
 // ---------------------------------------------------------------------------
 // Execution types (moved from server/src/adapters/types.ts)
+// 从服务端迁移过来的执行相关类型，集中定义以便适配器模块和 UI 共享。
 // ---------------------------------------------------------------------------
 
 export interface UsageSummary {
@@ -42,6 +46,7 @@ export type AdapterBillingType =
   | "credits"
   | "fixed"
   | "unknown";
+// 计费类型枚举：区分 API 调用计费、订阅制、预购额度等模式，用于成本核算和展示。
 
 export interface AdapterRuntimeServiceReport {
   id?: string | null;
@@ -78,6 +83,7 @@ export interface AdapterExecutionResult {
   usage?: UsageSummary;
   /**
    * Legacy single session id output. Prefer `sessionParams` + `sessionDisplayId`.
+   * 与 AdapterRuntime.sessionId 对应，保留以兼容旧适配器。
    */
   sessionId?: string | null;
   sessionParams?: Record<string, unknown> | null;
@@ -130,6 +136,7 @@ export interface AdapterExecutionContext {
   /**
    * Legacy remote transport view. Prefer `executionTarget`, which is the
    * provider-neutral contract produced by core runtime code.
+   * 旧版远程传输方式，保留以支持从旧配置反序列化的场景。
    */
   executionTransport?: {
     remoteExecution?: Record<string, unknown> | null;
@@ -234,6 +241,7 @@ export interface AdapterEnvironmentTestContext {
    * host. For SSH/sandbox targets the adapter should run command/auth probes
    * inside the remote environment so the result reflects what an agent run
    * would actually see at execution time.
+   * 远程环境连通性测试必须在目标环境内部执行，而非本机，才能真实反映 Agent 运行时的状态。
    */
   executionTarget?: AdapterExecutionTarget | null;
   /**
@@ -402,6 +410,7 @@ export interface ServerAdapterModule {
   // support, replacing hardcoded type lists in the server and UI.
   // All flags are optional — when undefined, the server falls back to
   // legacy hardcoded lists for built-in adapters.
+  // 这些标志位让适配器插件可以声明自身能力，服务端和 UI 不再需要维护硬编码的适配器类型列表。
   // ---------------------------------------------------------------------------
 
   /**
@@ -415,6 +424,7 @@ export interface ServerAdapterModule {
   /**
    * The adapterConfig key that holds the instructions file path.
    * Defaults to "instructionsFilePath" when supportsInstructionsBundle is true.
+   * 外部适配器需要显式指定配置键名，因为无法像内建适配器那样通过约定路径发现。
    */
   instructionsPathKey?: string;
 
@@ -427,12 +437,14 @@ export interface ServerAdapterModule {
   /**
    * Optional: describe how this adapter's runtime command should be launched
    * and provisioned in fresh remote environments such as sandboxes.
+   * 沙箱环境在首次启动时可能需要安装或探测命令是否存在，通过此方法提供安装脚本和探测命令。
    */
   getRuntimeCommandSpec?: (config: Record<string, unknown>) => AdapterRuntimeCommandSpec | null;
 }
 
 // ---------------------------------------------------------------------------
 // UI types (moved from ui/src/adapters/types.ts)
+// 转录条目类型，用于在前端展示 Agent 与适配器的交互历史。所有条目都包含时间戳，支持有序渲染。
 // ---------------------------------------------------------------------------
 
 export type TranscriptEntry =
@@ -452,6 +464,7 @@ export type StdoutLineParser = (line: string, ts: string) => TranscriptEntry[];
 
 // ---------------------------------------------------------------------------
 // CLI types (moved from cli/src/adapters/types.ts)
+// CLI 端适配器接口，用于终端输出格式化，不需要完整的服务端适配器模块。
 // ---------------------------------------------------------------------------
 
 export interface CLIAdapterModule {
@@ -461,6 +474,7 @@ export interface CLIAdapterModule {
 
 // ---------------------------------------------------------------------------
 // UI config form values (moved from ui/src/components/AgentConfigForm.tsx)
+// Agent 创建/编辑表单的配置值类型，涵盖本地运行、远程 SSH、沙箱等多种执行目标。
 // ---------------------------------------------------------------------------
 
 export interface CreateConfigValues {

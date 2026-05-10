@@ -6,6 +6,10 @@ import {
   resolvePaperclipInstanceId,
 } from "../config/home.js";
 
+// 数据库配置交互提示
+// 用户选择 embedded-postgres（本地管理，适合开发/单机）或 external postgres（生产环境）
+// 嵌入式模式下默认端口 54329（避开系统 PostgreSQL 的 5432），数据目录在实例根目录下
+// 备份配置统一：所有数据库模式都支持自动备份，间隔/保留期可调
 export async function promptDatabase(current?: DatabaseConfig): Promise<DatabaseConfig> {
   const instanceId = resolvePaperclipInstanceId();
   const defaultEmbeddedDir = resolveDefaultEmbeddedPostgresDir(instanceId);

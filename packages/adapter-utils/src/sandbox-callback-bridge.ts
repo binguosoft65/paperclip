@@ -7,11 +7,16 @@ import type { CommandManagedRuntimeRunner } from "./command-managed-runtime.js";
 import { preferredShellForSandbox } from "./sandbox-shell.js";
 import type { RunProcessResult } from "./server-utils.js";
 
+// 桥 Token 安全长度 24 字节（192 位），使用随机数生成，防猜测。
 const DEFAULT_BRIDGE_TOKEN_BYTES = 24;
+// 轮询间隔 100ms：快速响应和低 CPU 占用之间的平衡。
 const DEFAULT_BRIDGE_POLL_INTERVAL_MS = 100;
+// 响应超时 30s：沙箱内 CLI 等待 Paperclip API 返回的最长时间。
 const DEFAULT_BRIDGE_RESPONSE_TIMEOUT_MS = 30_000;
 const DEFAULT_BRIDGE_STOP_TIMEOUT_MS = 2_000;
+// 最大并发队列深度 64：防止沙箱内 CLI 产生过多请求压垮桥。
 const DEFAULT_BRIDGE_MAX_QUEUE_DEPTH = 64;
+// 请求/响应体上限 256KB：排除大文件传输场景，大文件应由沙箱提供专门的文件传输通道。
 const DEFAULT_BRIDGE_MAX_BODY_BYTES = 256 * 1024;
 const REMOTE_WRITE_BASE64_CHUNK_SIZE = 32 * 1024;
 const SANDBOX_CALLBACK_BRIDGE_ENTRYPOINT = "paperclip-bridge-server.mjs";
@@ -23,10 +28,10 @@ export interface SandboxCallbackBridgeRouteRule {
   path: RegExp;
 }
 
-// Routes the in-sandbox heartbeat skill is documented to call. The server
-// still enforces actor-level permissions on top of this allowlist; the list
-// exists to bound the surface area a compromised CLI could reach via the
-// reverse bridge. Keep this in sync with the Paperclip skill in
+// 路由白名单：沙箱内 CLI 通过桥允许访问的 Paperclip API 端点集合。
+// 安全设计：即使沙箱内的 CLI 被攻破，攻击者也仅能访问白名单内的 API。
+// 服务端仍会在二次验证时检查 Actor 级权限。
+// Keep this in sync with the Paperclip skill in
 // `skills/paperclip/SKILL.md` and `references/api-reference.md`.
 export const DEFAULT_SANDBOX_CALLBACK_BRIDGE_ROUTE_ALLOWLIST: readonly SandboxCallbackBridgeRouteRule[] = [
   // Identity, inbox, agent self-management
@@ -111,6 +116,7 @@ export interface SandboxCallbackBridgeRequest {
   /**
    * UTF-8 body contents. The bridge rejects non-JSON request bodies; binary
    * payloads are intentionally out of scope for this queue protocol.
+   * 二进制文件上传路径不使用桥，而是由沙箱直接向 Paperclip 的存储 API 操作。
    */
   body: string;
   createdAt: string;
@@ -376,6 +382,8 @@ export function createFileSystemSandboxCallbackBridgeQueueClient(): SandboxCallb
       // PID-liveness mkdir-mutex: mirrors the shell-based bridge mutex so a
       // crashed holder (SIGKILL / OOM) doesn't deadlock subsequent writers
       // for the full timeout window.
+      // 使用 mkdir 原子性作为互斥锁：如果持有锁的进程已死（PID 不可达），自动回收锁。
+      // 这避免了传统文件锁在进程崩溃后永久死锁的问题。
       let attempts = 0;
       while (true) {
         try {
@@ -580,6 +588,10 @@ async function writeBridgeResponse(
   await client.rename(tempPath, responsePath);
 }
 
+// 启动沙箱回调桥 Worker：一个基于文件队列的轮询 HTTP 反向代理。
+// 工作方式：循环扫描 requests 目录下的 JSON 文件，处理后将结果写入 responses 目录并删除请求文件。
+// 这种设计不依赖持久连接或 WebSocket，适合短生命周期、无状态的沙箱环境。
+// 停止时先等待 inFlight 请求完成（最多 drainTimeoutMs），然后拒绝所有未处理的请求。
 export async function startSandboxCallbackBridgeWorker(input: {
   client: SandboxCallbackBridgeQueueClient;
   queueDir: string;
@@ -811,6 +823,8 @@ export async function syncSandboxCallbackBridgeEntrypoint(input: {
       // (minimal Alpine/scratch images), surface the missing-tool error
       // instead of a misleading "sha mismatch" — the verify step is then
       // best-effort and we trust base64-decode + atomic rename below.
+      // 上传完整性校验：用 SHA-256 确保文件未在传输中损坏。
+      // 最小化系统镜像（Alpine/scratch）可能没有 sha256sum/shasum，此时降级为信任 base64 解码 + 原子重命名。
       "if partial_sha=\"$(hash_file \"$remote_partial\" 2>/dev/null)\"; then",
       "  if [ \"$partial_sha\" != \"$expected_sha\" ]; then",
       "    echo \"Sandbox callback bridge entrypoint upload sha mismatch.\" >&2",

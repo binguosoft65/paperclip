@@ -21,6 +21,8 @@ export interface CommandManagedRuntimeRunner {
     onSpawn?: (meta: { pid: number; startedAt: string }) => Promise<void>;
   }): Promise<RunProcessResult>;
 }
+// CommandManagedRuntimeRunner 是所有受管运行时的统一执行接口。
+// SSH、沙箱、本地子进程各自实现此接口，上层代码无需关心底层传输细节。
 
 export interface CommandManagedRuntimeSpec {
   providerKey?: string | null;
@@ -134,6 +136,11 @@ export function createCommandManagedRuntimeClient(input: {
   };
 }
 
+// 准备受管运行时环境。
+// 核心步骤：
+// 1. 如果提供了 installCommand，先探测目标命令是否已在 PATH 上。如果已存在则跳过安装。
+// 2. 如果安装失败，记录警告但不阻塞后续流程。因为 CLI 可能已在模板镜像或之前的 lease 中存在。
+// 3. 最后委托给 prepareSandboxManagedRuntime 完成文件同步和资产部署。
 export async function prepareCommandManagedRuntime(input: {
   runner: CommandManagedRuntimeRunner;
   spec: CommandManagedRuntimeSpec;
@@ -204,6 +211,10 @@ export async function prepareCommandManagedRuntime(input: {
     // exec's the CLI will surface a clear "command not found" if it is in
     // fact missing. The test path's `maybeRunSandboxInstallCommand` already
     // honors this contract — keep them consistent.
+    // 安装失败容忍策略：
+    // - 网络安装命令（curl | bash）可能因网络抖动超时
+    // - 但 CLI 可能已经在模板镜像中
+    // - 只有在实际执行时报错才是真正的失败，不应在准备阶段阻断整个 Agent 运行
     if (result.timedOut || (result.exitCode ?? 0) !== 0) {
       const tail = (text: string) =>
         text.split(/\r?\n/).filter((line) => line.trim().length > 0).slice(-3).join(" | ").slice(0, 480);
