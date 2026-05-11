@@ -23,6 +23,10 @@
 | 13 | 引证溯源 | Agent 输出附 `[[实体名]]` 链接，决策可追溯 |
 | 14 | 知识热度统计 | Dashboard 展示引用频次、未使用实体、过期实体，驱动巡检优先级 |
 | 15 | 用途标签与推荐 | 任务类型→知识映射。下次同类任务自动推荐历史上最常用的知识项 |
+| 16 | 爬虫与知识采集 | 源管理系统 + 三层采集策略（种子源→外链扩展→按需搜索）+ HTML→MD 管道 + 质量过滤 |
+| 17 | 知识审查队列 | 统一审查 UI —— Agent 写入和爬虫采集的内容汇聚到审查队列；支持批准/驳回/批量审批 |
+| 18 | 知识模板系统 | 5 种模板（概念/工具/流程/故障/决策），LLM 按内容类型自动匹配；用户可扩展 |
+| 19 | 外部源集成接口 | `KnowledgeCollector` 可插拔接口：WebCrawler、RSS、GitHub、arXiv，Plugin 系统可注册自定义采集器 |
 
 ## 架构
 
@@ -43,6 +47,15 @@ Paperclip Agent（心跳驱动）
 │  │ semantic │ │ freshness│ │ lifecycle   │  │
 │  │ search   │ │ check    │ │ manage      │  │
 │  └──────────┘ └──────────┘ └─────────────┘  │
+│  ┌──────────┐ ┌──────────┐ ┌─────────────┐  │
+│  │ 爬虫采集  │ │ 审查队列  │ │ 模板引擎     │  │
+│  │ crawler  │ │ review   │ │ templates   │  │
+│  │ +quality │ │ queue    │ │ +match      │  │
+│  └──────────┘ └──────────┘ └─────────────┘  │
+│  ┌──────────────────────────────────────┐   │
+│  │  外部源集成 (KnowledgeCollector)      │   │
+│  │  WebCrawler │ RSS │ GitHub │ arXiv   │   │
+│  └──────────────────────────────────────┘   │
 └──────────────┬───────────────────────────────┘
                │
      ┌─────────┴─────────┐
@@ -170,6 +183,34 @@ Agent 完成任务后评估哪些知识项对本次任务有帮助，更新对�
 | updated_at | timestamptz | 文件最后修改时间 |
 | created_at | timestamptz | 首次创建时间 |
 
+### knowledge_sources（知识源）
+
+| 列 | 类型 | 说明 |
+|----|------|------|
+| id | uuid | 主键 |
+| name | text | 源名称 |
+| url | text | 源 URL |
+| source_type | enum | blog / docs / github / forum / paper / rss / slack / custom |
+| collector_name | text | 匹配 KnowledgeCollector.name |
+| crawl_frequency | enum | daily / weekly / monthly / manual |
+| trust_weight | real | 该源的可信度权重 |
+| last_crawled | timestamptz | 上次爬取时间 |
+| article_selector | text | CSS 选择器提取正文 |
+| sitemap_url | text | RSS/sitemap URL |
+| enabled | boolean | 是否启用 |
+
+### knowledge_reviews（审查队列）
+
+| 列 | 类型 | 说明 |
+|----|------|------|
+| id | uuid | 主键 |
+| entity_name | text | 实体名 |
+| source_type | enum | agent / crawler / manual |
+| content | text | 待审核的 Markdown |
+| confidence | real | Agent 自评可信度 |
+| status | enum | pending / approved / rejected / revision_requested |
+| reviewed_by | uuid | 审核人 |
+
 ### Markdown YAML Frontmatter
 
 ```yaml
@@ -196,14 +237,24 @@ server/src/services/obsidian-wiki/
 ├── retriever.ts       # Agent 知识检索（语义搜索 + 经验推荐，两路合并）
 ├── freshness.ts       # 新鲜度巡检 + 引用评估
 ├── lifecycle.ts       # 提升/分裂/合并生命周期管理
+├── templates.ts       # 内容类型识别 + 模板匹配
+├── review.ts          # 审查队列管理
+├── sources.ts         # 源管理（CRUD + 检测 RSS/sitemap + 频率调度）
+├── collectors/
+│   ├── interface.ts   # KnowledgeCollector 接口定义
+│   ├── registry.ts    # Collector 注册表（Plugin 系统集成）
+│   ├── web-crawler.ts # WebCrawler: HTML→MD + 质量过滤 + 礼貌策略
+│   ├── rss-collector.ts  # RSSCollector: Feed 订阅解析
+│   └── github-collector.ts # GitHubCollector: Discussions/Issues
 ├── prompts/
 │   ├── editor.ts      # 编辑指南 prompt（导出为字符串常量）
-│   └── extractor.ts   # 实体提取 prompt
+│   ├── extractor.ts   # 实体提取 prompt
+│   └── quality.ts     # 内容质量过滤 prompt
 ├── utils/
 │   ├── fs.ts          # gray-matter 解析/写入 YAML frontmatter
 │   ├── embed.ts       # embedding 生成 + pgvector upsert/search
 │   └── names.ts       # 实体名标准化
-├── types.ts           # Entity, WikiFile, SearchResult 等类型
+├── types.ts           # Entity, WikiFile, RawNote, CollectorConfig 等类型
 └── __tests__/         # vitest 测试
 ```
 
