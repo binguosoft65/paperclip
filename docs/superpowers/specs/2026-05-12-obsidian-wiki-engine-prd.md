@@ -14,6 +14,18 @@
 2. [用户画像](#2-用户画像)
 3. [用户故事](#3-用户故事)
 4. [功能需求](#4-功能需求)
+   - [F1: 知识合成管道](#f1-知识合成管道)
+   - [F2: Agent 知识检索](#f2-agent-知识检索)
+   - [F3: 用途标签与知识推荐](#f3-用途标签与知识推荐)
+   - [F4: 新鲜度管理](#f4-新鲜度管理)
+   - [F5: 知识生命周期](#f5-知识生命周期)
+   - [F6: 知识消费（Web UI）](#f6-知识消费web-ui)
+   - [F7: 知识层级与权限](#f7-知识层级与权限)
+   - [F8: 触发时机](#f8-触发时机)
+   - [F9: 爬虫与知识采集](#f9-爬虫与知识采集)
+   - [F10: 知识审查队列](#f10-知识审查队列)
+   - [F11: 知识模板系统](#f11-知识模板系统)
+   - [F12: 外部源集成接口](#f12-外部源集成接口)
 5. [非功能需求](#5-非功能需求)
 6. [系统架构](#6-系统架构)
 7. [数据模型](#7-数据模型)
@@ -100,6 +112,16 @@
 **US-09**: 作为团队成员，我在 Obsidian 中编辑一篇知识实体，修改后保存。下次 Agent 检索时自动使用最新版本。我不需要做任何额外操作，Obsidian 就是知识库的编辑器。
 
 **US-10**: 作为团队新人，当我被分配第一个任务时，系统根据任务类型自动推荐了 5 篇相关知识——这些是之前完成同类任务的 Agent 最常引用的知识。我快速获得上下文而不需要去问老同事。
+
+### 3.4 知识采集视角
+
+**US-11**: 作为知识管理员，我在 Web UI 上添加一个博客源 `https://martinfowler.com`，系统自动检测到其 RSS feed，按我设定的频率每周抓取。新文章自动流入 inbox，经合成管道处理后成为可检索的实体。我不需要手动去"搬运"外部知识。
+
+**US-12**: 作为 Curator Agent，我在每周巡检中自动扫描已配置的源，发现新内容后下载、清洗、转 Markdown、入 inbox。如果某篇文章与已有实体高度重复，我自动跳过；如果内容质量太低（评分 < 4），我丢弃并记录日志。
+
+**US-13**: 作为技术负责人，我在审查队列中看到 5 条待审核的知识变更——3 条来自爬虫采集，2 条来自 Agent 任务归档。我快速查看每条的可信度和变更摘要，一键批量批准高质量条目，驳回一条低质量采集。
+
+**US-14**: 作为第三方插件开发者，我实现了 `SlackThreadCollector`——一种新的知识采集器，自动将团队 Slack 频道中的技术讨论整理为知识笔记。通过 Paperclip 插件系统注册后，知识管理员就可以在源管理中添加 Slack 频道作为知识源。
 
 ---
 
@@ -397,6 +419,291 @@ Agent 检索时:
 | 自动归档 | Issue status→done → afterTaskComplete hook → 调用 engine.process() | 每次任务完成 | 执行任务的 Agent |
 | 定期巡检 | Routine: cron `0 9 * * 1` → Issue "每周知识巡检" | 每周 | Curator Agent |
 | 手动整理 | Issue "整理 knowledge/微服务" → Agent checkout → 处理指定目录 | 按需 | 分配的 Agent |
+| 爬虫采集 | Routine: cron 按源配置频率 → 发现新内容 → 入 inbox → 合成管道处理 | 按源配置 | Curator Agent |
+| 手动爬取 | Issue "搜集 LLM Agent 的最新架构实践" → Agent 执行爬虫 → 入 inbox | 按需 | 分配的 Agent |
+
+### F9: 爬虫与知识采集
+
+#### F9.1 源管理系统
+
+不是所有 URL 都值得爬。需要一个结构化的源管理模块。
+
+**源定义**（`wiki/sources/` 目录下每个源一个 `.md` 文件）:
+
+```yaml
+---
+name: "Martin Fowler 博客"
+url: https://martinfowler.com
+type: blog              # blog | docs | github | forum | paper | rss
+crawl_frequency: weekly # daily | weekly | monthly | manual
+trust_weight: 0.9       # 该源的可信度权重，后续影响 Agent 自评 confidence
+last_crawled: 2026-05-12
+tags: [architecture, microservices]
+enabled: true
+article_selector: "article.post"  # CSS 选择器提取正文
+sitemap: https://martinfowler.com/feed.atom
+---
+```
+
+**源管理操作**:
+- Agent 在 Web UI 添加/编辑/禁用源
+- 添加时自动检测 RSS/sitemap → 确认抓取频率
+- 按频率检查源是否有新内容
+
+#### F9.2 三层采集策略
+
+| 层级 | 描述 | 触发 | 产出 |
+|------|------|------|------|
+| 种子源 | 用户手动配置的权威源 | Routine 按频率触发 | 新文章/页面 → inbox |
+| 外链扩展 | 从种子源文章中的外链发现新源 | 每篇种子文章处理时 | 自动评估 → 建议加入白名单 |
+| 按需搜索 | Issue 触发的定向搜集 | 手动触发 | 搜索引擎 → 候选页面列表 → 入 inbox |
+
+**外链扩展的安全边界**:
+- 只评估种子源正文中的外链（不跟随 sidebar/footer 导航）
+- 每个外链域需人工确认后才加入白名单
+- 单一域的外链数上限 20 条（防止深度爬取失控）
+
+#### F9.3 HTML → Markdown 转换管道
+
+```
+网页 URL
+  → robots.txt 检查
+  → 下载 HTML（带 ETag/Last-Modified，增量）
+  → 去除广告/导航/评论区/侧边栏（Readability 算法）
+  → HTML → Markdown（turndown）
+  → 内容质量过滤（LLM 判断: 有实质信息？与现有知识重复？内容农场？）
+  → 通过 → 写入 inbox/{源名}-{日期}-{标题}.md
+  → 不通过 → 丢弃 + 记录日志
+```
+
+**关键约束**: 不是整页进知识库——爬虫采集的是"候选笔记"，需要经过合成管道（F1）的实体提取和合并才能成为正式知识。
+
+#### F9.4 内容质量过滤
+
+入 inbox 前过一道 LLM 质量判断:
+
+- 是否有实质信息（拒绝纯导航页、404 页、登录墙）？
+- 是否与现有知识重复（标题 + 前 3 段做语义比对）？
+- 是否来自低质量源（短文章、SEO 农场、纯广告）？
+- 评分 0-10，< 4 分自动丢弃
+
+#### F9.5 爬虫礼貌策略
+
+| 规则 | 值 |
+|------|-----|
+| User-Agent | `Paperclip-Knowledge-Crawler/1.0` |
+| robots.txt | 强制遵守 |
+| 请求间隔 | 默认 5s，根据源类型可调 |
+| 速率限制 | 单域并发 1，全局并发 3 |
+| 重试策略 | 429/503 → 指数退避（1s, 2s, 4s, 8s），最多 3 次 |
+| 不爬内容 | 需登录页面、付费墙、API 端点 |
+
+### F10: 知识审查队列
+
+#### F10.1 审查视图
+
+所有 Agent 写入的待审核内容汇聚到统一审查队列:
+
+```
+Paperclip Web UI: /knowledge/review
+
+┌─────────────────────────────────────────────────┐
+│  待审核 (5)   已通过 (23)   已驳回 (2)           │
+├─────────────────────────────────────────────────┤
+│                                                 │
+│  ☐ Kubernetes HPA 配置指南                      │
+│    来源: Coder Agent (任务 PAP-231 完成后写入)   │
+│    可信度: 0.85  │  层级: company               │
+│    变更: 新增 "minReplicas 配置建议" 节          │
+│    待审核时间: 2 小时前                          │
+│    [查看变更] [批准] [驳回] [请求修改]            │
+│                                                 │
+│  ☐ PostgreSQL 死锁排查                           │
+│    来源: 爬虫 (来自 pgdocs.io 采集)              │
+│    可信度: 0.9  │  层级: company                │
+│    变更: 新增 "死锁检测日志" 段                  │
+│    待审核时间: 5 小时前                          │
+│    [查看变更] [批准] [驳回] [请求修改]            │
+│                                                 │
+└─────────────────────────────────────────────────┘
+```
+
+#### F10.2 审查队列排序规则
+
+- 默认按"可信度 × 等待时间"排序——高可信且等得久的优先审
+- 低可信度（< 0.5）内容单独分组，需更高优先级处理
+- 同一来源（同一 Agent 或同一爬虫源）的批量审核支持
+
+#### F10.3 审查操作
+
+| 操作 | 效果 |
+|------|------|
+| 批准 | content → wiki/ 正式发布，`verified: true` |
+| 驳回 | 标记 `status: rejected`，从队列移除，不删除原始文件 |
+| 请求修改 | 创建 Issue 分配给写入者，附修改意见 |
+| 批量批准 | 同源、相似可信度的内容一键批量通过 |
+
+### F11: 知识模板系统
+
+#### F11.1 模板定义
+
+不同领域的知识需要不同的结构。定义可扩展模板:
+
+**技术概念模板** (`templates/concept-template.md`):
+```markdown
+---
+tags: []
+created: {{date}}
+---
+
+# {{title}}
+
+## 概述
+1-2 句定义该概念及为什么重要。
+
+## 核心原理
+- 
+
+## 使用场景
+- 
+
+## 相关技术
+- [[ ]]
+```
+
+**工具模板** (`templates/tool-template.md`):
+```markdown
+---
+tags: [tool]
+created: {{date}}
+---
+
+# {{title}}
+
+## 是什么
+
+
+## 安装/接入
+```bash
+```
+
+## 常用操作
+- 
+
+## 踩坑记录
+- 
+```
+
+**故障处理模板** (`templates/incident-template.md`):
+```markdown
+---
+tags: [incident]
+created: {{date}}
+---
+
+# {{title}}
+
+## 症状
+- 
+
+## 根因
+
+
+## 修复步骤
+1. 
+2. 
+
+## 预防措施
+- 
+```
+
+#### F11.2 模板自动匹配
+
+Agent 或爬虫在处理新笔记时:
+
+```
+内容类型识别（LLM） →
+  概念型 → concept-template.md
+  工具型 → tool-template.md
+  流程型 → process-template.md
+  故障型 → incident-template.md
+  决策型 → decision-template.md
+```
+
+模板匹配结果会传给合成阶段的 LLM，指导其按对应结构组织内容。
+
+#### F11.3 模板扩展
+
+- 用户可在 Obsidian `templates/` 目录下创建自定义模板
+- 模板也是 Markdown 文件，使用 `{{变量}}` 占位符
+- 新模板创建后自动被系统发现（chokidar 监控 `templates/` 目录）
+
+### F12: 外部源集成接口
+
+#### F12.1 可插拔采集器
+
+核心设计: 把"知识从哪里来"抽象为统一接口，爬虫只是其中一个实现:
+
+```typescript
+interface KnowledgeCollector {
+  /** 采集器唯一标识 */
+  name: string;
+  
+  /** 采集并返回原始笔记列表 */
+  collect(config: CollectorConfig): Promise<RawNote[]>;
+  
+  /** 检查源是否有新内容（用于增量抓取） */
+  checkForUpdates(source: KnowledgeSource): Promise<boolean>;
+  
+  /** 采集器支持的源类型 */
+  supportedSourceTypes: SourceType[];
+}
+
+interface RawNote {
+  title: string;
+  content: string;        // Markdown 格式
+  source: string;         // 来源 URL 或标识
+  sourceType: SourceType;
+  collectedAt: Date;
+  metadata: Record<string, unknown>;  // 采集器特有元数据
+}
+```
+
+#### F12.2 内置采集器
+
+| 采集器 | 类型 | 用途 |
+|--------|------|------|
+| `WebCrawler` | 内置 | Web 页面爬取（HTML→MD，F9 的爬虫功能） |
+| `RSSCollector` | 内置 | RSS/Atom feed 订阅 |
+| `GitHubCollector` | 内置 | GitHub Discussions/Issues/README |
+| `arXivCollector` | 可选 | arXiv API 论文摘要 |
+| `DocsWatcher` | 内置 | 本地文件系统监控（已配置的 docs 目录）|
+
+#### F12.3 注册新采集器
+
+通过 Paperclip Plugin 系统的扩展点注册:
+
+```typescript
+// 第三方插件可以注册自定义采集器
+pluginContext.registerCollector({
+  name: "SlackThreadCollector",
+  supportedSourceTypes: ["slack"],
+  collect: async (config) => { /* Slack API 调用 */ },
+  checkForUpdates: async (source) => { /* 检查新消息 */ },
+});
+```
+
+#### F12.4 采集器执行模型
+
+```
+Routine/Cron 触发
+  → 遍历所有已启用的 Source
+    → 匹配对应的 Collector（按 sourceType）
+    → Collector.checkForUpdates(source)
+    → 有新内容 → Collector.collect(config)
+    → RawNote[] → 质量过滤 → 写入 inbox
+    → 合成管道（F1）处理
+```
 
 ---
 
@@ -515,6 +822,48 @@ CREATE TABLE wiki_entities (
 CREATE INDEX wiki_entities_embedding_idx ON wiki_entities
   USING hnsw (embedding vector_cosine_ops)
   WITH (m = 16, ef_construction = 200);
+
+-- 知识源管理
+CREATE TABLE knowledge_sources (
+  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name          TEXT NOT NULL,
+  url           TEXT NOT NULL,
+  source_type   TEXT NOT NULL DEFAULT 'blog'
+                CHECK (source_type IN ('blog','docs','github','forum','paper','rss','slack','custom')),
+  collector_name TEXT NOT NULL DEFAULT 'WebCrawler',  -- 匹配 KnowledgeCollector.name
+  crawl_frequency TEXT NOT NULL DEFAULT 'weekly'
+                CHECK (crawl_frequency IN ('daily','weekly','monthly','manual')),
+  trust_weight  REAL DEFAULT 0.5,
+  last_crawled  TIMESTAMPTZ,
+  article_selector TEXT,          -- CSS 选择器提取正文
+  sitemap_url   TEXT,             -- RSS/sitemap URL
+  tags          TEXT[] DEFAULT '{}',
+  enabled       BOOLEAN DEFAULT true,
+  crawl_config  JSONB DEFAULT '{}',  -- 采集器特有配置
+  created_at    TIMESTAMPTZ DEFAULT now(),
+  updated_at    TIMESTAMPTZ DEFAULT now()
+);
+
+-- 审查队列
+CREATE TABLE knowledge_reviews (
+  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  entity_name   TEXT NOT NULL,
+  file_path     TEXT NOT NULL,
+  source_type   TEXT NOT NULL       -- 'agent' | 'crawler' | 'manual'
+                CHECK (source_type IN ('agent','crawler','manual')),
+  source_id     TEXT,               -- Agent ID / Source name / User ID
+  content       TEXT NOT NULL,      -- 待审核的 Markdown 内容
+  existing_content TEXT,            -- 已有内容（如果是更新）
+  confidence    REAL DEFAULT 0.5,
+  level         TEXT NOT NULL DEFAULT 'project'
+                CHECK (level IN ('personal','project','company')),
+  status        TEXT NOT NULL DEFAULT 'pending'
+                CHECK (status IN ('pending','approved','rejected','revision_requested')),
+  reviewed_by   UUID,              -- 审核人 ID
+  review_notes  TEXT,              -- 审核意见
+  created_at    TIMESTAMPTZ DEFAULT now(),
+  reviewed_at   TIMESTAMPTZ
+);
 ```
 
 ### 7.2 Markdown YAML Frontmatter 规范
@@ -806,19 +1155,39 @@ function validatePath(filePath: string): void {
 - 超大实体触发拆分建议
 - 高相似度实体触发合并建议
 
-### Phase 4: Web UI（Week 5-6）
+### Phase 4: Web UI + 审查队列（Week 5-6）
 
 - [ ] 知识搜索页（`/knowledge/search`）
 - [ ] 知识详情页（`/knowledge/实体名`）
 - [ ] 知识 Dashboard（`/knowledge/dashboard`）
-- [ ] API 路由实现（搜索、CRUD、合成触发、统计）
+- [ ] 审查队列页（`/knowledge/review`）: 待审核/已通过/已驳回 三 Tab
+- [ ] 审查操作 API（批准/驳回/请求修改/批量批准）
+- [ ] API 路由实现（搜索、CRUD、合成触发、统计、审查）
 
 **验收**:
 - 搜索框输入 → 返回语义匹配结果
 - 详情页正确渲染 Markdown + 元数据
 - Dashboard 展示统计数据
+- 审查队列正常展示 Agent 写入和爬虫采集的待审核内容
+- 一键批准/驳回功能正常
 
-### Phase 5: 上线与调优（Week 6-7）
+### Phase 5: 爬虫 + 采集器 + 模板（Week 7-8）
+
+- [ ] 实现 `KnowledgeCollector` 接口
+- [ ] 实现 `WebCrawler`（HTML→MD、质量过滤、礼貌策略）
+- [ ] 实现 `RSSCollector`
+- [ ] 实现源管理系统（Web UI + API）
+- [ ] 实现模板系统（自动匹配、模板发现）
+- [ ] 实现外链扩展检测（种子源→发现新源→建议加入白名单）
+
+**验收**:
+- 添加源 → 自动检测 RSS → 按频率抓取
+- 新文章入 inbox → 合成管道正常处理
+- 质量过滤正确丢弃低质量内容
+- 模板根据内容类型自动匹配
+- 插件系统可注册自定义 Collector
+
+### Phase 6: 上线与调优（Week 8-9）
 
 - [ ] 全链路测试（写入 → 检索 → 反馈 → 维护 闭环）
 - [ ] 性能优化（pgvector 查询调优、HNSW 参数调优）
@@ -871,7 +1240,11 @@ function validatePath(filePath: string): void {
 | 反向引用 | 在目标实体中追加指向源实体的链接 |
 | 自适应检查 | 检查实体 A 引用 B 时，B 是否也包含对 A 的引用 |
 | 新鲜度评分 | freshness_score: 1.0 = 最新，0.0 = 完全过期 |
-| 用途标签 | YAML `used_for` 数组，标记该知识适用于哪些任务类型 |
+| 爬虫 | 自动从配置的外部源采集知识内容的程序，遵守 robots.txt 和礼貌策略 |
+| 采集器 (Collector) | 实现 `KnowledgeCollector` 接口的插件，可接入不同的知识来源（Web、RSS、GitHub 等）|
+| 源 (Source) | 爬虫/采集器的数据来源，是 URL、RSS feed、GitHub 仓库等 |
+| 审查队列 | 所有待审核知识变更的统一管理界面，支持批量审批 |
+| 知识模板 | 针对不同知识类型（概念/工具/流程/故障）的 Markdown 结构模板 |
 
 ### 14.2 技术依赖
 
