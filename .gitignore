@@ -44,7 +44,6 @@ diagnostics/
 .claude/settings.local.json
 .paperclip-local/
 /.idea/
-/.agents/
 
 # Doc maintenance cursor
 .doc-review-cursor
@@ -56,3 +55,4 @@ tests/release-smoke/test-results/
 tests/release-smoke/playwright-report/
 .superset/
 .claude/worktrees/
+.gstack/
