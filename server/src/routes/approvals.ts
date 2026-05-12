@@ -19,6 +19,7 @@ import {
 import { assertBoard, assertCompanyAccess, getActorInfo } from "./authz.js";
 import { redactEventPayload } from "../redaction.js";
 import type { PluginWorkerManager } from "../services/plugin-worker-manager.js";
+import { type KnowledgeDrafterService } from "../services/knowledge-drafter.js";
 
 function redactApprovalPayload<T extends { payload: Record<string, unknown> }>(approval: T): T {
   return {
@@ -29,10 +30,13 @@ function redactApprovalPayload<T extends { payload: Record<string, unknown> }>(a
 
 export function approvalRoutes(
   db: Db,
-  options: { pluginWorkerManager?: PluginWorkerManager } = {},
+  options: {
+    pluginWorkerManager?: PluginWorkerManager;
+    knowledgeDrafter?: KnowledgeDrafterService;
+  } = {},
 ) {
   const router = Router();
-  const svc = approvalService(db);
+  const svc = approvalService(db, { knowledgeDrafter: options.knowledgeDrafter });
   const heartbeat = heartbeatService(db, {
     pluginWorkerManager: options.pluginWorkerManager,
   });

@@ -208,7 +208,7 @@ export async function createApp(
   api.use(environmentRoutes(db, { pluginWorkerManager: workerManager }));
   api.use(executionWorkspaceRoutes(db));
   api.use(goalRoutes(db));
-  api.use(approvalRoutes(db, { pluginWorkerManager: workerManager }));
+  api.use(approvalRoutes(db, { pluginWorkerManager: workerManager, knowledgeDrafter }));
   api.use(secretRoutes(db));
   api.use(costRoutes(db, { pluginWorkerManager: workerManager }));
   api.use(activityRoutes(db));

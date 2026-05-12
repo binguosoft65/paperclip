@@ -3,12 +3,18 @@ import type { Db } from "@paperclipai/db";
 import { approvalComments, approvals } from "@paperclipai/db";
 import { notFound, unprocessable } from "../errors.js";
 import { redactCurrentUserText } from "../log-redaction.js";
+import { logger } from "../middleware/logger.js";
 import { agentService } from "./agents.js";
 import { budgetService } from "./budgets.js";
 import { notifyHireApproved } from "./hire-hook.js";
 import { instanceSettingsService } from "./instance-settings.js";
+import { type KnowledgeDrafterService } from "./knowledge-drafter.js";
 
-export function approvalService(db: Db) {
+export function approvalService(
+  db: Db,
+  opts: { knowledgeDrafter?: KnowledgeDrafterService } = {},
+) {
+  const drafter = opts.knowledgeDrafter;
   const agentsSvc = agentService(db);
   const budgets = budgetService(db);
   const instanceSettings = instanceSettingsService(db);
@@ -195,6 +201,28 @@ export function approvalService(db: Db) {
         if (payloadAgentId) {
           await agentsSvc.terminate(payloadAgentId);
         }
+      }
+
+      // Phase 1b-1: 失败信号 — 异步抽教训
+      if (drafter && applied) {
+        void drafter
+          .run({
+            kind: "approval_rejected",
+            companyId: updated.companyId,
+            approvalId: updated.id,
+            userId: decidedByUserId,
+            context: {
+              type: updated.type,
+              decisionNote: decisionNote ?? null,
+              payload: updated.payload,
+            },
+          })
+          .catch((err) => {
+            logger.warn(
+              { err, approvalId: updated.id },
+              "knowledge drafter (approval_rejected) failed",
+            );
+          });
       }
 
       return { approval: updated, applied };
