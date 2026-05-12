@@ -705,6 +705,25 @@ interface GraphCanvasProps {
 }
 ```
 
+#### 5.3.8 `RevisionDiff` — 修订快照对比
+
+详情页时间线点击 revision 项时弹出的内联 diff 视图。基于 `knowledge_node_revisions` 表数据。
+
+```typescript
+interface RevisionDiffProps {
+  before: Pick<NodeRevision, "title" | "content" | "type" | "level" | "metadata">;
+  after: Pick<KnowledgeNode, "title" | "content" | "type" | "level" | "metadata">;
+  changesetSummary?: string;            // revision.changeset_summary，可选展示
+  editorLabel?: string;                 // "Agent X" / "用户名"
+  createdAt: Date;
+}
+```
+
+实现要点：
+- 用现成 diff 库（如 `diff` npm 包）按行级 diff Markdown 内容
+- 同时显示 metadata JSONB diff（按 key 红绿对比）
+- 容器用 shadcn `Card` 包裹，左右双栏渲染（≥ md 宽度），窄屏堆叠
+
 ### 5.4 不新建的（虽然之前列过）
 
 - `HealthMetricCard` — **不新建**，直接用现有 `MetricCard` 并传 `status` prop 控制状态点配色（Dashboard 那行 6 卡）

@@ -4,7 +4,7 @@
 **日期**: 2026-05-12
 **数据库**: PostgreSQL 16 + pgvector 0.7+
 **ORM**: Drizzle ORM (TypeScript)
-**关联文档**: [PRD](./2026-05-12-llm-wiki-knowledge-engine-prd.md) · [功能设计](./2026-05-12-llm-wiki-knowledge-engine-design.md)
+**关联文档**: [PRD](../prd/2026-05-12-llm-wiki-knowledge-engine-prd.md) · [架构详设](./2026-05-12-llm-wiki-knowledge-engine-architecture.md) · [API 设计](./2026-05-12-llm-wiki-knowledge-engine-api.md) · [UI 设计](./2026-05-12-llm-wiki-knowledge-engine-ui.md)
 
 ---
 

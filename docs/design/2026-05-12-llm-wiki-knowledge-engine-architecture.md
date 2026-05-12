@@ -2,7 +2,7 @@
 
 **版本**: v2.0（DB-first）
 **日期**: 2026-05-12
-**关联文档**: [PRD](./2026-05-12-llm-wiki-knowledge-engine-prd.md) · [数据库设计](./2026-05-12-llm-wiki-knowledge-engine-database-design.md)
+**关联文档**: [PRD](../prd/2026-05-12-llm-wiki-knowledge-engine-prd.md) · [数据库设计](./2026-05-12-llm-wiki-knowledge-engine-database.md) · [API 设计](./2026-05-12-llm-wiki-knowledge-engine-api.md) · [UI 设计](./2026-05-12-llm-wiki-knowledge-engine-ui.md)
 
 ---
 
