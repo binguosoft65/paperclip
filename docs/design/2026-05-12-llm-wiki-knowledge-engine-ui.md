@@ -45,64 +45,106 @@ UI 设计**仅服务人类**，但要让"看 Agent 在用什么知识" / "审查
 
 ## 2. 设计令牌
 
-### 2.1 类型徽章（5 种节点类型，固定）
+**核心原则**（来自 Paperclip design-guide）：
+- 禁止 raw hex / rgb，全部走 CSS 语义 token（`--foreground` / `--muted` 等）或 Tailwind 命名色
+- 状态色板复用 `ui/src/lib/status-colors.ts` 已定义的 `statusBadge` map 模式
+- 圆角最大 `rounded-xl`（除 `rounded-full` for pills），阴影最重 `shadow-sm`
+- 必须暗色模式适配（所有徽章 class 含 `dark:` 变体）
 
-| type | 颜色 | 用途 |
-|------|------|------|
-| `concept` | 青色 `#06B6D4` | 抽象概念 |
-| `lesson` | 橙色 `#F59E0B` | 教训 |
-| `rule` | 红色 `#EF4444` | 强制规则 |
-| `decision` | 紫色 `#8B5CF6` | 决策记录 |
-| `fact` | 蓝色 `#3B82F6` | 事实陈述 |
+### 2.1 节点类型徽章（NodeTypeBadge，对齐 StatusBadge 风格）
 
-### 2.2 freshness 标签（4 状态，固定）
+新增 `NodeTypeBadge` composite 组件（仿 `StatusBadge` 实现），不发明颜色——映射到 `status-colors.ts` 既有的语义色系：
 
-| 标签 | 颜色 | 视觉处理 |
-|------|------|---------|
-| `fresh` | 绿色 `#10B981` | 正常显示 |
-| `stale_warning` | 黄色 `#F59E0B` | ⚠ 前缀图标 |
-| `outdated` | 灰色 `#6B7280` | 整卡片半透明 + 删除线标题 |
-| `valid_expired` | 红色 `#DC2626` | 闪烁红边 |
+| type | 含义 | 复用色板（类比） | Tailwind class |
+|------|------|-----------------|---------------|
+| `concept` | 抽象概念 | 类似 `running` 的 cyan | `bg-cyan-100 text-cyan-700 dark:bg-cyan-900/50 dark:text-cyan-300` |
+| `lesson` | 教训 | 类似 `paused` 的 orange | `bg-orange-100 text-orange-700 dark:bg-orange-900/50 dark:text-orange-300` |
+| `rule` | 强制规则 | 类似 `blocked` 的 red | `bg-red-100 text-red-700 dark:bg-red-900/50 dark:text-red-300` |
+| `decision` | 决策 | 复用 `in_review` 的 violet | `bg-violet-100 text-violet-700 dark:bg-violet-900/50 dark:text-violet-300` |
+| `fact` | 事实陈述 | 复用 `todo` 的 blue | `bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300` |
 
-### 2.3 边类型（6 种，图视图用）
+实现：把上述 map 加到 `status-colors.ts` 或新建 `node-type-colors.ts`，`NodeTypeBadge` 内部按 `statusBadge` 同样的 `inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium` 渲染。
 
-| edge_type | 线条 | 颜色 |
-|-----------|------|------|
-| `references` | 细实线 | 灰色 `#9CA3AF` |
-| `supersedes` | 粗虚线 | 红色 `#EF4444` |
-| `merged_from` | 实线带 ⊕ 标记 | 蓝色 `#3B82F6` |
-| `derived_from` | 实线带 ↑ 标记 | 紫色 `#8B5CF6` |
-| `conflicts_with` | 闪电状 | 橙色 `#F97316` |
-| `promoted_to` | 上升箭头 | 绿色 `#10B981` |
+### 2.2 freshness 标签（FreshnessBadge，复用 statusBadge 语义）
 
-### 2.4 业务域配色（用户自配）
+| 标签 | 类比 status | Tailwind class | 额外视觉 |
+|------|------------|---------------|---------|
+| `fresh` | 类似 `active` 的 green | `bg-green-100 text-green-700 dark:bg-green-900/50 dark:text-green-300` | 通常隐藏（默认状态） |
+| `stale_warning` | 类似 `warning` 的 amber | `bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-300` | 前置 `AlertTriangle` lucide 图标 |
+| `outdated` | 类似 `archived` | `bg-muted text-muted-foreground` | 整卡 `opacity-60`，标题加 `line-through` |
+| `valid_expired` | 类似 `rejected` 的 red | `bg-red-100 text-red-700 dark:bg-red-900/50 dark:text-red-300` | 前置 `AlertCircle` 图标 |
 
-每个 `business_domain` 在创建时由用户选 `color`（hex）和 `icon`（lucide 图标 key）。前端：
+### 2.3 边类型视觉（图视图用，Cytoscape 样式）
+
+边类型不入 `statusBadge` map（不是 badge 是 line style）。用 Tailwind 命名色对应同语义：
+
+| edge_type | 线型 | 颜色（CSS） |
+|-----------|------|------------|
+| `references` | 细实线 | `var(--muted-foreground)` |
+| `supersedes` | 粗虚线 | `var(--destructive)` |
+| `merged_from` | 实线 + ⊕ 标记 | Tailwind `blue-500` |
+| `derived_from` | 实线 + ↑ 标记 | Tailwind `violet-500` |
+| `conflicts_with` | 闪电状 | Tailwind `orange-500` |
+| `promoted_to` | 上升箭头 | Tailwind `green-500` |
+
+Cytoscape stylesheet 中通过 `getComputedStyle(document.documentElement).getPropertyValue('--...')` 读取 token，避免硬编码。
+
+### 2.4 业务域配色（DomainBadge，预设色卡）
+
+`business_domains.color` 字段存 Tailwind 颜色名（如 `cyan` / `orange` / `violet`），而非自由 hex。这样徽章渲染走和 `StatusBadge` 同一模板，自动支持暗色。
+
+**预设色卡**（创建业务域时从下拉选，不开放 free-form picker）：
+
+| color | 暗色友好 Tailwind class 模板 |
+|-------|---------------------------|
+| `cyan` / `blue` / `sky` / `violet` / `indigo` / `green` / `emerald` / `amber` / `orange` / `red` / `pink` / `neutral`（共 12 种） | `bg-{color}-100 text-{color}-700 dark:bg-{color}-900/50 dark:text-{color}-300` |
+
+实现：
 
 ```typescript
 function DomainBadge({ domain }: { domain: Domain }) {
   return (
-    <Badge style={{ backgroundColor: domain.color + '20', color: domain.color }}>
+    <span className={cn(
+      "inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium",
+      domainColorClass(domain.color)            // 查表得 bg-cyan-100 text-cyan-700 ...
+    )}>
       {domain.icon && <Icon name={domain.icon} size={12} />}
       {domain.display_label}
-    </Badge>
+    </span>
   );
 }
 ```
 
-颜色透明度 20% 作为背景，原色作前景，保证对比度。缤果初始 seed 时建议配色：
+缤果初始 seed 推荐：
 
-| 业务域 | 推荐 color | 推荐 icon |
-|--------|-----------|-----------|
-| `general` | `#6B7280` 灰 | `tag` |
-| `software` | `#3B82F6` 蓝 | `code` |
-| `content` | `#EC4899` 粉 | `pen-tool` |
-| `distribution` | `#F97316` 橙 | `shopping-bag` |
-| `community` | `#8B5CF6` 紫 | `users` |
+| 业务域 | color | icon (lucide) |
+|--------|-------|--------------|
+| `general` | `neutral` | `tag` |
+| `software` | `blue` | `code` |
+| `content` | `pink` | `pen-tool` |
+| `distribution` | `orange` | `shopping-bag` |
+| `community` | `violet` | `users` |
 
-### 2.5 字号与间距
+### 2.5 字号与间距（沿用 design-guide 第 4 节）
 
-复用 Paperclip 现有 design-guide skill 的字号系统，不引入新规则。
+| Pattern | Classes | 用途 |
+|---------|---------|------|
+| 页面标题 | `text-xl font-bold` | 页首 |
+| 章节标题 | `text-lg font-semibold` | 大节 |
+| 区段头 | `text-sm font-semibold text-muted-foreground uppercase tracking-wide` | sidebar / DesignGuide 区段头 |
+| 卡片标题 | `text-sm font-medium` 或 `text-sm font-semibold` | 列表项 / 卡片头 |
+| 正文 | `text-sm` | 默认 |
+| 弱化 | `text-sm text-muted-foreground` | 副标题 / 描述 |
+| 标签/元数据 | `text-xs text-muted-foreground` | property label / 时间戳 |
+| ID 单字 | `text-xs font-mono text-muted-foreground` | 节点 ID / 短码 |
+| 大数值 | `text-2xl font-bold` | Dashboard 指标 |
+
+间距走 Tailwind 默认 spacing scale（4/6/8/12 等），不发明新尺度。
+
+### 2.6 圆角与阴影
+
+- 圆角：`rounded-md`（输入/按钮）/ `rounded-lg`（卡片/对话框）/ `rounded-xl`（大卡片）/ `rounded-full`（pills/badges/avatars）
+- 阴影：仅 `shadow-xs`（outline buttons）/ `shadow-sm`（cards）。**禁用 `shadow-md` 及以上**
 
 ---
 
@@ -432,7 +474,8 @@ trigger_count · last_triggered · confidence · level 徽章
 │ [______________]   │
 │                    │
 │ 颜色:              │
-│ [#8B5CF6][🎨]     │
+│ [violet ▾]         │
+│ 12 预设色卡下拉    │
 │ [■ 实时预览徽章]    │
 │                    │
 │ 图标 (lucide):     │
@@ -508,121 +551,165 @@ trigger_count · last_triggered · confidence · level 徽章
 
 ## 5. 关键共享组件
 
-### 5.1 NodeCard
+按 design-guide 三层（shadcn primitives / Custom composites / Page components），优先**复用** `ui/src/components/` 已有 composites，仅在确有 Paperclip 不存在的能力时新增。
+
+### 5.1 直接复用的现有 composite
+
+| 现有组件 | 文件 | 在 LLM-Wiki 哪里用 |
+|---------|------|-------------------|
+| `EntityRow` | `ui/src/components/EntityRow.tsx` | 搜索结果列表 / 详情页双链区 / 审查队列 / 业务域列表 |
+| `StatusBadge` | `ui/src/components/StatusBadge.tsx` | 节点 status 显示（active/archived/outdated/revoked） |
+| `MetricCard` | `ui/src/components/MetricCard.tsx` | Dashboard 健康指标栏 6 个卡 |
+| `InlineEditor` | `ui/src/components/InlineEditor.tsx` | 详情页元数据面板编辑（标题、verified 等） |
+| `Layout` | `ui/src/components/Layout.tsx` | 全部 8 页面包裹 |
+
+### 5.2 直接复用的 shadcn primitives
+
+| 现有 primitive | 在 LLM-Wiki 哪里用 |
+|--------------|-------------------|
+| `Card` / `CardHeader` / `CardContent` | 详情页正文 / 审查 modal / Dashboard 各卡 |
+| `Dialog` | 编辑器提交确认、批量审查确认 |
+| `Popover` | 业务域 picker / 类型 picker / 时间筛选 |
+| `Tabs` | `/review` 4 Tab、详情页时间线/双链 Tab |
+| `Input` / `Textarea` | 搜索框、metadata 表单 |
+| `Select` / `Command` | DomainPicker 底层 |
+| `Checkbox` | 审查批量勾选 |
+| `Skeleton` | 加载占位 |
+| `Tooltip` | freshness 详情 hover、`[[id]]` 预览 |
+| `Badge` | 类型徽章 / freshness 徽章 / domain 徽章基底 |
+
+### 5.3 新增的 composite（LLM-Wiki 专属）
+
+每个新组件**必须按 design-guide §10 加到 `/design-guide` showcase 页**。
+
+#### 5.3.1 `NodeTypeBadge` — 节点类型徽章
 
 ```typescript
-interface NodeCardProps {
-  node: Node;
-  variant?: 'compact' | 'standard' | 'detailed';
-  onClick?: () => void;
+// ui/src/components/knowledge/NodeTypeBadge.tsx
+import { cn } from "@/lib/utils";
+import { nodeTypeBadge, nodeTypeBadgeDefault } from "@/lib/knowledge-colors";
+
+export function NodeTypeBadge({ type }: { type: NodeType }) {
+  return (
+    <span className={cn(
+      "inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium whitespace-nowrap shrink-0",
+      nodeTypeBadge[type] ?? nodeTypeBadgeDefault
+    )}>
+      {nodeTypeLabel(type)}
+    </span>
+  );
 }
 ```
 
-**3 种变体**：
+`nodeTypeBadge` map 见 §2.1。模板对齐 `StatusBadge`，便于读者立刻看懂。
 
-- `compact`：仅 title + type 徽章 + freshness（用于详情页双链区）
-- `standard`：title + type + domain + freshness + trigger + snippet（用于搜索结果）
-- `detailed`：上述 + 完整 metadata（用于审查队列）
+#### 5.3.2 `FreshnessBadge` — 时效标签
 
-### 5.2 FreshnessIndicator
+仿 `StatusBadge`，但只接受 4 个 freshnessLabel 值，并内嵌 `AlertTriangle` / `AlertCircle` lucide 图标。
 
 ```typescript
-interface FreshnessIndicatorProps {
-  freshnessLabel: 'fresh' | 'stale_warning' | 'outdated' | 'valid_expired';
-  freshnessScore?: number;                // hover 显示精确分数
-  verifiedAt?: Date;
-  validUntil?: Date;
-  volatility?: 'stable' | 'slow' | 'fast';
+export function FreshnessBadge({ label, score }: { label: FreshnessLabel; score?: number }) {
+  if (label === "fresh") return null;     // 默认状态不渲染
+  // ...
 }
 ```
 
-显示规则：
+#### 5.3.3 `DomainBadge` — 业务域徽章
 
-| 标签 | 显示 |
+见 §2.4 示例代码。颜色查表 `domainColorClass(domain.color)`，避免内联 hex。
+
+#### 5.3.4 `KnowledgeNodeRow` — 知识节点列表项
+
+**不新建**——直接用 `EntityRow`，slot 填法约定：
+
+```tsx
+<EntityRow
+  leading={<NodeTypeBadge type={node.type} />}
+  identifier={node.id.slice(0, 8)}            // 短 UUID
+  title={node.title}
+  subtitle={`trigger: ${node.triggerCount} · ${node.usedFor.join(", ")}`}
+  trailing={<><FreshnessBadge label={node.freshnessLabel} /><DomainBadge domain={node.domain} /></>}
+  to={`/knowledge/${node.id}`}
+/>
+```
+
+即"约定"而非"新组件"，符合 design-guide §6 "Do NOT create a component for...thin wrappers that add no semantic value"。
+
+#### 5.3.5 `DraftReviewCard` — 审查队列卡片
+
+包含 Reviewer Agent `pre_verdict` 徽章、`detected_conflicts` 内联展示、批准/驳回按钮组。比 EntityRow 信息量大，单独 composite。
+
+```typescript
+export function DraftReviewCard({
+  draft,
+  onApprove,
+  onReject,
+  onRequestRevision,
+}: {
+  draft: Draft;
+  onApprove: () => void;
+  onReject: () => void;
+  onRequestRevision: () => void;
+}) { /* ... */ }
+```
+
+#### 5.3.6 `MarkdownEditor` — 带 wikilink 补全的编辑器
+
+CodeMirror 6 + 自定义扩展：
+
+| 扩展 | 用途 |
 |------|------|
-| fresh | 不显示（默认状态） |
-| stale_warning | `⚠ stale (fast / 110d 未验证)` |
-| outdated | `⊘ outdated` 整卡半透明 |
-| valid_expired | `🚨 已过期 (2025-12-31)` |
+| `wikiLinkCompletion` | 输入 `[[` 弹补全弹窗，从 `/api/knowledge/nodes?title_q=...` 查同公司节点 |
+| `wikiLinkRenderer` | `[[uuid]]` 渲染为可点 chip + hover 显示目标节点 Tooltip 预览 |
+| `autosaveLocal` | localStorage 持久化，key 形如 `paperclip:knowledge:editor:<draft-id-or-new>` |
 
-### 5.3 MarkdownEditor
-
-基于 CodeMirror 6，自定义扩展：
+接口：
 
 ```typescript
 interface MarkdownEditorProps {
   value: string;
   onChange: (value: string) => void;
-  companyId: string;                      // 用于 [[ ]] 补全的数据源
+  companyId: string;
   placeholder?: string;
-  autoFocus?: boolean;
   height?: string;
 }
 ```
 
-**关键扩展**：
+#### 5.3.7 `GraphCanvas` — 图视图
 
-1. `wikiLinkCompletion`：输入 `[[` 触发自动补全
-2. `wikiLinkRenderer`：把 `[[uuid]]` 渲染为可点 chip
-3. `markdownPreview`：右侧实时预览（可关闭）
-4. `autosaveLocal`：localStorage 持久化（防丢失）
-5. `slashCommand`：输入 `/` 弹出快捷命令（插入模板等）
-
-**`[[ ]]` 补全数据源**：
+封装 Cytoscape.js。stylesheet 通过读取 CSS 变量（`--muted-foreground` / `--destructive` 等）保持暗色一致：
 
 ```typescript
-async function searchNodesForCompletion(query: string, companyId: string): Promise<Suggestion[]> {
-  const res = await fetch(`/api/knowledge/nodes?title_q=${query}&limit=10&company_id=${companyId}`);
-  return (await res.json()).data.map(n => ({
-    label: n.title,
-    detail: `${n.type} · ${n.domain.display_label}`,
-    insertText: `[[${n.id}]]`,
-  }));
-}
+const css = getComputedStyle(document.documentElement);
+cytoscape({
+  container,
+  elements: [...],
+  style: [
+    { selector: "edge[type='references']", style: { "line-color": css.getPropertyValue("--muted-foreground") } },
+    // ... 其他边类型
+  ],
+  layout: { name: "cose" },                  // 关系图视图
+});
 ```
 
-### 5.4 DomainPicker
-
-```typescript
-interface DomainPickerProps {
-  value?: string;                         // 当前选中 name
-  onChange: (name: string) => void;
-  excludeArchived?: boolean;              // 默认 true
-  allowCreate?: boolean;                  // admin 可在下拉里"+ 新建"
-}
-```
-
-下拉项渲染：徽章预览 + display_label + 节点数（如 `软件与 AI 工具 (42)`）。
-
-### 5.5 HealthMetricCard
-
-```typescript
-interface HealthMetricCardProps {
-  name: string;                           // 显示名
-  value: number;
-  status: 'healthy' | 'warning' | 'critical';
-  unit?: string;
-  trend?: number[];                       // 最近 30 天，用于 hover 折线
-  onClick?: () => void;
-}
-```
-
-### 5.6 GraphCanvas
-
-封装 Cytoscape.js：
+接口：
 
 ```typescript
 interface GraphCanvasProps {
   nodes: GraphNode[];
   edges: GraphEdge[];
-  viewMode: 'relation' | 'timeline' | 'domain-cluster';
-  highlight?: string;                     // 搜索高亮关键词
+  viewMode: "relation" | "timeline" | "domain-cluster";
+  highlight?: string;
   onNodeClick?: (id: string) => void;
   onNodeDoubleClick?: (id: string) => void;
 }
 ```
 
-按 viewMode 切换 layout 算法和样式。
+### 5.4 不新建的（虽然之前列过）
+
+- `HealthMetricCard` — **不新建**，直接用现有 `MetricCard` 并传 `status` prop 控制状态点配色（Dashboard 那行 6 卡）
+- `DomainPicker` — **不新建**，用 shadcn `Popover + Command` 组合（参考 Paperclip 现有 IssueAssigneePicker 等模式）
+- `TypePicker` / `VolatilityPicker` — 同上，用 `Select` 即可
 
 ---
 
@@ -747,113 +834,144 @@ Toast 提示 "draft 已提交，预计 1 小时内 Reviewer 初筛完成"
 
 ## 9. 前端状态管理
 
-### 9.1 数据请求层
+### 9.1 数据请求层（沿用 Paperclip 现有 `@tanstack/react-query` 模式）
 
-复用 Paperclip 现有的 react-query（TanStack Query）：
+确认事实（基于 `ui/src/hooks/useInboxBadge.ts`、`useRetryNowMutation.ts` 等已有代码）：
+
+- 使用 `useQuery` / `useMutation` / `useQueryClient`（React Query v5）
+- `queryKey` 统一从 `ui/src/lib/queryKeys.ts` 取，**禁止内联字符串数组**
+- mutation 优先使用 `onMutate` optimistic update + `onSettled` 重新失效相关 keys
+- API 调用从 `ui/src/api/<resource>.ts` 模块封装，hooks 只调 API 不裸 fetch
+
+LLM-Wiki 模块按此模式新增：
 
 ```typescript
-// ui/src/hooks/knowledge/use-search.ts
-export function useKnowledgeSearch(opts: SearchOpts) {
+// ui/src/api/knowledge.ts            （新增 API 模块）
+export const knowledgeApi = {
+  search: (companyId: string, opts: SearchOpts) => fetchJson(`/api/knowledge/search?...`),
+  getNode: (id: string) => fetchJson(`/api/knowledge/nodes/${id}`),
+  submitDraft: (input: DraftInput) => postJson(`/api/knowledge/drafts`, input),
+  // ...
+};
+
+// ui/src/lib/queryKeys.ts            （在现有 file 中追加 knowledge 一段）
+queryKeys.knowledge = {
+  search: (companyId: string, opts: SearchOpts) => ["knowledge", "search", companyId, opts] as const,
+  node: (id: string) => ["knowledge", "node", id] as const,
+  drafts: (companyId: string, filters: DraftFilters) => ["knowledge", "drafts", companyId, filters] as const,
+  domains: (companyId: string) => ["knowledge", "domains", companyId] as const,
+  healthMetrics: (companyId: string) => ["knowledge", "metrics", companyId] as const,
+  // ...
+};
+
+// ui/src/hooks/useKnowledgeSearch.ts
+export function useKnowledgeSearch(companyId: string, opts: SearchOpts) {
   return useQuery({
-    queryKey: ['knowledge', 'search', opts],
-    queryFn: () => fetch(`/api/knowledge/search?${toQueryString(opts)}`).then(r => r.json()),
-    staleTime: 30_000,                    // 30s 内复用缓存
+    queryKey: queryKeys.knowledge.search(companyId, opts),
+    queryFn: () => knowledgeApi.search(companyId, opts),
+    enabled: !!companyId,
+    staleTime: 30_000,
   });
 }
 ```
 
-### 9.2 关键 hooks
+### 9.2 关键 hooks 清单
 
-| Hook | 用途 |
-|------|------|
-| `useKnowledgeSearch(opts)` | 搜索结果 |
-| `useNode(id)` | 单节点详情（含 edges） |
-| `useNodeRevisions(id)` | 修订历史 |
-| `useNodeEvents(id)` | 事件时间线 |
-| `useDraftQueue(filters)` | 审查队列 |
-| `useApproveDraft()` / `useRejectDraft()` | 审查操作 mutation |
-| `useDomains()` / `useCreateDomain()` / `useArchiveDomain()` | 业务域管理 |
-| `useHealthMetrics()` | Dashboard 健康指标 |
-| `useGraphData(opts)` | 图谱数据 |
+文件命名沿用 Paperclip 风格 `useXxx.ts`（不在子目录），单文件单 hook 或几个紧密相关 hook：
+
+| Hook 文件 | 用途 |
+|----------|------|
+| `useKnowledgeSearch.ts` | 搜索结果 |
+| `useKnowledgeNode.ts` | 单节点 + edges + revisions + events |
+| `useKnowledgeDrafts.ts` | 审查队列（query + approve/reject/batch mutations） |
+| `useKnowledgeDomains.ts` | 业务域 CRUD（query + create/edit/archive mutations） |
+| `useKnowledgeHealthMetrics.ts` | Dashboard 健康指标 |
+| `useKnowledgeGraph.ts` | 图谱数据 |
+
+mutation 实现遵循 `useInboxBadge.ts` 里 `useInboxDismissals` 同款 optimistic update 模式（`onMutate` 写 query cache，`onError` 回滚，`onSettled` `invalidateQueries`）。
 
 ### 9.3 实时更新策略
 
 | 数据 | 策略 |
 |------|------|
-| 搜索结果 | 30s staleTime + 用户主动刷新 |
-| 详情页 | 30s staleTime + WebSocket 推送变更（如其他人审通过会推） |
-| 审查队列 | 10s 轮询 + WebSocket 推送 |
-| Dashboard 健康指标 | 每日 1 次（每日自检 Routine 跑后失效缓存） |
-| 图谱 | 一次加载，用户操作触发局部更新 |
+| 搜索结果 | `staleTime: 30_000` + 用户主动刷新 |
+| 详情页 | `staleTime: 30_000` + WebSocket 推送变更触发 `invalidateQueries` |
+| 审查队列 | `refetchInterval: 10_000` 轮询 + WebSocket 推送 |
+| 健康指标 | `staleTime: Infinity`（每日自检后由 WebSocket 通知失效） |
+| 图谱 | `staleTime: 60_000`，用户操作触发局部更新 |
 
-WebSocket 通道复用 Paperclip 现有的 `/api/realtime` 端点，订阅频道 `knowledge:<company-id>:*`。
+WebSocket 通道沿用 Paperclip 现有 realtime 基础设施（若有），订阅频道 `knowledge:<company-id>:*`。具体频道命名按实施阶段时查 `ui/src/api/realtime.ts`（或对应模块）实际接口决定，**不预设接口名**。
 
 ---
 
 ## 10. 代码目录
 
-### 10.1 页面
+**沿用 Paperclip 现有 file conventions**（design-guide §12）：页面 / 组件 PascalCase 单文件，hooks 平铺单文件，API 模块单文件。**不引入 kebab-case 子目录嵌套**（与现有风格不一致）。
+
+### 10.1 页面（PascalCase，沿用 `ui/src/pages/*.tsx` 风格）
 
 ```
-ui/src/pages/knowledge/
-├── search.tsx                  → /knowledge/search
-├── node-detail.tsx             → /knowledge/:id
-├── review.tsx                  → /knowledge/review
-├── dashboard.tsx               → /knowledge/dashboard
-├── editor.tsx                  → /knowledge/editor
-├── sources.tsx                 → /knowledge/sources
-├── domains.tsx                 → /knowledge/domains
-└── graph.tsx                   → /knowledge/graph
+ui/src/pages/
+├── KnowledgeSearch.tsx           → /knowledge/search
+├── KnowledgeNodeDetail.tsx       → /knowledge/:id
+├── KnowledgeReview.tsx           → /knowledge/review
+├── KnowledgeDashboard.tsx        → /knowledge/dashboard
+├── KnowledgeEditor.tsx           → /knowledge/editor
+├── KnowledgeSources.tsx          → /knowledge/sources
+├── KnowledgeDomains.tsx          → /knowledge/domains
+└── KnowledgeGraph.tsx            → /knowledge/graph
 ```
 
-### 10.2 组件
+### 10.2 新增 composite 组件（沿用 `ui/src/components/*.tsx` 风格）
 
 ```
-ui/src/components/knowledge/
-├── node-card/                  # 3 个 variant
-│   ├── node-card-compact.tsx
-│   ├── node-card-standard.tsx
-│   └── node-card-detailed.tsx
-├── freshness-indicator.tsx
-├── type-badge.tsx
-├── domain-badge.tsx
-├── domain-picker.tsx
-├── markdown-editor/            # CodeMirror + 自定义扩展
-│   ├── editor.tsx
-│   ├── wiki-link-completion.ts
-│   ├── wiki-link-renderer.ts
-│   ├── slash-command.ts
-│   └── autosave-local.ts
-├── health-metric-card.tsx
-├── graph-canvas/               # Cytoscape 封装
-│   ├── graph-canvas.tsx
-│   ├── layouts.ts
-│   └── styles.ts
-├── revision-diff.tsx           # revision 时间线 diff 视图
-└── review-queue-item.tsx       # 审查队列单项卡片
+ui/src/components/
+├── NodeTypeBadge.tsx             # 仿 StatusBadge
+├── FreshnessBadge.tsx            # 仿 StatusBadge
+├── DomainBadge.tsx               # 仿 StatusBadge
+├── DraftReviewCard.tsx           # 审查队列卡片（独立 composite）
+├── MarkdownEditor.tsx            # CodeMirror 封装（含子模块见下）
+├── MarkdownEditor.wikiLink.ts    # 扩展：[[ ]] 补全 + 渲染
+├── MarkdownEditor.autosave.ts    # 扩展：localStorage 自动保存
+├── GraphCanvas.tsx               # Cytoscape 封装
+└── RevisionDiff.tsx              # 时间线 diff 视图
 ```
 
-### 10.3 hooks
+**复用而非新建**：`EntityRow` / `StatusBadge` / `MetricCard` / `InlineEditor` / `Layout` 已存在，按 §5.1 用法引用，不在此目录重复。
+
+### 10.3 数据层（沿用 `ui/src/api/*.ts` 和 `ui/src/hooks/use*.ts` 风格）
 
 ```
-ui/src/hooks/knowledge/
-├── use-search.ts
-├── use-node.ts
-├── use-node-revisions.ts
-├── use-node-events.ts
-├── use-draft-queue.ts
-├── use-draft-mutations.ts      # approve / reject / request-revision
-├── use-domains.ts
-├── use-domain-mutations.ts
-├── use-health-metrics.ts
-└── use-graph-data.ts
+ui/src/api/
+└── knowledge.ts                  # 所有 /api/knowledge/* 请求封装
+
+ui/src/lib/
+├── queryKeys.ts                  # 在现有文件中追加 knowledge.* 一段（不新建文件）
+├── knowledge-colors.ts           # nodeTypeBadge / domainColorClass map（仿 status-colors.ts）
+└── knowledge-types.ts            # API 响应 TS 类型（手维护或 OpenAPI 生成）
+
+ui/src/hooks/
+├── useKnowledgeSearch.ts
+├── useKnowledgeNode.ts
+├── useKnowledgeDrafts.ts
+├── useKnowledgeDomains.ts
+├── useKnowledgeHealthMetrics.ts
+└── useKnowledgeGraph.ts
 ```
 
-### 10.4 共享类型
+### 10.4 必做：加入 design-guide 展示页
 
-```
-ui/src/types/knowledge.ts        # 与 API 响应类型一致，从 OpenAPI 自动生成或手维护
-```
+按 design-guide §10 规则，**每个新 composite 必须在 `ui/src/pages/DesignGuide.tsx` 添加展示节**：
+
+- `NodeTypeBadge` — 展示 5 种 type 全变体
+- `FreshnessBadge` — 展示 4 种 freshness label
+- `DomainBadge` — 展示 12 种 color 预设 + 默认 icon
+- `DraftReviewCard` — 展示 3 种 pre_verdict 状态 + 有/无冲突变体
+- `MarkdownEditor` — 展示 `[[ ]]` 补全交互
+- `GraphCanvas` — 展示 3 种 viewMode 缩略截图（图视图本身性能开销大，showcase 用静态 demo 数据）
+- `RevisionDiff` — 展示 diff 渲染示例
+
+这些节用现有 `<Section title="...">` + `<SubSection>` 结构，保持和 DesignGuide.tsx 其他章节一致。
 
 ---
 
