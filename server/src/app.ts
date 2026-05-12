@@ -43,6 +43,7 @@ import { adapterRoutes } from "./routes/adapters.js";
 import { pluginUiStaticRoutes } from "./routes/plugin-ui-static.js";
 import { knowledgeRoutes } from "./routes/knowledge.js";
 import { llmWikiService, knowledgeDrafterService } from "./services/index.js";
+import { setKnowledgeDrafterForHeartbeat } from "./services/heartbeat.js";
 import { applyUiBranding } from "./ui-branding.js";
 import { logger } from "./middleware/logger.js";
 import { DEFAULT_LOCAL_PLUGIN_DIR, pluginLoader } from "./services/plugin-loader.js";
@@ -198,6 +199,7 @@ export async function createApp(
   // Phase 1b-1: 知识 drafter（LLM 自评 / 失败信号抽取）。复用 llmWikiService 做 LLM 调用。
   const llmWikiClient = llmWikiService(db);
   const knowledgeDrafter = knowledgeDrafterService(db, llmWikiClient);
+  setKnowledgeDrafterForHeartbeat(knowledgeDrafter);
   api.use(issueRoutes(db, opts.storageService, {
     feedbackExportService: opts.feedbackExportService,
     pluginWorkerManager: workerManager,

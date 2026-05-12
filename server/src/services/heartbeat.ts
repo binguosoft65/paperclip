@@ -163,6 +163,7 @@ import { environmentService } from "./environments.js";
 import { environmentRuntimeService } from "./environment-runtime.js";
 import { environmentRunOrchestrator } from "./environment-run-orchestrator.js";
 import type { PluginWorkerManager } from "./plugin-worker-manager.js";
+import { type KnowledgeDrafterService } from "./knowledge-drafter.js";
 
 // ── 看门狗（Watchdog）与心跳机制的核心常量 ──
 
@@ -2295,6 +2296,13 @@ export interface HeartbeatServiceOptions {
   environmentRuntime?: HeartbeatEnvironmentRuntime;
 }
 
+// Phase 1b-1: 模块级 drafter 单例。heartbeatService 在 8 处构造，
+// 穿过 8 个 options 过度侵入；用模块级变量更简洁。app.ts 启动时 setOnce。
+let _knowledgeDrafter: KnowledgeDrafterService | null = null;
+export function setKnowledgeDrafterForHeartbeat(drafter: KnowledgeDrafterService | null): void {
+  _knowledgeDrafter = drafter;
+}
+
 export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) {
   const instanceSettings = instanceSettingsService(db);
   const getCurrentUserRedactionOptions = async () => ({
@@ -3766,6 +3774,34 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
         finishedAt: run.finishedAt ? new Date(run.finishedAt).toISOString() : null,
       },
     });
+    // Phase 1b-1: run cancelled / timed_out 时 fire-and-forget 知识 drafter
+    if (_knowledgeDrafter && (run.status === "cancelled" || run.status === "timed_out")) {
+      const issueId =
+        typeof run.contextSnapshot === "object" && run.contextSnapshot !== null
+          ? ((run.contextSnapshot as Record<string, unknown>).issueId as string | null | undefined) ?? null
+          : null;
+      void _knowledgeDrafter
+        .run({
+          kind: "run_cancelled",
+          companyId: run.companyId,
+          runId: run.id,
+          agentId: run.agentId,
+          issueId,
+          context: {
+            status: run.status,
+            invocationSource: run.invocationSource,
+            triggerDetail: run.triggerDetail,
+            error: run.error ?? null,
+            errorCode: run.errorCode ?? null,
+          },
+        })
+        .catch((err) => {
+          logger.warn(
+            { err, runId: run.id },
+            "knowledge drafter (run_cancelled) failed",
+          );
+        });
+    }
   }
 
   async function setWakeupStatus(
