@@ -56,3 +56,4 @@ export { publishLiveEvent, subscribeCompanyLiveEvents } from "./live-events.js";
 export { reconcilePersistedRuntimeServicesOnStartup, restartDesiredRuntimeServicesOnStartup } from "./workspace-runtime.js";
 export { createStorageServiceFromConfig, getStorageService } from "../storage/index.js";
 export { llmWikiService, type LlmWikiService } from "./llm-wiki.js";
+export { parseWikilinks } from "./knowledge-wikilinks.js";
