@@ -2739,9 +2739,8 @@ export function issueRoutes(
       const prev = existing.status;
       const next = issue.status;
       const becameDone = prev !== "done" && next === "done";
-      const wasReopened =
-        (prev === "done" || prev === "cancelled") &&
-        (next === "in_progress" || next === "open");
+      // reopened：从 closed (done/cancelled) 回到任何非 closed 的活跃状态
+      const wasReopened = isClosedIssueStatus(prev) && !isClosedIssueStatus(next);
 
       if (becameDone || wasReopened) {
         void drafter
