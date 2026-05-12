@@ -404,3 +404,24 @@ export {
   type SetPluginState,
   type ListPluginState,
 } from "./plugin.js";
+
+export {
+  KNOWLEDGE_NODE_TYPES,
+  KNOWLEDGE_LEVELS,
+  KNOWLEDGE_VOLATILITIES,
+  KNOWLEDGE_DRAFT_SOURCES_PHASE_1A,
+  KNOWLEDGE_DRAFT_STATUSES,
+  KNOWLEDGE_PRE_VERDICTS,
+  createKnowledgeDraftSchema,
+  approveKnowledgeDraftSchema,
+  rejectKnowledgeDraftSchema,
+  requestRevisionKnowledgeDraftSchema,
+  batchApproveKnowledgeDraftSchema,
+  listKnowledgeDraftsQuerySchema,
+  type CreateKnowledgeDraft,
+  type ApproveKnowledgeDraft,
+  type RejectKnowledgeDraft,
+  type RequestRevisionKnowledgeDraft,
+  type BatchApproveKnowledgeDraft,
+  type ListKnowledgeDraftsQuery,
+} from "./knowledge.js";

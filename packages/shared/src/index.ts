@@ -1045,3 +1045,26 @@ export type {
   EnvironmentProviderCapability,
   EnvironmentSupportStatus,
 } from "./environment-support.js";
+
+export {
+  KNOWLEDGE_NODE_TYPES,
+  KNOWLEDGE_LEVELS,
+  KNOWLEDGE_VOLATILITIES,
+  KNOWLEDGE_DRAFT_SOURCES_PHASE_1A,
+  KNOWLEDGE_DRAFT_STATUSES,
+  KNOWLEDGE_PRE_VERDICTS,
+  createKnowledgeDraftSchema,
+  approveKnowledgeDraftSchema,
+  rejectKnowledgeDraftSchema,
+  requestRevisionKnowledgeDraftSchema,
+  batchApproveKnowledgeDraftSchema,
+  listKnowledgeDraftsQuerySchema,
+} from "./validators/index.js";
+export type {
+  CreateKnowledgeDraft,
+  ApproveKnowledgeDraft,
+  RejectKnowledgeDraft,
+  RequestRevisionKnowledgeDraft,
+  BatchApproveKnowledgeDraft,
+  ListKnowledgeDraftsQuery,
+} from "./validators/index.js";
