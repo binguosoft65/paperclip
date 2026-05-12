@@ -245,7 +245,8 @@ export function knowledgeDraftService(db: Db) {
       if (existing.status !== "pending") {
         throw conflict(`draft cannot request-revision from status='${existing.status}'`);
       }
-      await db
+      // 加 .returning() 检查行数，避免与并发 reviewer 抢状态时静默 no-op
+      const updated = await db
         .update(knowledgeDrafts)
         .set({
           status: "revision_requested",
@@ -255,7 +256,9 @@ export function knowledgeDraftService(db: Db) {
         })
         .where(
           and(eq(knowledgeDrafts.id, input.id), eq(knowledgeDrafts.companyId, input.companyId)),
-        );
+        )
+        .returning();
+      if (updated.length === 0) throw notFound("draft not found");
       return { draftId: input.id, issueId: null as string | null };
     },
 

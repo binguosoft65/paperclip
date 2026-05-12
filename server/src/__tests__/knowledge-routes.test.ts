@@ -166,12 +166,16 @@ describe.sequential("POST /api/knowledge/drafts/:id/approve", () => {
     expect(res.body.data).toEqual({ node_id: "n-1" });
   });
 
-  it("403 非 board actor（agent 也不能审）", async () => {
+  it("403 非 board actor（agent 即使能访问公司也不能审）", async () => {
+    // agent 同公司可访问 → assertCompanyAccess 放行；但 assertBoard 拦住，
+    // 这样确保 403 来自审查权限校验而不是跨公司隔离
     const app = await createApp({ type: "agent", agentId: "a-1", companyId: "c-1" });
     const res = await requestApp(app, (base) =>
       request(base).post("/api/knowledge/drafts/d-1/approve?companyId=c-1").send({}),
     );
     expect(res.status).toBe(403);
+    // errorHandler 返回 { error: <message string> }；assertBoard 的消息含 "Board"
+    expect(typeof res.body?.error === "string" ? res.body.error : "").toMatch(/board/i);
   });
 });
 
