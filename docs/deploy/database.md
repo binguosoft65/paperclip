@@ -5,6 +5,13 @@ summary: Embedded PGlite vs Docker Postgres vs hosted
 
 Paperclip uses PostgreSQL via Drizzle ORM. There are three ways to run the database.
 
+> **Note on pgvector / LLM-Wiki:** If you use the LLM-Wiki knowledge engine
+> (semantic search over knowledge nodes), the `vector` extension must be
+> available. The embedded PGlite mode (option 1) does **not** support pgvector.
+> Use the Docker option (with the `pgvector/pgvector:pg17` image, already
+> configured in `docker/docker-compose.yml`) or a hosted PostgreSQL provider
+> that supports pgvector (Supabase, Neon, etc.).
+
 ## 1. Embedded PostgreSQL (Default)
 
 Zero config. If you don't set `DATABASE_URL`, the server starts an embedded PostgreSQL instance automatically.

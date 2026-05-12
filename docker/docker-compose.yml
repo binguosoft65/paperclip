@@ -1,6 +1,8 @@
 services:
   db:
-    image: postgres:17-alpine
+    # pgvector image (Postgres 17 + pgvector extension) — required by LLM-Wiki
+    # knowledge engine. See docs/deploy/database.md.
+    image: pgvector/pgvector:pg17
     environment:
       POSTGRES_USER: paperclip
       POSTGRES_PASSWORD: paperclip
