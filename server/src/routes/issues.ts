@@ -63,6 +63,7 @@ import {
   projectService,
   routineService,
   workProductService,
+  type KnowledgeDrafterService,
 } from "../services/index.js";
 import { logger } from "../middleware/logger.js";
 import { conflict, forbidden, HttpError, notFound, unauthorized, unprocessable } from "../errors.js";
@@ -737,10 +738,12 @@ export function issueRoutes(
     searchService?: CompanySearchService;
     searchRateLimiter?: CompanySearchRateLimiter;
     pluginWorkerManager?: PluginWorkerManager;
+    knowledgeDrafter?: KnowledgeDrafterService;
   } = {},
 ) {
   const router = Router();
   const svc = issueService(db);
+  const drafter = opts.knowledgeDrafter;
   const access = accessService(db);
   const heartbeat = heartbeatService(db, {
     pluginWorkerManager: opts.pluginWorkerManager,
@@ -2727,6 +2730,41 @@ export function issueRoutes(
     if (!issue) {
       res.status(404).json({ error: "Issue not found" });
       return;
+    }
+
+    // Phase 1b-1: 知识 drafter 异步触发
+    // - status 从非 done 变 done → Path A (task_complete)
+    // - status 从 done/cancelled 变 in_progress/open → Path B (issue_reopened)
+    if (drafter) {
+      const prev = existing.status;
+      const next = issue.status;
+      const becameDone = prev !== "done" && next === "done";
+      const wasReopened =
+        (prev === "done" || prev === "cancelled") &&
+        (next === "in_progress" || next === "open");
+
+      if (becameDone || wasReopened) {
+        void drafter
+          .run({
+            kind: becameDone ? "task_complete" : "issue_reopened",
+            companyId: issue.companyId,
+            issueId: issue.id,
+            agentId: issue.assigneeAgentId ?? actor.agentId ?? null,
+            userId: actor.actorType === "user" ? actor.actorId : null,
+            context: {
+              title: issue.title,
+              description: issue.description,
+              status: next,
+              previousStatus: prev,
+            },
+          })
+          .catch((err) => {
+            logger.warn(
+              { err, trigger: becameDone ? "task_complete" : "issue_reopened", issueId: issue.id },
+              "knowledge drafter failed",
+            );
+          });
+      }
     }
 
     let cancelledStatusRunId: string | null = null;
