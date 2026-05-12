@@ -6,8 +6,14 @@ export const KNOWLEDGE_NODE_TYPES = ["concept", "lesson", "rule", "decision", "f
 export const KNOWLEDGE_LEVELS = ["personal", "project", "company"] as const;
 /** 时效性枚举 */
 export const KNOWLEDGE_VOLATILITIES = ["stable", "slow", "fast"] as const;
-/** Draft 来源；Phase 1a 仅允许 manual，Phase 1b 放开 agent_self_review / failure_signal */
-export const KNOWLEDGE_DRAFT_SOURCES_PHASE_1A = ["manual"] as const;
+/** Draft 来源；Phase 1b-1 起 3 路都开放 */
+export const KNOWLEDGE_DRAFT_SOURCES = [
+  "manual",
+  "agent_self_review",
+  "failure_signal",
+] as const;
+/** @deprecated 用 KNOWLEDGE_DRAFT_SOURCES，下个 phase 移除 */
+export const KNOWLEDGE_DRAFT_SOURCES_PHASE_1A = KNOWLEDGE_DRAFT_SOURCES;
 /** Draft 状态机 */
 export const KNOWLEDGE_DRAFT_STATUSES = ["pending", "approved", "rejected", "revision_requested"] as const;
 /** Reviewer Agent 预判 */
@@ -30,7 +36,7 @@ export const createKnowledgeDraftSchema = z
     volatility: z.enum(KNOWLEDGE_VOLATILITIES).optional(),
     valid_until: z.coerce.date().nullable().optional(),
     confidence: z.number().min(0).max(1).optional().default(0.5),
-    source: z.enum(KNOWLEDGE_DRAFT_SOURCES_PHASE_1A).optional().default("manual"),
+    source: z.enum(KNOWLEDGE_DRAFT_SOURCES).optional().default("manual"),
     source_run_id: z.string().uuid().nullable().optional(),
     source_issue_id: z.string().uuid().nullable().optional(),
     skip_review: z.boolean().optional().default(false),
