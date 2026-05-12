@@ -58,3 +58,8 @@ export { createStorageServiceFromConfig, getStorageService } from "../storage/in
 export { llmWikiService, type LlmWikiService } from "./llm-wiki.js";
 export { parseWikilinks } from "./knowledge-wikilinks.js";
 export { knowledgeDraftService, type KnowledgeDraftService, type KnowledgeDraftActor } from "./knowledge-drafts.js";
+export {
+  knowledgeNodeWriterService,
+  type KnowledgeNodeWriterService,
+  type EmbedClient,
+} from "./knowledge-node-writer.js";
