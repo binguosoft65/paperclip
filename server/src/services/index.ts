@@ -63,3 +63,10 @@ export {
   type KnowledgeNodeWriterService,
   type EmbedClient,
 } from "./knowledge-node-writer.js";
+export {
+  knowledgeDrafterService,
+  type KnowledgeDrafterService,
+  type KnowledgeDrafterTrigger,
+  type KnowledgeDrafterTriggerKind,
+  type DrafterChatClient,
+} from "./knowledge-drafter.js";
