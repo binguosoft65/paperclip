@@ -57,3 +57,4 @@ export { reconcilePersistedRuntimeServicesOnStartup, restartDesiredRuntimeServic
 export { createStorageServiceFromConfig, getStorageService } from "../storage/index.js";
 export { llmWikiService, type LlmWikiService } from "./llm-wiki.js";
 export { parseWikilinks } from "./knowledge-wikilinks.js";
+export { knowledgeDraftService, type KnowledgeDraftService, type KnowledgeDraftActor } from "./knowledge-drafts.js";
