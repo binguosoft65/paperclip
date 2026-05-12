@@ -2,7 +2,7 @@ import { and, eq, inArray, sql, desc } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
 import { businessDomains, knowledgeDrafts } from "@paperclipai/db";
 import type { CreateKnowledgeDraft, ListKnowledgeDraftsQuery } from "@paperclipai/shared";
-import { forbidden, notFound, unprocessable } from "../errors.js";
+import { conflict, forbidden, notFound, unprocessable } from "../errors.js";
 
 /**
  * 调用方身份：Phase 1a 只关心 user / agent 两种主体 + isAdmin 标志。
@@ -169,6 +169,122 @@ export function knowledgeDraftService(db: Db) {
             )
           : null;
       return { items, nextCursor };
+    },
+
+    /**
+     * 标 draft 为 approved（仅状态改动；物化到 nodes 由 route handler 调
+     * knowledgeNodeWriterService.materialize 完成）。返回更新后的 draft 行。
+     */
+    async markApproved(input: {
+      companyId: string;
+      id: string;
+      reviewerUserId: string;
+      notes?: string;
+    }) {
+      const existing = await this.getById(input.companyId, input.id);
+      if (!existing) throw notFound("draft not found");
+      if (existing.status !== "pending") {
+        throw conflict(`draft cannot be approved from status='${existing.status}'`);
+      }
+      const updated = await db
+        .update(knowledgeDrafts)
+        .set({
+          status: "approved",
+          reviewedBy: input.reviewerUserId,
+          reviewNotes: input.notes ?? null,
+          reviewedAt: new Date(),
+        })
+        .where(
+          and(eq(knowledgeDrafts.id, input.id), eq(knowledgeDrafts.companyId, input.companyId)),
+        )
+        .returning();
+      if (updated.length === 0) throw notFound("draft not found");
+      return updated[0]!;
+    },
+
+    /** 驳回 draft */
+    async reject(input: {
+      companyId: string;
+      id: string;
+      reviewerUserId: string;
+      notes?: string;
+    }) {
+      const existing = await this.getById(input.companyId, input.id);
+      if (!existing) throw notFound("draft not found");
+      if (existing.status !== "pending") {
+        throw conflict(`draft cannot be rejected from status='${existing.status}'`);
+      }
+      const updated = await db
+        .update(knowledgeDrafts)
+        .set({
+          status: "rejected",
+          reviewedBy: input.reviewerUserId,
+          reviewNotes: input.notes ?? null,
+          reviewedAt: new Date(),
+        })
+        .where(
+          and(eq(knowledgeDrafts.id, input.id), eq(knowledgeDrafts.companyId, input.companyId)),
+        )
+        .returning();
+      if (updated.length === 0) throw notFound("draft not found");
+      return updated[0]!;
+    },
+
+    /**
+     * 要求修改。Phase 1a 仅改状态，不自动开 Issue（待 Phase 1b 集成
+     * issueService 后再补，避免循环依赖）。返回 issueId=null 占位。
+     */
+    async requestRevision(input: {
+      companyId: string;
+      id: string;
+      reviewerUserId: string;
+      notes: string;
+    }) {
+      const existing = await this.getById(input.companyId, input.id);
+      if (!existing) throw notFound("draft not found");
+      if (existing.status !== "pending") {
+        throw conflict(`draft cannot request-revision from status='${existing.status}'`);
+      }
+      await db
+        .update(knowledgeDrafts)
+        .set({
+          status: "revision_requested",
+          reviewedBy: input.reviewerUserId,
+          reviewNotes: input.notes,
+          reviewedAt: new Date(),
+        })
+        .where(
+          and(eq(knowledgeDrafts.id, input.id), eq(knowledgeDrafts.companyId, input.companyId)),
+        );
+      return { draftId: input.id, issueId: null as string | null };
+    },
+
+    /**
+     * 批量批准：把所有 pending 的 id 标 approved 并返回 approved_count + failed[]。
+     * 物化由 route handler 串行调 nodeWriter（避免 fan-out 把 OpenAI quota 打爆）。
+     */
+    async batchMarkApproved(input: {
+      companyId: string;
+      ids: string[];
+      reviewerUserId: string;
+      notes?: string;
+    }) {
+      const approved: string[] = [];
+      const failed: Array<{ id: string; reason: string }> = [];
+      for (const id of input.ids) {
+        try {
+          await this.markApproved({
+            companyId: input.companyId,
+            id,
+            reviewerUserId: input.reviewerUserId,
+            notes: input.notes,
+          });
+          approved.push(id);
+        } catch (err) {
+          failed.push({ id, reason: err instanceof Error ? err.message : String(err) });
+        }
+      }
+      return { approvedIds: approved, failed };
     },
   };
 }

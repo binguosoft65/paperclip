@@ -106,3 +106,109 @@ describe("knowledgeDraftService.create", () => {
     );
   });
 });
+
+// ============================================================
+// 审查决策方法测试
+// ============================================================
+function makeUpdateMockDb(opts: {
+  draftRow?: Record<string, unknown> | null;
+  updateReturn?: Array<Record<string, unknown>>;
+}) {
+  const draftSelect = vi.fn().mockReturnValue({
+    from: vi.fn().mockReturnValue({
+      where: vi.fn().mockReturnValue({
+        limit: vi.fn().mockResolvedValue(opts.draftRow ? [opts.draftRow] : []),
+      }),
+    }),
+  });
+  const updateReturning = vi.fn().mockResolvedValue(opts.updateReturn ?? []);
+  const updateWhere = vi.fn().mockReturnValue({ returning: updateReturning });
+  const updateSet = vi.fn().mockReturnValue({ where: updateWhere });
+  const update = vi.fn().mockReturnValue({ set: updateSet });
+  return {
+    db: { select: draftSelect, update } as any,
+    spies: { draftSelect, update, updateSet, updateWhere, updateReturning },
+  };
+}
+
+describe("knowledgeDraftService.markApproved", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("draft 不存在抛 404", async () => {
+    const { db } = makeUpdateMockDb({ draftRow: null });
+    const svc = knowledgeDraftService(db);
+    await expect(
+      svc.markApproved({ companyId: "c-1", id: "d-1", reviewerUserId: "u-1", notes: undefined }),
+    ).rejects.toMatchObject({ status: 404 });
+  });
+
+  it("draft 状态非 pending 抛 409", async () => {
+    const { db } = makeUpdateMockDb({
+      draftRow: { id: "d-1", status: "approved", companyId: "c-1" },
+    });
+    const svc = knowledgeDraftService(db);
+    await expect(
+      svc.markApproved({ companyId: "c-1", id: "d-1", reviewerUserId: "u-1", notes: undefined }),
+    ).rejects.toMatchObject({ status: 409 });
+  });
+
+  it("正常路径将 status 改为 approved 并返回 draft", async () => {
+    const draftRow = {
+      id: "d-1",
+      status: "pending",
+      companyId: "c-1",
+      proposedTitle: "t",
+    };
+    const { db, spies } = makeUpdateMockDb({
+      draftRow,
+      updateReturn: [{ ...draftRow, status: "approved", reviewedBy: "u-1" }],
+    });
+    const svc = knowledgeDraftService(db);
+    const result = await svc.markApproved({
+      companyId: "c-1",
+      id: "d-1",
+      reviewerUserId: "u-1",
+      notes: "ok",
+    });
+    expect(result.status).toBe("approved");
+    expect(spies.updateSet).toHaveBeenCalledWith(
+      expect.objectContaining({ status: "approved", reviewedBy: "u-1", reviewNotes: "ok" }),
+    );
+  });
+});
+
+describe("knowledgeDraftService.reject", () => {
+  it("正常路径写 rejected + notes", async () => {
+    const draftRow = { id: "d-1", status: "pending", companyId: "c-1" };
+    const { db, spies } = makeUpdateMockDb({
+      draftRow,
+      updateReturn: [{ ...draftRow, status: "rejected" }],
+    });
+    const svc = knowledgeDraftService(db);
+    await svc.reject({ companyId: "c-1", id: "d-1", reviewerUserId: "u-1", notes: "low quality" });
+    expect(spies.updateSet).toHaveBeenCalledWith(
+      expect.objectContaining({ status: "rejected", reviewNotes: "low quality" }),
+    );
+  });
+});
+
+describe("knowledgeDraftService.requestRevision", () => {
+  it("正常路径写 revision_requested + notes，issueId 占位 null", async () => {
+    const draftRow = { id: "d-1", status: "pending", companyId: "c-1" };
+    const { db, spies } = makeUpdateMockDb({
+      draftRow,
+      updateReturn: [{ ...draftRow, status: "revision_requested" }],
+    });
+    const svc = knowledgeDraftService(db);
+    const result = await svc.requestRevision({
+      companyId: "c-1",
+      id: "d-1",
+      reviewerUserId: "u-1",
+      notes: "请补充 root_cause",
+    });
+    expect(result.issueId).toBeNull();
+    expect(spies.updateSet).toHaveBeenCalledWith(
+      expect.objectContaining({ status: "revision_requested" }),
+    );
+  });
+});
