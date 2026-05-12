@@ -15,12 +15,28 @@ import type { Db } from "@paperclipai/db";
  * 配置：通过环境变量 OPENAI_API_KEY 注入。未配置时调用 embed() 会抛错。
  */
 
-const EMBEDDING_MODEL = "text-embedding-3-small";
+/**
+ * 默认走 OpenAI 官方 text-embedding-3-small（1536 维）。
+ * 也支持任何 OpenAI 协议兼容的 embedding endpoint（如阿里云百炼 DashScope、
+ * SiliconFlow），通过 OPENAI_BASE_URL + OPENAI_EMBEDDING_MODEL 切换。
+ * 注意：替换 provider 时模型必须输出 1536 维，否则 nodes.embedding 列写不进去。
+ */
+const DEFAULT_EMBEDDING_MODEL = "text-embedding-3-small";
 const EMBEDDING_DIM = 1536;
 /** OpenAI embedding 接口对单次输入的 token 上限保守取 8000 字符 */
 const MAX_INPUT_CHARS = 8000;
 
 let cachedClient: OpenAI | null = null;
+
+function getEmbeddingModel(): string {
+  return process.env.OPENAI_EMBEDDING_MODEL?.trim() || DEFAULT_EMBEDDING_MODEL;
+}
+
+const DEFAULT_CHAT_MODEL = "gpt-4o-mini";
+
+function getChatModel(): string {
+  return process.env.OPENAI_CHAT_MODEL?.trim() || DEFAULT_CHAT_MODEL;
+}
 
 function getClient(): OpenAI {
   const apiKey = process.env.OPENAI_API_KEY;
@@ -30,7 +46,8 @@ function getClient(): OpenAI {
     );
   }
   if (!cachedClient) {
-    cachedClient = new OpenAI({ apiKey });
+    const baseURL = process.env.OPENAI_BASE_URL?.trim();
+    cachedClient = new OpenAI({ apiKey, ...(baseURL ? { baseURL } : {}) });
   }
   return cachedClient;
 }
@@ -50,17 +67,53 @@ export function llmWikiService(_db: Db) {
         throw new Error("embed() requires non-empty text input");
       }
       const truncated = text.slice(0, MAX_INPUT_CHARS);
+      const model = getEmbeddingModel();
       const resp = await getClient().embeddings.create({
-        model: EMBEDDING_MODEL,
+        model,
         input: truncated,
       });
       const embedding = resp.data[0]?.embedding;
       if (!embedding || embedding.length !== EMBEDDING_DIM) {
         throw new Error(
-          `expected ${EMBEDDING_DIM} dims from ${EMBEDDING_MODEL}, got ${embedding?.length ?? 0}`,
+          `expected ${EMBEDDING_DIM} dims from ${model}, got ${embedding?.length ?? 0}`,
         );
       }
       return embedding;
+    },
+
+    /**
+     * Chat completion 单轮调用。复用 embedding 同一份 OpenAI 兼容 client +
+     * base URL + API key。本期只用于 knowledge-drafter；后续 Phase 可能扩
+     * Reviewer Agent / 演化引擎复用。
+     *
+     * jsonMode=true 时传 OpenAI 的 response_format=json_object（DashScope
+     * 兼容模式 v1 也支持）。返回纯文本 content；JSON 解析由调用方做。
+     */
+    async completeChat(opts: {
+      system: string;
+      user: string;
+      model?: string;
+      temperature?: number;
+      jsonMode?: boolean;
+    }): Promise<string> {
+      const client = getClient();
+      const model = opts.model ?? getChatModel();
+      const resp = await client.chat.completions.create({
+        model,
+        messages: [
+          { role: "system", content: opts.system },
+          { role: "user", content: opts.user },
+        ],
+        ...(opts.temperature !== undefined ? { temperature: opts.temperature } : {}),
+        ...(opts.jsonMode ? { response_format: { type: "json_object" as const } } : {}),
+      });
+      const content = resp.choices[0]?.message?.content;
+      if (!content) {
+        throw new Error(
+          `empty completion from ${model} (no choices[0].message.content)`,
+        );
+      }
+      return content;
     },
   };
 }
