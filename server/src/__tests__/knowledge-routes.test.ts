@@ -24,12 +24,18 @@ const mockFeedback = vi.hoisted(() => ({
   record: vi.fn(),
 }));
 
+const mockReviewer = vi.hoisted(() => ({
+  screenPendingDrafts: vi.fn(),
+  screenDraft: vi.fn(),
+}));
+
 vi.mock("../services/index.js", () => ({
   knowledgeDraftService: () => mockDraftService,
   knowledgeNodeWriterService: () => mockNodeWriter,
   llmWikiService: () => ({ embed: vi.fn() }),
   knowledgeRetrieverService: () => mockRetriever,
   knowledgeFeedbackService: () => mockFeedback,
+  reviewerAgentService: () => mockReviewer,
 }));
 
 async function createApp(actor: Record<string, unknown>) {
@@ -340,5 +346,66 @@ describe.sequential("POST /api/knowledge/nodes/:id/feedback", () => {
         .send({ feedback: "bogus" }),
     );
     expect(res.status).toBe(400);
+  });
+});
+
+describe.sequential("POST /api/knowledge/reviewer/run", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("200 + processed count after screening", async () => {
+    mockReviewer.screenPendingDrafts.mockResolvedValueOnce({ processed: 3, errors: [] });
+    const app = await createApp(boardActor);
+    const res = await requestApp(app, (base) =>
+      request(base)
+        .post("/api/knowledge/reviewer/run?companyId=c-1")
+        .send({}),
+    );
+    expect(res.status).toBe(200);
+    expect(res.body.data.processed).toBe(3);
+    expect(res.body.data.errors).toEqual([]);
+  });
+
+  it("400 when companyId missing", async () => {
+    const app = await createApp(boardActor);
+    const res = await requestApp(app, (base) =>
+      request(base).post("/api/knowledge/reviewer/run").send({}),
+    );
+    expect(res.status).toBe(400);
+  });
+});
+
+describe.sequential("POST /api/knowledge/drafts/batch-apply-verdict", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  const u1 = "11111111-1111-1111-1111-111111111111";
+  const u2 = "22222222-2222-2222-2222-222222222222";
+
+  it("200 + approved_count when verdict=recommend_approve", async () => {
+    mockDraftService.batchMarkApproved.mockResolvedValueOnce({ approvedIds: [u1, u2], failed: [] });
+    mockNodeWriter.materialize
+      .mockResolvedValueOnce({ nodeId: "n-1" })
+      .mockResolvedValueOnce({ nodeId: "n-2" });
+    const app = await createApp(boardActor);
+    const res = await requestApp(app, (base) =>
+      request(base)
+        .post("/api/knowledge/drafts/batch-apply-verdict?companyId=c-1")
+        .send({ verdict: "recommend_approve", draft_ids: [u1, u2] }),
+    );
+    expect(res.status).toBe(200);
+    expect(res.body.data.approved_count).toBe(2);
+    expect(res.body.data.failed).toEqual([]);
+  });
+
+  it("200 + rejected_count when verdict=recommend_reject", async () => {
+    mockDraftService.reject.mockResolvedValue({});
+    const app = await createApp(boardActor);
+    const res = await requestApp(app, (base) =>
+      request(base)
+        .post("/api/knowledge/drafts/batch-apply-verdict?companyId=c-1")
+        .send({ verdict: "recommend_reject", draft_ids: [u1, u2] }),
+    );
+    expect(res.status).toBe(200);
+    expect(res.body.data.rejected_count).toBe(2);
+    expect(res.body.data.failed).toEqual([]);
   });
 });

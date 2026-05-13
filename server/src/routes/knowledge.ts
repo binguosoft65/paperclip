@@ -10,6 +10,8 @@ import {
   requestRevisionKnowledgeDraftSchema,
   knowledgeFeedbackSchema,
   knowledgeSearchQuerySchema,
+  reviewerRunQuerySchema,
+  batchApplyVerdictSchema,
 } from "@paperclipai/shared";
 import { badRequest, notFound } from "../errors.js";
 import { validate } from "../middleware/validate.js";
@@ -19,6 +21,7 @@ import {
   llmWikiService,
   knowledgeRetrieverService,
   knowledgeFeedbackService,
+  reviewerAgentService,
 } from "../services/index.js";
 import { assertBoard, assertCompanyAccess, getActorInfo } from "./authz.js";
 
@@ -39,6 +42,15 @@ export function knowledgeRoutes(db: Db) {
   const nodeWriter = knowledgeNodeWriterService(db, llm);
   const retriever = knowledgeRetrieverService(db, llm);
   const feedback = knowledgeFeedbackService(db);
+  // 将 llmWikiService 的 completeChat 接口适配为 ReviewerLlmClient 所需的消息数组格式
+  const reviewerLlm = {
+    completeChat: (messages: Array<{ role: "system" | "user"; content: string }>) => {
+      const system = messages.find((m) => m.role === "system")?.content ?? "";
+      const user = messages.find((m) => m.role === "user")?.content ?? "";
+      return llm.completeChat({ system, user });
+    },
+  };
+  const reviewer = reviewerAgentService(db, retriever, reviewerLlm);
 
   function requireCompanyId(req: Request): string {
     const raw = req.query.companyId;
@@ -300,6 +312,98 @@ export function knowledgeRoutes(db: Db) {
         comment: req.body.comment ?? null,
       });
       res.status(204).end();
+    },
+  );
+
+  // ============================================================
+  // POST /api/knowledge/reviewer/run
+  // ============================================================
+  router.post("/reviewer/run", async (req, res) => {
+    const companyId = requireCompanyId(req);
+    assertCompanyAccess(req, companyId);
+    assertBoard(req);
+    const parsed = reviewerRunQuerySchema.safeParse({
+      limit: req.body?.limit ?? req.query.limit,
+    });
+    if (!parsed.success) {
+      throw badRequest("invalid body", parsed.error.format());
+    }
+    const result = await reviewer.screenPendingDrafts({
+      companyId,
+      limit: parsed.data.limit,
+    });
+    res.json({ data: result });
+  });
+
+  // ============================================================
+  // POST /api/knowledge/drafts/batch-apply-verdict
+  // ============================================================
+  router.post(
+    "/drafts/batch-apply-verdict",
+    validate(batchApplyVerdictSchema),
+    async (req, res) => {
+      const companyId = requireCompanyId(req);
+      assertCompanyAccess(req, companyId);
+      assertBoard(req);
+      const actor = getActorInfo(req);
+      const { verdict, draft_ids, review_notes } = req.body as {
+        verdict: "recommend_approve" | "recommend_reject";
+        draft_ids: string[];
+        review_notes?: string;
+      };
+
+      if (verdict === "recommend_approve") {
+        // 复用 batchMarkApproved + 物化
+        const { approvedIds, failed } = await drafts.batchMarkApproved({
+          companyId,
+          ids: draft_ids,
+          reviewerUserId: actor.actorId,
+          notes: review_notes,
+        });
+        const materializeFailed: Array<{ id: string; reason: string }> = [];
+        let approvedCount = 0;
+        for (const id of approvedIds) {
+          try {
+            await nodeWriter.materialize({
+              companyId,
+              draftId: id,
+              reviewerUserId: actor.actorId,
+            });
+            approvedCount += 1;
+          } catch (err) {
+            materializeFailed.push({
+              id,
+              reason: err instanceof Error ? err.message : String(err),
+            });
+          }
+        }
+        res.json({
+          data: {
+            verdict,
+            approved_count: approvedCount,
+            failed: [...failed, ...materializeFailed],
+          },
+        });
+        return;
+      }
+
+      // recommend_reject 分支：逐条 drafts.reject
+      let rejectedCount = 0;
+      const failed: Array<{ id: string; reason: string }> = [];
+      for (const id of draft_ids) {
+        try {
+          await drafts.reject({
+            companyId,
+            id,
+            reviewerUserId: actor.actorId,
+            notes: review_notes,
+          });
+          rejectedCount += 1;
+        } catch (err) {
+          failed.push({ id, reason: err instanceof Error ? err.message : String(err) });
+        }
+      }
+      res.json({ data: { verdict, rejected_count: rejectedCount, failed } });
     },
   );
 

@@ -1063,6 +1063,9 @@ export {
   knowledgeSearchQuerySchema,
   knowledgeFeedbackSchema,
   KNOWLEDGE_FEEDBACK_VALUES,
+  KNOWLEDGE_PRE_VERDICT_VALUES,
+  reviewerRunQuerySchema,
+  batchApplyVerdictSchema,
 } from "./validators/index.js";
 export type {
   CreateKnowledgeDraft,
@@ -1073,4 +1076,7 @@ export type {
   ListKnowledgeDraftsQuery,
   KnowledgeSearchQuery,
   KnowledgeFeedback,
+  KnowledgePreVerdict,
+  ReviewerRunQuery,
+  BatchApplyVerdict,
 } from "./validators/index.js";
