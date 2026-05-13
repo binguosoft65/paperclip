@@ -8,6 +8,8 @@ import {
   listKnowledgeDraftsQuerySchema,
   rejectKnowledgeDraftSchema,
   requestRevisionKnowledgeDraftSchema,
+  knowledgeFeedbackSchema,
+  knowledgeSearchQuerySchema,
 } from "@paperclipai/shared";
 import { badRequest, notFound } from "../errors.js";
 import { validate } from "../middleware/validate.js";
@@ -15,6 +17,8 @@ import {
   knowledgeDraftService,
   knowledgeNodeWriterService,
   llmWikiService,
+  knowledgeRetrieverService,
+  knowledgeFeedbackService,
 } from "../services/index.js";
 import { assertBoard, assertCompanyAccess, getActorInfo } from "./authz.js";
 
@@ -33,6 +37,8 @@ export function knowledgeRoutes(db: Db) {
   const drafts = knowledgeDraftService(db);
   const llm = llmWikiService(db);
   const nodeWriter = knowledgeNodeWriterService(db, llm);
+  const retriever = knowledgeRetrieverService(db, llm);
+  const feedback = knowledgeFeedbackService(db);
 
   function requireCompanyId(req: Request): string {
     const raw = req.query.companyId;
@@ -238,6 +244,62 @@ export function knowledgeRoutes(db: Db) {
           failed: [...failed, ...materializeFailed],
         },
       });
+    },
+  );
+
+  // ============================================================
+  // GET /api/knowledge/search
+  // ============================================================
+  router.get("/search", async (req, res) => {
+    const companyId = requireCompanyId(req);
+    assertCompanyAccess(req, companyId);
+    const parsed = knowledgeSearchQuerySchema.safeParse({
+      q: req.query.q,
+      type: req.query.type,
+      domain: req.query.domain,
+      used_for: req.query.used_for,
+      project_id: req.query.project_id,
+      include_outdated: req.query.include_outdated,
+      limit: req.query.limit,
+    });
+    if (!parsed.success) {
+      throw badRequest("invalid query", parsed.error.format());
+    }
+    const q = parsed.data;
+    const result = await retriever.search({
+      companyId,
+      query: q.q,
+      projectId: q.project_id ?? null,
+      type: q.type ? q.type.split(",").map((s) => s.trim()).filter(Boolean) : null,
+      domain: q.domain ? q.domain.split(",").map((s) => s.trim()).filter(Boolean) : null,
+      used_for: q.used_for ? q.used_for.split(",").map((s) => s.trim()).filter(Boolean) : null,
+      include_outdated: q.include_outdated,
+      limit: q.limit,
+    });
+    res.json({ data: result, meta: { took_ms: result.took_ms } });
+  });
+
+  // ============================================================
+  // POST /api/knowledge/nodes/:id/feedback
+  // ============================================================
+  router.post(
+    "/nodes/:id/feedback",
+    validate(knowledgeFeedbackSchema),
+    async (req, res) => {
+      const companyId = requireCompanyId(req);
+      assertCompanyAccess(req, companyId);
+      const actor = getActorInfo(req);
+      await feedback.record({
+        companyId,
+        nodeId: requireParamId(req),
+        feedback: req.body.feedback,
+        runId: req.body.run_id ?? actor.runId ?? null,
+        issueId: req.body.issue_id ?? null,
+        agentId: actor.actorType === "agent" ? actor.actorId : null,
+        userId: actor.actorType === "user" ? actor.actorId : null,
+        comment: req.body.comment ?? null,
+      });
+      res.status(204).end();
     },
   );
 

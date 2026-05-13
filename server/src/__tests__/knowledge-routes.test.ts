@@ -16,10 +16,20 @@ const mockNodeWriter = vi.hoisted(() => ({
   materialize: vi.fn(),
 }));
 
+const mockRetriever = vi.hoisted(() => ({
+  search: vi.fn(),
+}));
+
+const mockFeedback = vi.hoisted(() => ({
+  record: vi.fn(),
+}));
+
 vi.mock("../services/index.js", () => ({
   knowledgeDraftService: () => mockDraftService,
   knowledgeNodeWriterService: () => mockNodeWriter,
   llmWikiService: () => ({ embed: vi.fn() }),
+  knowledgeRetrieverService: () => mockRetriever,
+  knowledgeFeedbackService: () => mockFeedback,
 }));
 
 async function createApp(actor: Record<string, unknown>) {
@@ -237,5 +247,98 @@ describe.sequential("GET /api/knowledge/drafts", () => {
     expect(res.status).toBe(200);
     expect(res.body.data).toHaveLength(2);
     expect(res.body.meta.next_cursor).toBe("abc");
+  });
+});
+
+describe.sequential("GET /api/knowledge/search", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("200 返回 retriever 结果", async () => {
+    mockRetriever.search.mockResolvedValueOnce({
+      results: [
+        {
+          id: "n-1",
+          title: "T",
+          snippet: "S",
+          type: "lesson",
+          level: "company",
+          domain: { name: "general", display_label: "通用", color: "#666" },
+          confidence: 0.9,
+          verified: true,
+          trigger_count: 5,
+          similarity: 0.88,
+          experience_score: 0.0,
+          freshness_score: 0.95,
+          freshness_label: "fresh",
+          final_score: 0.63,
+          verified_at: null,
+          volatility: "stable",
+        },
+      ],
+      search_type: "semantic",
+      took_ms: 120,
+    });
+    const app = await createApp(boardActor);
+    const res = await requestApp(app, (base) =>
+      request(base).get("/api/knowledge/search?companyId=c-1&q=hello"),
+    );
+    expect(res.status).toBe(200);
+    expect(res.body.data.results).toHaveLength(1);
+    expect(res.body.data.results[0].id).toBe("n-1");
+    expect(mockRetriever.search).toHaveBeenCalledWith(
+      expect.objectContaining({ companyId: "c-1", query: "hello" }),
+    );
+  });
+
+  it("400 缺 q", async () => {
+    const app = await createApp(boardActor);
+    const res = await requestApp(app, (base) =>
+      request(base).get("/api/knowledge/search?companyId=c-1"),
+    );
+    expect(res.status).toBe(400);
+  });
+
+  it("csv 参数被拆为数组传给 retriever", async () => {
+    mockRetriever.search.mockResolvedValueOnce({ results: [], search_type: "semantic", took_ms: 1 });
+    const app = await createApp(boardActor);
+    await requestApp(app, (base) =>
+      request(base).get("/api/knowledge/search?companyId=c-1&q=x&domain=software,content&used_for=bug-fix"),
+    );
+    expect(mockRetriever.search).toHaveBeenCalledWith(
+      expect.objectContaining({
+        domain: ["software", "content"],
+        used_for: ["bug-fix"],
+      }),
+    );
+  });
+});
+
+describe.sequential("POST /api/knowledge/nodes/:id/feedback", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("204 + 调 feedback service", async () => {
+    mockFeedback.record.mockResolvedValueOnce({ nodeId: "n-1", eventId: "e-1" });
+    const app = await createApp(boardActor);
+    const nodeId = "11111111-1111-1111-1111-111111111111";
+    const res = await requestApp(app, (base) =>
+      request(base)
+        .post(`/api/knowledge/nodes/${nodeId}/feedback?companyId=c-1`)
+        .send({ feedback: "helped" }),
+    );
+    expect(res.status).toBe(204);
+    expect(mockFeedback.record).toHaveBeenCalledWith(
+      expect.objectContaining({ nodeId, companyId: "c-1", feedback: "helped" }),
+    );
+  });
+
+  it("400 非法 feedback enum", async () => {
+    const app = await createApp(boardActor);
+    const nodeId = "11111111-1111-1111-1111-111111111111";
+    const res = await requestApp(app, (base) =>
+      request(base)
+        .post(`/api/knowledge/nodes/${nodeId}/feedback?companyId=c-1`)
+        .send({ feedback: "bogus" }),
+    );
+    expect(res.status).toBe(400);
   });
 });
