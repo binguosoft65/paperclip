@@ -86,8 +86,28 @@ export function KnowledgeDrafts() {
     enabled: !!selectedCompanyId,
   });
 
-  const invalidate = () =>
+  // Tab 计数：一次拉所有 status 的前 100 条用于显示徽章。计数不精确（如有 100+ 条会
+  // 显示 100，仍能传递相对量级）；调试场景足够。
+  const { data: counts } = useQuery({
+    queryKey: ["knowledge-drafts-counts", selectedCompanyId],
+    queryFn: () =>
+      knowledgeApi.listDrafts(selectedCompanyId!, STATUS_VALUES.join(",")),
+    enabled: !!selectedCompanyId,
+  });
+  const statusCounts: Record<StatusFilter, number> = {
+    pending: 0,
+    approved: 0,
+    rejected: 0,
+    revision_requested: 0,
+  };
+  for (const d of counts?.data ?? []) {
+    if (d.status in statusCounts) statusCounts[d.status as StatusFilter] += 1;
+  }
+
+  const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ["knowledge-drafts", selectedCompanyId] });
+    queryClient.invalidateQueries({ queryKey: ["knowledge-drafts-counts", selectedCompanyId] });
+  };
 
   const approveMutation = useMutation({
     mutationFn: ({ id, notes }: { id: string; notes?: string }) =>
@@ -159,7 +179,26 @@ export function KnowledgeDrafts() {
           onValueChange={(v) => navigate(`/knowledge/drafts/${v}`)}
         >
           <PageTabBar
-            items={STATUS_VALUES.map((s) => ({ value: s, label: STATUS_LABEL[s] }))}
+            items={STATUS_VALUES.map((s) => ({
+              value: s,
+              label: (
+                <>
+                  {STATUS_LABEL[s]}
+                  {statusCounts[s] > 0 && (
+                    <span
+                      className={cn(
+                        "ml-1.5 rounded-full px-1.5 py-0.5 text-[10px] font-medium",
+                        s === "pending"
+                          ? "bg-yellow-500/20 text-yellow-500"
+                          : "bg-muted text-muted-foreground",
+                      )}
+                    >
+                      {statusCounts[s]}
+                    </span>
+                  )}
+                </>
+              ),
+            }))}
           />
         </Tabs>
         <div className="text-xs text-muted-foreground">
@@ -310,13 +349,30 @@ function DraftRow({
           <span>{SOURCE_LABEL[draft.source]}</span>
           <span>confidence {Number(draft.confidence).toFixed(2)}</span>
           {draft.proposedVolatility && <span>volatility {draft.proposedVolatility}</span>}
-          <span>{createdAt.toLocaleString()}</span>
+          <span>created {createdAt.toLocaleString()}</span>
+          {draft.sourceIssueId && (
+            <span>issue <code>{draft.sourceIssueId.slice(0, 8)}</code></span>
+          )}
+          {draft.sourceRunId && (
+            <span>run <code>{draft.sourceRunId.slice(0, 8)}</code></span>
+          )}
           {draft.preVerdict && (
             <Badge variant="outline" className="font-normal">
               pre: {draft.preVerdict}
             </Badge>
           )}
         </div>
+        {draft.preVerdictReasoning && (
+          <p className="text-xs text-muted-foreground italic">
+            Reviewer 理由: {draft.preVerdictReasoning}
+          </p>
+        )}
+        {draft.reviewedAt && (
+          <p className="text-xs text-muted-foreground">
+            reviewed at {new Date(draft.reviewedAt).toLocaleString()}
+            {draft.reviewedBy && <> by <code>{draft.reviewedBy.slice(0, 12)}</code></>}
+          </p>
+        )}
         {draft.reviewNotes && (
           <p className="text-xs text-muted-foreground italic">备注: {draft.reviewNotes}</p>
         )}
