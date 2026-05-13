@@ -120,3 +120,25 @@ LIMIT 1;
 - Plugin 安装是 per-company 的。每个 fresh 公司都要走一次安装 API
 - Plugin worker 是独立子进程；首次安装/启动有几秒冷启动
 - Tool 调用走 JSON-RPC over stdio，host 端 capability 校验在 `knowledge.draft.create` 上
+
+## ⚠️ Windows 已知问题（与 Phase 1b-2 无关，影响所有 plugin）
+
+在 Windows 上 plugin worker boot 失败：
+
+```
+ERR_UNSUPPORTED_ESM_URL_SCHEME: Only URLs with a scheme in: file, data, and node
+are supported by the default ESM loader. ... Received protocol 'd:'
+```
+
+复现：尝试 install **任意** plugin（包括 paperclip-plugin-hello-world-example）。
+失败发生在 fork 的子进程 ESM loader 初次加载 worker.js 时，Windows 盘符 `D:` 被
+Node 当成 URL scheme。
+
+这是 Paperclip 平台层 bug，跟 LLM-Wiki / Phase 1b-2 代码无关；plugin 包本身
+build / typecheck 全 clean。Smoke 待迁到 Linux / macOS / WSL 环境跑通。
+
+修复路径需深入排查（pathToFileURL 包装 fork 第一参数实测无效；问题在 Node 24
+ESM loader 内部）。Phase 1b-2 代码层完整：
+- plugin-sdk 已暴露 `ctx.knowledge.proposeDraft()`
+- host bridge 已 wire 到 `knowledgeDraftService.create()`（含 36/36 单测）
+- plugin 包已构建 + 注册 BUNDLED list
