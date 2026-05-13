@@ -1101,6 +1101,33 @@ export interface WorkerToHostMethods {
     },
     result: Goal,
   ];
+  /**
+   * knowledge.proposeDraft — Plugin 提交知识 draft（写入 knowledge_drafts 表，source=manual）。
+   * 由 Paperclip LLM-Wiki Phase 1b-2 引入，给 Agent 显式调用 propose_knowledge_node 工具用。
+   */
+  "knowledge.proposeDraft": [
+    params: {
+      companyId: string;
+      title: string;
+      content: string;
+      type: "concept" | "lesson" | "rule" | "decision" | "fact";
+      level: "personal" | "project" | "company";
+      business_domain_name: string;
+      confidence?: number;
+      volatility?: "stable" | "slow" | "fast";
+      valid_until?: string | null;
+      used_for?: string[];
+      metadata?: Record<string, unknown>;
+      target_node_id?: string | null;
+      source_issue_id?: string | null;
+      source_run_id?: string | null;
+    },
+    result: {
+      id: string;
+      status: string;
+      preVerdict: string | null;
+    },
+  ];
 }
 
 /** Union of all worker→host method names. */
