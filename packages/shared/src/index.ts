@@ -1060,6 +1060,9 @@ export {
   requestRevisionKnowledgeDraftSchema,
   batchApproveKnowledgeDraftSchema,
   listKnowledgeDraftsQuerySchema,
+  knowledgeSearchQuerySchema,
+  knowledgeFeedbackSchema,
+  KNOWLEDGE_FEEDBACK_VALUES,
 } from "./validators/index.js";
 export type {
   CreateKnowledgeDraft,
@@ -1068,4 +1071,6 @@ export type {
   RequestRevisionKnowledgeDraft,
   BatchApproveKnowledgeDraft,
   ListKnowledgeDraftsQuery,
+  KnowledgeSearchQuery,
+  KnowledgeFeedback,
 } from "./validators/index.js";

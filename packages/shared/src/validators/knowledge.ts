@@ -91,3 +91,32 @@ export const listKnowledgeDraftsQuerySchema = z
   .strict();
 
 export type ListKnowledgeDraftsQuery = z.infer<typeof listKnowledgeDraftsQuerySchema>;
+
+/** GET /api/knowledge/search 查询参数 */
+export const knowledgeSearchQuerySchema = z
+  .object({
+    q: z.string().min(1).max(2000),
+    type: z.string().optional(),              // csv: lesson,rule,...
+    domain: z.string().optional(),            // csv: software,content
+    used_for: z.string().optional(),          // csv: bug-fix,architecture
+    project_id: z.string().uuid().optional(),
+    include_outdated: z.coerce.boolean().optional().default(false),
+    limit: z.coerce.number().int().min(1).max(50).optional().default(5),
+  })
+  .strict();
+
+export type KnowledgeSearchQuery = z.infer<typeof knowledgeSearchQuerySchema>;
+
+/** POST /api/knowledge/nodes/:id/feedback body */
+export const knowledgeFeedbackSchema = z
+  .object({
+    feedback: z.enum(["helped", "outdated", "wrong", "irrelevant"]),
+    run_id: z.string().uuid().nullable().optional(),
+    issue_id: z.string().uuid().nullable().optional(),
+    comment: z.string().max(2000).optional(),
+  })
+  .strict();
+
+export type KnowledgeFeedback = z.infer<typeof knowledgeFeedbackSchema>;
+
+export const KNOWLEDGE_FEEDBACK_VALUES = ["helped", "outdated", "wrong", "irrelevant"] as const;
