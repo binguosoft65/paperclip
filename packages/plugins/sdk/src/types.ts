@@ -1502,6 +1502,39 @@ export interface PluginGoalsClient {
   ): Promise<Goal>;
 }
 
+/**
+ * Knowledge draft client. Plugin tools 通过这个 API 把 Agent 主动写入的知识
+ * 草稿提交到 Paperclip 的 LLM-Wiki 引擎（写 knowledge_drafts 表，source=manual）。
+ *
+ * Phase 1b-2 引入；后续 phase 可能扩展 search / feedback / verify 等方法。
+ */
+export interface PluginKnowledgeClient {
+  /**
+   * 提交一条 knowledge draft 到 review queue。actor 由 host 根据 plugin
+   * worker 调用上下文自动构造，不接受 plugin 端伪造身份。
+   */
+  proposeDraft(input: {
+    companyId: string;
+    title: string;
+    content: string;
+    type: "concept" | "lesson" | "rule" | "decision" | "fact";
+    level: "personal" | "project" | "company";
+    business_domain_name: string;
+    confidence?: number;
+    volatility?: "stable" | "slow" | "fast";
+    valid_until?: string | null;
+    used_for?: string[];
+    metadata?: Record<string, unknown>;
+    target_node_id?: string | null;
+    source_issue_id?: string | null;
+    source_run_id?: string | null;
+  }): Promise<{
+    id: string;
+    status: string;
+    preVerdict: string | null;
+  }>;
+}
+
 // ---------------------------------------------------------------------------
 // Streaming (worker → UI push channel)
 // ---------------------------------------------------------------------------
@@ -1635,6 +1668,9 @@ export interface PluginContext {
 
   /** Read and mutate goals. Requires `goals.read` for reads; `goals.create` / `goals.update` for write ops. */
   goals: PluginGoalsClient;
+
+  /** Submit knowledge drafts. Requires `knowledge.draft.create`. */
+  knowledge: PluginKnowledgeClient;
 
   /** Register getData handlers for the plugin's UI components. */
   data: PluginDataClient;

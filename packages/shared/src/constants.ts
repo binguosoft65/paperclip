@@ -765,6 +765,7 @@ export const PLUGIN_CAPABILITIES = [
   "telemetry.track",
   "database.namespace.migrate",
   "database.namespace.write",
+  "knowledge.draft.create",
   // Plugin State
   "plugin.state.read",
   "plugin.state.write",

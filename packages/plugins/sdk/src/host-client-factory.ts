@@ -244,6 +244,13 @@ export interface HostServices {
     create(params: WorkerToHostMethods["goals.create"][0]): Promise<WorkerToHostMethods["goals.create"][1]>;
     update(params: WorkerToHostMethods["goals.update"][0]): Promise<WorkerToHostMethods["goals.update"][1]>;
   };
+
+  /** Provides `knowledge.proposeDraft`. Requires `knowledge.draft.create`. */
+  knowledge: {
+    proposeDraft(
+      params: WorkerToHostMethods["knowledge.proposeDraft"][0],
+    ): Promise<WorkerToHostMethods["knowledge.proposeDraft"][1]>;
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -413,6 +420,9 @@ const METHOD_CAPABILITY_MAP: Record<WorkerToHostMethodName, PluginCapability | n
   "goals.get": "goals.read",
   "goals.create": "goals.create",
   "goals.update": "goals.update",
+
+  // Knowledge
+  "knowledge.proposeDraft": "knowledge.draft.create",
 };
 
 // ---------------------------------------------------------------------------
@@ -736,6 +746,11 @@ export function createHostClientHandlers(
     }),
     "goals.update": gated("goals.update", async (params) => {
       return services.goals.update(params);
+    }),
+
+    // Knowledge
+    "knowledge.proposeDraft": gated("knowledge.proposeDraft", async (params) => {
+      return services.knowledge.proposeDraft(params);
     }),
   };
 }

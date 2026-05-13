@@ -1048,6 +1048,27 @@ export function startWorkerRpcHost(options: WorkerRpcHostOptions): WorkerRpcHost
         },
       },
 
+      knowledge: {
+        async proposeDraft(input) {
+          return callHost("knowledge.proposeDraft", {
+            companyId: input.companyId,
+            title: input.title,
+            content: input.content,
+            type: input.type,
+            level: input.level,
+            business_domain_name: input.business_domain_name,
+            confidence: input.confidence,
+            volatility: input.volatility,
+            valid_until: input.valid_until,
+            used_for: input.used_for,
+            metadata: input.metadata,
+            target_node_id: input.target_node_id,
+            source_issue_id: input.source_issue_id,
+            source_run_id: input.source_run_id,
+          });
+        },
+      },
+
       data: {
         register(key: string, handler: (params: Record<string, unknown>) => Promise<unknown>): void {
           dataHandlers.set(key, handler);

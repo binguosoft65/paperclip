@@ -1718,6 +1718,16 @@ export function createTestHarness(options: TestHarnessOptions): TestHarness {
         return updated;
       },
     },
+    knowledge: {
+      async proposeDraft(input) {
+        requireCapability(manifest, capabilitySet, "knowledge.draft.create");
+        return {
+          id: randomUUID(),
+          status: "draft",
+          preVerdict: null,
+        };
+      },
+    },
     data: {
       register(key, handler) {
         dataHandlers.set(key, handler);
