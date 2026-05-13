@@ -10,7 +10,10 @@ import { conflict, forbidden, notFound, unprocessable } from "../errors.js";
  */
 export type KnowledgeDraftActor =
   | { type: "user"; userId: string; isAdmin: boolean }
-  | { type: "agent"; agentId: string; runId?: string | null };
+  | { type: "agent"; agentId: string; runId?: string | null }
+  // system：plugin worker / 后台 routine / 演化引擎调用时用；写库时 sourceUserId
+  // 与 sourceAgentId 均为 null（避免 FK 失败），追溯靠 sourceRunId / sourceIssueId
+  | { type: "system" };
 
 export interface CreateKnowledgeDraftInput {
   companyId: string;

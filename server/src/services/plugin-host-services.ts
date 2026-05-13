@@ -2114,11 +2114,10 @@ export function buildHostServices(
         const companyId = ensureCompanyId(params.companyId);
         await ensurePluginAvailableForCompany(companyId);
 
-        // Plugin 调用时由 host 决定 actor，不接受 plugin 伪造身份。
-        // Phase 1b-2 简化：source="manual"，actor 用 system user 兜底。
-        // 后续 phase 若要写真实 sourceAgentId 需要从 plugin worker 调用上下文
-        // 透传 agentId（当前 host bridge 接口未传，留给以后扩展）。
-        const actor = { type: "user" as const, userId: "system", isAdmin: false };
+        // Plugin 调用时 host 决定 actor，不接受 plugin 伪造身份。Phase 1b-2
+        // 用 system actor 写入 → sourceUserId/sourceAgentId 都为 null（FK 安全）；
+        // 追溯靠 sourceRunId/sourceIssueId（plugin 自行通过 runCtx 传入）。
+        const actor = { type: "system" as const };
 
         const validUntil = params.valid_until ? new Date(params.valid_until) : null;
         const metadataCombined: Record<string, unknown> = {
