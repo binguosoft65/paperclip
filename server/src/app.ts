@@ -42,7 +42,9 @@ import { pluginRoutes } from "./routes/plugins.js";
 import { adapterRoutes } from "./routes/adapters.js";
 import { pluginUiStaticRoutes } from "./routes/plugin-ui-static.js";
 import { knowledgeRoutes } from "./routes/knowledge.js";
-import { llmWikiService, knowledgeDrafterService, knowledgeRetrieverService } from "./services/index.js";
+import { llmWikiService, knowledgeDrafterService, knowledgeRetrieverService, reviewerAgentService } from "./services/index.js";
+import { startReviewerScheduler } from "./services/knowledge-reviewer-scheduler.js";
+import { companies as companiesTable } from "@paperclipai/db";
 import { setKnowledgeDrafterForHeartbeat } from "./services/heartbeat.js";
 import { applyUiBranding } from "./ui-branding.js";
 import { logger } from "./middleware/logger.js";
@@ -201,6 +203,21 @@ export async function createApp(
   const knowledgeDrafter = knowledgeDrafterService(db, llmWikiClient);
   const knowledgeRetriever = knowledgeRetrieverService(db, llmWikiClient);
   setKnowledgeDrafterForHeartbeat(knowledgeDrafter);
+  // 知识 Reviewer Agent 进程内调度器（Phase 3b）；env KNOWLEDGE_REVIEWER_ENABLED=true 开启
+  const reviewerSchedulerHandle = startReviewerScheduler({
+    listCompanies: async () => {
+      const rows = await db.select({ id: companiesTable.id }).from(companiesTable);
+      return rows;
+    },
+    reviewerForCompany: (_companyId) => reviewerAgentService(db, knowledgeRetriever, {
+      completeChat: async (messages) => {
+        // 适配 ReviewerLlmClient 接口：取末尾 user 消息传给 llmWikiClient.completeChat
+        const systemMsg = messages.find((m) => m.role === "system")?.content ?? "";
+        const userMsg = [...messages].reverse().find((m) => m.role === "user")?.content ?? "";
+        return llmWikiClient.completeChat({ system: systemMsg, user: userMsg });
+      },
+    }),
+  });
   api.use(issueRoutes(db, opts.storageService, {
     feedbackExportService: opts.feedbackExportService,
     pluginWorkerManager: workerManager,
@@ -449,6 +466,7 @@ export async function createApp(
   });
   process.once("exit", () => {
     if (feedbackExportTimer) clearInterval(feedbackExportTimer);
+    reviewerSchedulerHandle?.stop();
     devWatcher?.close();
     viteHtmlRenderer?.dispose();
     hostServiceCleanup.disposeAll();
