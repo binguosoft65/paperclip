@@ -19,6 +19,7 @@ import {
   ToggleField,
   HintIcon,
 } from "../components/agent-config-primitives";
+import { LanguageSwitcher } from "../components/LanguageSwitcher";
 
 type AgentSnippetInput = {
   onboardingTextUrl: string;
@@ -38,7 +39,7 @@ export function CompanySettings() {
     selectedCompanyId,
     setSelectedCompanyId
   } = useCompany();
-  const { t } = useTranslation(["company", "common"]);
+  const { t } = useTranslation(["company", "common", "settings"]);
   const { setBreadcrumbs } = useBreadcrumbs();
   const queryClient = useQueryClient();
   // General settings local state
@@ -273,6 +274,21 @@ export function CompanySettings() {
               onChange={(e) => setDescription(e.target.value)}
             />
           </Field>
+        </div>
+      </div>
+
+      {/* 语言切换：从 InstanceGeneralSettings 迁移至公司设置（影响当前用户的 UI 语言偏好） */}
+      <div className="space-y-4">
+        <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+          {t("settings:general.language")}
+        </div>
+        <div className="rounded-md border border-border px-4 py-4">
+          <div className="flex items-start justify-between gap-4">
+            <p className="text-sm text-muted-foreground max-w-2xl">
+              {t("settings:general.languageDesc")}
+            </p>
+            <LanguageSwitcher />
+          </div>
         </div>
       </div>
 

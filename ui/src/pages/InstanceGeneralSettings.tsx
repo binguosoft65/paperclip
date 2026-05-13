@@ -17,7 +17,6 @@ import { useBreadcrumbs } from "../context/BreadcrumbContext";
 import { queryKeys } from "../lib/queryKeys";
 import { ToggleSwitch } from "@/components/ui/toggle-switch";
 import { cn } from "../lib/utils";
-import { LanguageSwitcher } from "../components/LanguageSwitcher";
 import { Trans, useTranslation } from "react-i18next";
 
 const FEEDBACK_TERMS_URL = import.meta.env.VITE_FEEDBACK_TERMS_URL?.trim() || "https://paperclip.ing/tos";
@@ -348,17 +347,8 @@ export function InstanceGeneralSettings() {
         </div>
       </section>
 
-      <section className="rounded-xl border border-border bg-card p-5">
-        <div className="flex items-start justify-between gap-4">
-          <div className="space-y-1.5">
-            <h2 className="text-sm font-semibold">{t('general.language')}</h2>
-            <p className="max-w-2xl text-sm text-muted-foreground">
-              {t('general.languageDesc')}
-            </p>
-          </div>
-          <LanguageSwitcher />
-        </div>
-      </section>
+      {/* 语言切换 section 已迁至 /company/settings（影响当前用户的 UI 偏好，
+           归属公司设置更合适）。 */}
 
       {/* 退出登录入口。虽然放在通用设置页面中，但该操作影响的是当前用户会话，
            而非全局设置。放置于此是为了方便管理员在一个统一的管理界面完成所有操作。 */}
