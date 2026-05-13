@@ -300,7 +300,10 @@ export function KnowledgeDrafts() {
             </Button>
             <Button
               onClick={confirmAction}
-              disabled={mutationPending}
+              disabled={
+                mutationPending ||
+                (activeAction?.kind === "request-revision" && notesInput.trim().length === 0)
+              }
               variant={activeAction?.kind === "reject" ? "destructive" : "default"}
             >
               {mutationPending ? "处理中…" : "确认"}
