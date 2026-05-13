@@ -63,4 +63,32 @@ export const knowledgeApi = {
       `/knowledge/drafts/${id}/request-revision?companyId=${companyId}`,
       { review_notes },
     ),
+
+  // Phase 3b: Reviewer Agent —— 触发对该公司未初筛 draft 的批量初筛
+  reviewerRun: (companyId: string, limit?: number) =>
+    api.post<{
+      data: { processed: number; errors: Array<{ draftId: string; reason: string }> };
+    }>(
+      `/knowledge/reviewer/run?companyId=${companyId}`,
+      limit !== undefined ? { limit } : {},
+    ),
+
+  // Phase 3b: 按 Reviewer 给出的 verdict 批量应用（一键通过 / 一键驳回）
+  batchApplyVerdict: (
+    companyId: string,
+    verdict: "recommend_approve" | "recommend_reject",
+    draft_ids: string[],
+    review_notes?: string,
+  ) =>
+    api.post<{
+      data: {
+        verdict: string;
+        approved_count?: number;
+        rejected_count?: number;
+        failed: Array<{ id: string; reason: string }>;
+      };
+    }>(
+      `/knowledge/drafts/batch-apply-verdict?companyId=${companyId}`,
+      { verdict, draft_ids, ...(review_notes ? { review_notes } : {}) },
+    ),
 };

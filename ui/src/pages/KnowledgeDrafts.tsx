@@ -55,6 +55,19 @@ const SOURCE_LABEL: Record<KnowledgeDraft["source"], string> = {
   failure_signal: "失败信号",
 };
 
+// Phase 3b: Reviewer Agent 初筛 verdict 的中文 label + 配色
+const PRE_VERDICT_LABEL: Record<NonNullable<KnowledgeDraft["preVerdict"]>, string> = {
+  recommend_approve: "建议通过",
+  recommend_reject: "建议驳回",
+  needs_human: "需人审",
+};
+
+const PRE_VERDICT_TONE: Record<NonNullable<KnowledgeDraft["preVerdict"]>, string> = {
+  recommend_approve: "bg-emerald-500/15 text-emerald-500",
+  recommend_reject: "bg-rose-500/15 text-rose-500",
+  needs_human: "bg-amber-500/15 text-amber-500",
+};
+
 export function KnowledgeDrafts() {
   const { selectedCompanyId } = useCompany();
   const { setBreadcrumbs } = useBreadcrumbs();
@@ -155,6 +168,57 @@ export function KnowledgeDrafts() {
       setActionError(err instanceof Error ? err.message : "Request revision failed"),
   });
 
+  // Phase 3b: 触发 Reviewer Agent 对当前公司未初筛的 pending draft 跑一轮
+  const triggerMutation = useMutation({
+    mutationFn: () => knowledgeApi.reviewerRun(selectedCompanyId!),
+    onSuccess: (res) => {
+      invalidate();
+      pushToast({
+        title: `Reviewer 已处理 ${res.data.processed} 条 draft`,
+        body: res.data.errors.length > 0 ? `失败 ${res.data.errors.length} 条` : undefined,
+        tone: res.data.errors.length > 0 ? "warn" : "success",
+      });
+    },
+    onError: (err) =>
+      pushToast({
+        title: "触发 Reviewer 失败",
+        body: err instanceof Error ? err.message : String(err),
+        tone: "error",
+      }),
+  });
+
+  // Phase 3b: 按 verdict 一键批量应用（目前 UI 只暴露 recommend_approve）
+  const batchApplyMutation = useMutation({
+    mutationFn: ({
+      verdict,
+      ids,
+    }: {
+      verdict: "recommend_approve" | "recommend_reject";
+      ids: string[];
+    }) => knowledgeApi.batchApplyVerdict(selectedCompanyId!, verdict, ids),
+    onSuccess: (res) => {
+      invalidate();
+      const count =
+        res.data.verdict === "recommend_approve"
+          ? res.data.approved_count
+          : res.data.rejected_count;
+      pushToast({
+        title:
+          res.data.verdict === "recommend_approve"
+            ? `已批准 ${count ?? 0} 条`
+            : `已驳回 ${count ?? 0} 条`,
+        body: res.data.failed.length > 0 ? `失败 ${res.data.failed.length} 条` : undefined,
+        tone: res.data.failed.length > 0 ? "warn" : "success",
+      });
+    },
+    onError: (err) =>
+      pushToast({
+        title: "批量应用失败",
+        body: err instanceof Error ? err.message : String(err),
+        tone: "error",
+      }),
+  });
+
   function confirmAction() {
     if (!activeAction) return;
     const { draft, kind } = activeAction;
@@ -179,6 +243,11 @@ export function KnowledgeDrafts() {
   const drafts = data?.data ?? [];
   const mutationPending =
     approveMutation.isPending || rejectMutation.isPending || requestRevisionMutation.isPending;
+
+  // pending tab 顶部「一键通过 recommend_approve」按钮的候选 ID 集合
+  const recommendApproveIds = drafts
+    .filter((d) => d.preVerdict === "recommend_approve")
+    .map((d) => d.id);
 
   return (
     <div className="space-y-4">
@@ -214,6 +283,34 @@ export function KnowledgeDrafts() {
           公司: <code className="text-foreground/80">{selectedCompanyId.slice(0, 8)}</code>
         </div>
       </div>
+
+      {statusFilter === "pending" && (
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={triggerMutation.isPending}
+            onClick={() => triggerMutation.mutate()}
+          >
+            {triggerMutation.isPending ? "Reviewer 跑中…" : "触发 Reviewer 初筛"}
+          </Button>
+          <Button
+            size="sm"
+            variant="default"
+            disabled={batchApplyMutation.isPending || recommendApproveIds.length === 0}
+            onClick={() =>
+              batchApplyMutation.mutate({
+                verdict: "recommend_approve",
+                ids: recommendApproveIds,
+              })
+            }
+          >
+            {batchApplyMutation.isPending
+              ? "应用中…"
+              : `一键通过 recommend_approve (${recommendApproveIds.length})`}
+          </Button>
+        </div>
+      )}
 
       {error && <p className="text-sm text-destructive">{error.message}</p>}
       {actionError && <p className="text-sm text-destructive">{actionError}</p>}
@@ -354,6 +451,14 @@ function DraftRow({
           <Badge variant="outline" className="font-normal">
             {draft.proposedLevel}
           </Badge>
+          {draft.preVerdict && (
+            <Badge
+              variant="outline"
+              className={cn("text-xs font-normal", PRE_VERDICT_TONE[draft.preVerdict])}
+            >
+              {PRE_VERDICT_LABEL[draft.preVerdict]}
+            </Badge>
+          )}
           <span className="text-sm font-medium truncate">{draft.proposedTitle}</span>
         </div>
         <p className="text-sm text-muted-foreground line-clamp-2">{draft.proposedContent}</p>
@@ -368,16 +473,17 @@ function DraftRow({
           {draft.sourceRunId && (
             <span>run <code>{draft.sourceRunId.slice(0, 8)}</code></span>
           )}
-          {draft.preVerdict && (
-            <Badge variant="outline" className="font-normal">
-              pre: {draft.preVerdict}
-            </Badge>
-          )}
         </div>
         {draft.preVerdictReasoning && (
-          <p className="text-xs text-muted-foreground italic">
-            Reviewer 理由: {draft.preVerdictReasoning}
-          </p>
+          <details className="text-xs text-muted-foreground">
+            <summary className="cursor-pointer select-none">Reviewer 理由</summary>
+            <p className="mt-1 whitespace-pre-wrap">{draft.preVerdictReasoning}</p>
+            {draft.detectedConflicts.length > 0 && (
+              <p className="mt-1 text-rose-500">
+                检测到冲突节点：{draft.detectedConflicts.join(", ")}
+              </p>
+            )}
+          </details>
         )}
         {draft.reviewedAt && (
           <p className="text-xs text-muted-foreground">
