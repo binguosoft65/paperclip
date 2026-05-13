@@ -94,15 +94,22 @@ curl -s "http://127.0.0.1:3100/api/issues/$ISSUE_ID/heartbeat-context?companyId=
 
 ## 完成判定
 
-| Case | 状态 |
-|---|---|
-| 2a-Case 1 语义 | ✓ |
-| 2a-Case 2 经验 | ✓ |
-| 2a-Case 3 type/domain 过滤 | ✓ |
-| 2a-Case 4 include_outdated | ✓ |
-| 2a-Case 5 helped 反馈 trigger_count+1 | ✓ |
-| 2a-Case 6 outdated 反馈 freshness 降 | ✓ |
-| 2b-Case 7 heartbeat-context 注入 | ✓ |
-| 2b-Case 8 fail-open | ✓ |
+2026-05-13 实跑结果（DashScope `text-embedding-v1` 兼容模式）：
 
-≥ 6/8 通过 → Phase 2a + 2b 完成，可进 Phase 2c（Agent tool plugin）或 Phase 3（演化 / Reviewer）。
+| Case | 状态 | 备注 |
+|---|---|---|
+| 2a-Case 1 语义 | ✓ | deadlock 节点排第 1（sim 0.6673、final_score 0.5336）。需 `KNOWLEDGE_SEMANTIC_SIMILARITY_FLOOR=0.0` |
+| 2a-Case 2 经验 | ✓ | `search_type=semantic+experience`；deadlock 命中 `used_for=['bug-fix']` |
+| 2a-Case 3 type/domain 过滤 | ✓ | type=rule&domain=general 返回 2 条且全部 type=rule |
+| 2a-Case 4 include_outdated | ✓ | 默认排除 outdated 节点；`include_outdated=true` 含 `label=outdated, score=0` |
+| 2a-Case 5 helped 反馈 trigger_count+1 | ✓ | 0 → 1，HTTP 204 |
+| 2a-Case 6 outdated 反馈 freshness 降 | ✓ | label=fresh, score=1 → label=stale_warning, score=0.3 |
+| 2b-Case 7 heartbeat-context 注入 | ✓ | `knowledgeNodes.length=5`，first item id=deadlock 节点（sim 0.7513）。issue title "Fixed PG deadlock" 命中度高 |
+| 2b-Case 8 fail-open | ✓ | `OPENAI_API_KEY=""` 重启后 `knowledgeNodes=[]`、主响应 200、server 日志含 `WARN: knowledge retriever failed in heartbeat-context` |
+
+### 发现与调整
+
+1. **PRD 的 0.75 阈值是按 OpenAI text-embedding-3 校准**，DashScope `text-embedding-v1` cosine 分布平得多（不同语义节点典型 0.0~0.3）。已把 `SEMANTIC_SIMILARITY_FLOOR` 改为 `KNOWLEDGE_SEMANTIC_SIMILARITY_FLOOR` env 覆盖、默认 0.3。生产建议按 embedding model 校准。
+2. **Retriever 的 projectId=null 过滤 SQL bug**：原 `n.project_id = ${input.projectId ?? null}` 在缺省时变成 `= NULL`（永假），所有 project-level 节点被错误排除（本仓库里 5/6 节点 level='project' 且 project_id=NULL）。已改为 `IS NULL` 分支。这是 Phase 2a 一个真实 bug fix，不仅是 smoke 数据问题。
+
+8/8 通过 → Phase 2a + 2b 完成，可进 Phase 2c（Agent tool plugin）或 Phase 3（演化 / Reviewer）。

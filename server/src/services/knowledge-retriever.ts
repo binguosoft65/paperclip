@@ -65,7 +65,13 @@ export interface KnowledgeSearchResult {
   took_ms: number;
 }
 
-const SEMANTIC_SIMILARITY_FLOOR = 0.75;
+// 注：PRD §6 FR5 写 0.75，是按 OpenAI text-embedding-3-small 校准。
+// DashScope text-embedding-v1 的 cosine 分布更平（不同语义节点典型 0.0~0.3，
+// 同义改写约 0.5~0.7），用 0.75 会全部空集。这里取 env 覆盖、默认 0.3，
+// 兼容两类 provider；生产建议按所用 embedding model 校准这个常量。
+const SEMANTIC_SIMILARITY_FLOOR = Number(
+  process.env.KNOWLEDGE_SEMANTIC_SIMILARITY_FLOOR ?? "0.3",
+);
 const SEMANTIC_LIMIT = 10;
 const EXPERIENCE_LIMIT = 5;
 const SNIPPET_CHARS = 200;
@@ -97,11 +103,15 @@ export function knowledgeRetrieverService(db: Db, llm: RetrieverChatClient) {
       const companyId = input.companyId;
       const limit = input.limit ?? 5;
 
-      // 公共 WHERE 子句构造
+      // 公共 WHERE 子句构造。注意：SQL `= NULL` 永假，必须用 `IS NULL`，
+      // 否则当 projectId 缺省时所有 project-level 节点（即便 project_id 为 NULL）
+      // 都会被过滤掉，导致检索结果只剩 company-level。
       const filters = [
         sql`n.company_id = ${companyId}`,
         sql`n.status = 'active'`,
-        sql`(n.level = 'company' OR (n.level = 'project' AND n.project_id = ${input.projectId ?? null}))`,
+        input.projectId
+          ? sql`(n.level = 'company' OR (n.level = 'project' AND n.project_id = ${input.projectId}))`
+          : sql`(n.level = 'company' OR (n.level = 'project' AND n.project_id IS NULL))`,
       ];
       if (input.type && input.type.length > 0) {
         filters.push(sql`n.type = ANY(${pgTextArray(input.type)})`);
