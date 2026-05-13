@@ -77,3 +77,8 @@ export {
   type SearchResultItem,
   type KnowledgeSearchResult,
 } from "./knowledge-retriever.js";
+export {
+  knowledgeFeedbackService,
+  type KnowledgeFeedbackService,
+  type KnowledgeFeedbackInput,
+} from "./knowledge-feedback.js";
