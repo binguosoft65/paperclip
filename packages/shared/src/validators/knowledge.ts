@@ -139,7 +139,7 @@ export type KnowledgePreVerdict = (typeof KNOWLEDGE_PRE_VERDICT_VALUES)[number];
  */
 export const reviewerRunQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(200).default(50),
-});
+}).strict();
 export type ReviewerRunQuery = z.infer<typeof reviewerRunQuerySchema>;
 
 /**
@@ -150,5 +150,5 @@ export const batchApplyVerdictSchema = z.object({
   verdict: z.enum(["recommend_approve", "recommend_reject"]),
   draft_ids: z.array(z.string().uuid()).min(1).max(100),
   review_notes: z.string().max(500).optional(),
-});
+}).strict();
 export type BatchApplyVerdict = z.infer<typeof batchApplyVerdictSchema>;
