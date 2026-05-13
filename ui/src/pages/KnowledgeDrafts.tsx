@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { knowledgeApi, type KnowledgeDraft } from "../api/knowledge";
 import { useCompany } from "../context/CompanyContext";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
+import { useToastActions } from "../context/ToastContext";
 import { PageTabBar } from "../components/PageTabBar";
 import { Tabs } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
@@ -57,6 +58,7 @@ const SOURCE_LABEL: Record<KnowledgeDraft["source"], string> = {
 export function KnowledgeDrafts() {
   const { selectedCompanyId } = useCompany();
   const { setBreadcrumbs } = useBreadcrumbs();
+  const { pushToast } = useToastActions();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const location = useLocation();
@@ -112,11 +114,16 @@ export function KnowledgeDrafts() {
   const approveMutation = useMutation({
     mutationFn: ({ id, notes }: { id: string; notes?: string }) =>
       knowledgeApi.approve(id, selectedCompanyId!, notes),
-    onSuccess: () => {
+    onSuccess: (res) => {
       setActionError(null);
       setActiveAction(null);
       setNotesInput("");
       invalidate();
+      pushToast({
+        title: "已批准并物化为节点",
+        description: `node_id: ${res?.data?.node_id?.slice(0, 8)}…`,
+        tone: "success",
+      });
     },
     onError: (err) => setActionError(err instanceof Error ? err.message : "Approve failed"),
   });
@@ -129,6 +136,7 @@ export function KnowledgeDrafts() {
       setActiveAction(null);
       setNotesInput("");
       invalidate();
+      pushToast({ title: "已驳回 draft", tone: "info" });
     },
     onError: (err) => setActionError(err instanceof Error ? err.message : "Reject failed"),
   });
@@ -141,6 +149,7 @@ export function KnowledgeDrafts() {
       setActiveAction(null);
       setNotesInput("");
       invalidate();
+      pushToast({ title: "已发出修改请求", tone: "info" });
     },
     onError: (err) =>
       setActionError(err instanceof Error ? err.message : "Request revision failed"),
