@@ -120,3 +120,35 @@ export const knowledgeFeedbackSchema = z
 export type KnowledgeFeedback = z.infer<typeof knowledgeFeedbackSchema>;
 
 export const KNOWLEDGE_FEEDBACK_VALUES = ["helped", "outdated", "wrong", "irrelevant"] as const;
+
+// ──────────────────────────────────────────────────────────────────
+// Phase 3b: Reviewer Agent 初筛
+// ──────────────────────────────────────────────────────────────────
+
+/**
+ * Reviewer Agent 三档初筛结果（KNOWLEDGE_PRE_VERDICTS 的别名，供 Phase 3b 服务显式引用）。
+ * - recommend_approve：质量高、与既有节点无冲突 → 人审可一键过
+ * - recommend_reject：信息量低 / 与既有节点重复 / 无价值 → 人审可一键驳
+ * - needs_human：confidence 中等、检测到 conflicts、或新主题需人判断
+ */
+export const KNOWLEDGE_PRE_VERDICT_VALUES = KNOWLEDGE_PRE_VERDICTS;
+export type KnowledgePreVerdict = (typeof KNOWLEDGE_PRE_VERDICT_VALUES)[number];
+
+/**
+ * Reviewer 批量初筛入参。limit 用于单次最大处理 draft 数，避免长事务+OpenAI quota 突刺。
+ */
+export const reviewerRunQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(200).default(50),
+});
+export type ReviewerRunQuery = z.infer<typeof reviewerRunQuerySchema>;
+
+/**
+ * 一键批量应用初筛建议：对 verdict=recommend_approve 的 draft 一键 approve；
+ * 对 verdict=recommend_reject 的 draft 一键 reject。
+ */
+export const batchApplyVerdictSchema = z.object({
+  verdict: z.enum(["recommend_approve", "recommend_reject"]),
+  draft_ids: z.array(z.string().uuid()).min(1).max(100),
+  review_notes: z.string().max(500).optional(),
+});
+export type BatchApplyVerdict = z.infer<typeof batchApplyVerdictSchema>;

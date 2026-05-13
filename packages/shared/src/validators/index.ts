@@ -422,6 +422,9 @@ export {
   knowledgeSearchQuerySchema,
   knowledgeFeedbackSchema,
   KNOWLEDGE_FEEDBACK_VALUES,
+  KNOWLEDGE_PRE_VERDICT_VALUES,
+  reviewerRunQuerySchema,
+  batchApplyVerdictSchema,
   type CreateKnowledgeDraft,
   type ApproveKnowledgeDraft,
   type RejectKnowledgeDraft,
@@ -430,4 +433,7 @@ export {
   type ListKnowledgeDraftsQuery,
   type KnowledgeSearchQuery,
   type KnowledgeFeedback,
+  type KnowledgePreVerdict,
+  type ReviewerRunQuery,
+  type BatchApplyVerdict,
 } from "./knowledge.js";
