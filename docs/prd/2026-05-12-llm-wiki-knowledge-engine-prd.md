@@ -1,10 +1,21 @@
-# Obsidian LLM-Wiki 知识引擎 PRD
+# Paperclip × LLM-Wiki 知识引擎 PRD
 
-**产品名称**: Paperclip × Obsidian LLM-Wiki 知识引擎
-**版本**: v1.0
+**产品名称**: Paperclip × LLM-Wiki 知识引擎
+**版本**: v2.0（DB-first 设计）
 **状态**: 设计中
 **作者**: Paperclip 架构组
 **日期**: 2026-05-12
+
+---
+
+## 版本说明
+
+| 版本 | 主要变化 |
+|------|---------|
+| v1.0 (2026-05-12, archived in git) | 基于 Obsidian vault + pgvector 的双载体方案 |
+| **v2.0 (本版本)** | 改为 **DB-first**（PG + pgvector，节点即表行）；新增时效性 profile、节点类型扩展为 5 种、边作为一等公民（6 种）、业务域维度、MCP 服务暴露 |
+
+v1.0 的 Obsidian 双载体思路在文件系统同步、并发写、多租户路径、Agent 读写效率上有显著成本，且主要消费者是 Agent 而非人。v2.0 切换为 DB-first 以最大化对 Agent 的友好度，同时保留 Karpathy LLM-Wiki 范式的核心特征（原子节点、互联、演化、活体）。
 
 ---
 
@@ -13,75 +24,94 @@
 1. [产品愿景与目标](#1-产品愿景与目标)
 2. [用户画像](#2-用户画像)
 3. [用户故事](#3-用户故事)
-4. [功能需求](#4-功能需求)
-   - [F1: 知识合成管道](#f1-知识合成管道)
-   - [F2: Agent 知识检索](#f2-agent-知识检索)
-   - [F3: 用途标签与知识推荐](#f3-用途标签与知识推荐)
-   - [F4: 新鲜度管理](#f4-新鲜度管理)
-   - [F5: 知识生命周期](#f5-知识生命周期)
-   - [F6: 知识消费（Web UI）](#f6-知识消费web-ui)
-   - [F7: 知识层级与权限](#f7-知识层级与权限)
-   - [F8: 触发时机](#f8-触发时机)
-   - [F9: 爬虫与知识采集](#f9-爬虫与知识采集)
-   - [F10: 知识审查队列](#f10-知识审查队列)
-   - [F11: 知识模板系统](#f11-知识模板系统)
-   - [F12: 外部源集成接口](#f12-外部源集成接口)
-5. [非功能需求](#5-非功能需求)
-6. [系统架构](#6-系统架构)
-7. [数据模型](#7-数据模型)
-8. [API 契约](#8-api-契约)
-9. [UI/UX 规范](#9-uiux-规范)
-10. [与 Paperclip 集成规范](#10-与-paperclip-集成规范)
-11. [安全与权限模型](#11-安全与权限模型)
-12. [分阶段实施计划](#12-分阶段实施计划)
-13. [验收标准](#13-验收标准)
-14. [附录](#14-附录)
+4. [核心概念与设计原则](#4-核心概念与设计原则)
+5. [功能需求总览（FR1-FR14）](#5-功能需求总览fr1-fr14)
+6. [详细功能规格](#6-详细功能规格)
+7. [非功能需求](#7-非功能需求)
+8. [系统架构](#8-系统架构)
+9. [数据模型](#9-数据模型)
+10. [API 契约](#10-api-契约)
+11. [UI/UX 规范](#11-uiux-规范)
+12. [MCP 服务暴露规范](#12-mcp-服务暴露规范)
+13. [与 Paperclip 集成规范](#13-与-paperclip-集成规范)
+14. [安全与权限模型](#14-安全与权限模型)
+15. [分阶段实施计划](#15-分阶段实施计划)
+16. [验收标准](#16-验收标准)
+17. [附录](#17-附录)
 
 ---
 
 ## 1. 产品愿景与目标
 
-### 1.1 愿景
+### 1.1 业务背景：缤果软件
 
-将 Paperclip Agent 从"任务执行者"升级为"**组织的知识首席编辑**"。每个 Agent 完成任务后自动将经验沉淀为结构化的互联知识；每个 Agent 开始新任务前自动检索历史积累的智慧。知识不再是静态文档，而是在 Agent 的日常工作中**生长、演变、复用**的活体。
+缤果软件是一家由 AI 驱动的微型软件公司——"一个人 + 一群智能体"的运营模式。业务矩阵按权重排序：
 
-### 1.2 核心目标
+| 权重 | 业务条线 | 知识形态 |
+|------|----------|---------|
+| 1 | **软件与 AI 工具**（SaaS、效率插件、智能体、小程序、独立 App、定制开发） | 技术教训、架构决策、外包客户档案、bug 复盘 |
+| 2 | **数字产品**（提示词包、Notion/Obsidian 模板、行业报告、付费专栏） | 选题档案、定价策略历史、用户反馈复盘 |
+| 3 | **自媒体内容矩阵**（图文 + 短视频，软件/AI/效率三关键词） | 平台规则、爆款选题、标题/封面/脚本套路 |
+| 4 | **短视频带货 / 联盟分销**（仅推软件/效率/AI 调性） | 选品标准、平台合规、转化数据档案 |
+| 5 | **知识付费与社群**（训练营、陪跑、咨询） | 客户问题档案、答疑话术 |
 
-| 目标 | 衡量标准 |
-|------|----------|
-| 知识沉淀自动化 | 任务完成后知识写入率 ≥ 80%（Agent 无需人工提醒即自动归档经验） |
-| 知识复用效率 | 同类任务 Agent 首次解决时间缩短 ≥ 30%（靠历史知识推荐） |
-| 知识质量 | 人工审核通过率 ≥ 70%（可信度自评 ≥ 0.8 的内容经审核后标记"已验证"的比例） |
-| 知识覆盖面 | 每个活跃项目 ≥ 10 篇知识实体；公司级 ≥ 50 篇核心知识 |
+LLM-Wiki 知识引擎要服务这五条业务线在 AI 时代的协同沉淀——**让一个人 + 一群智能体跑出公司级的知识复利**。
+
+> **业务条线的可扩展性**：上述 5 类是当前业务，但缤果作为 AI 时代的微型公司形态会持续演进，未来可能拓展到更多业务条线（如咨询、付费会员、AI 教育、独立开发者市场等）。知识库的业务域维度因此设计为**用户可扩展资源**——加一条新业务线只是在 Web UI INSERT 一行 `business_domains` 表的事，不应触发 DB schema migration。详见 §4.5 / §9.8。
+
+### 1.2 知识库在 Paperclip 中的定位
+
+知识库是 Paperclip 平台的"组织记忆层"——独立于 Issues / Activity / Agents 等运营数据，专门承载"被复用、被演化、有时效性"的知识资产。
+
+- 主要消费者：**Paperclip 智能体**（执行任务前自动检索、执行后自动沉淀）
+- 次要消费者：**人类**（Web UI 审查 / 编辑 / 查阅 / 看演化轨迹）
+- 第三方消费者：**外部 Agent**（Claude Code / Codex / Cursor 通过 MCP 接入）
 
 ### 1.3 核心原则
 
-1. **Obsidian 是唯一真实源。** 所有知识以 `.md` 文件形式存储在 Obsidian vault。pgvector 只存向量索引。文件系统挂掉可以重建索引；索引丢了可以从文件重建。
-2. **一入一出。** Agent 每次只处理一个实体，避免 token 爆炸。这是 LLM 能力边界内最可靠的处理粒度。
-3. **知识靠用进废退。** 引用频次驱动权重，权重驱动巡检优先级。不靠人工逐一审查维持质量。
-4. **可追溯是信任的基础。** Agent 的每个决策引用必须可追溯到来源知识实体。
+1. **DB-first，零文件系统**：知识就是 PG 表行，无 vault 同步、无文件锁、无路径沙箱。Agent 读写都走 REST API；备份走 pg_dump；版本走 `knowledge_node_revisions` 表。
+2. **原子节点 + 一等公民边**：每个知识单元独立可索引，节点间关系作为单独的表，不只藏在 Markdown 文本里。
+3. **三路写入 + 统一审查**：Agent 自评 + 失败信号自动提取 + 人工提交，三路都走 draft 队列，可控性优先于自动化。
+4. **活体演化**：6 条自动行为（升规则 / 衰减 / 合并 / 冲突 / 时效巡检 / 模式涌现）让知识自然生长与新陈代谢。
+5. **可追溯**：所有变更都有 revision + event，Agent 引用必须落 edge，决策链可还原。
+6. **时效感知**：volatility + valid_until + verified_at 三件套，让"几年前的平台规则"在检索时自动降权或带警示。
+
+### 1.4 核心目标
+
+| 目标 | 衡量标准 |
+|------|---------|
+| 知识沉淀自动化 | Agent 完成任务后知识写入率 ≥ 80% |
+| 知识复用效率 | 同类任务首解时间缩短 ≥ 30% |
+| 知识时效性 | volatility=fast 节点 ≥ 90% 在 90 天内被验证或归档 |
+| 知识质量 | 审查通过率 ≥ 70%；冲突节点 < 5% |
+| 跨业务覆盖 | 每条业务线（缤果 5 业务）≥ 20 篇核心节点 |
 
 ---
 
 ## 2. 用户画像
 
+> **主场景：单操作者 + 多代理**
+> 缤果是 AI 时代的微型公司形态——1 个人 + 一群智能体协同。下表虽列出"团队成员"等多人协作角色，但 MVP 默认场景是单操作者：所有"管理员 / 审查者 / Curator"角色由同一个人扮演（或代理 Manager Agent），所有 Agent 在同一公司下共享 company 级知识。这让权限模型可激进简化、审查门控可适度放松——见 §6.4 梯度审查策略。
+
 ### 2.1 核心用户
 
 | 角色 | 描述 | 核心场景 |
-|------|------|----------|
-| **开发者 Agent** | Paperclip 任务执行者（Coder Agent 等） | 执行任务前搜索知识库；完成后写入经验 |
-| **技术负责人** | 人类或 AI Manager | 审核知识质量；管理知识层级（提升/合并/分裂） |
-| **知识管理员** | 可能是人类或专门的 Curator Agent | 定期巡检 vault；处理过期标记；维护知识结构 |
-| **团队成员** | 人类开发者 | 在 Obsidian 中深度编辑知识；在 Paperclip Web UI 中快速查阅 |
+|------|------|---------|
+| 开发者 Agent | Paperclip 任务执行者（Coder / Curator 等） | checkout 任务前检索；完成后写入 |
+| 内容/带货 Agent | 选题、写稿、选品 Agent | 决策前查平台规则 + 历史成败 |
+| 技术/业务负责人 | 缤果创始人本人，或代理 Manager Agent | 审核知识质量；管理层级提升/合并 |
+| 团队成员/合作者 | 偶尔参与的人类协作者 | Web UI 查阅、编辑、补充 |
+| 外部 Agent | Claude Code / Codex / Cursor | 通过 MCP 接入查询知识库 |
 
 ### 2.2 用户痛点
 
-| 痛点 | 当前状态 | 目标状态 |
-|------|----------|----------|
-| 每次遇到相同问题都要重新 Google/问 Agent | Agent 无记忆，每次从零开始 | Agent 自动检索历史经验，同类问题秒级定位 |
-| 任务完成后经验流失 | Agent 做完就结束，不留下任何沉淀 | 自动提取、合入知识库 |
-| 笔记越来越多但越来越乱 | Inbox 堆满零散笔记，无人整理 | AI 自动将零散笔记合成为结构化实体 |
-| 知道某处有相关知识但找不到 | grep 全文搜索，精度低 | 语义搜索 + 用途标签双路推荐 |
+| 痛点 | 现状 | 目标状态 |
+|------|------|---------|
+| 同样的坑反复踩 | 教训散落在记忆和聊天记录 | Agent 工作前自动检索相关教训 |
+| 平台规则变了不知道 | 几年前学的抖音规则用到现在 | 时效性 profile 自动降权 + 巡检验证 |
+| 决策反复争论 | 不记得"为什么我们当初选了 X" | decision 类型节点 + supersedes 边维持时间线 |
+| 知识只在脑子里 | 缤果一个人扛多业务，记忆爆炸 | 三路写入将业务知识沉淀到 DB |
+| 笔记软件不为 Agent 设计 | Obsidian/Notion 是人类工具 | DB-first + REST API + MCP，Agent 一等公民 |
 
 ---
 
@@ -89,1175 +119,1180 @@
 
 ### 3.1 Agent 执行视角
 
-**US-01**: 作为 Coder Agent，我在 checkout 一个新 Issue 后，系统自动用 Issue 描述做语义搜索，将最相关的 3-5 篇知识实体注入我的上下文，这样我不需要主动去"搜"知识，知识自己来找我。
+**US-01**: 作为 Coder Agent，checkout Issue 后系统自动注入相关知识节点到我的 context，包括相关教训（lesson）、规则（rule）、过往决策（decision），每条都带 freshness 标签。
 
-**US-02**: 作为 Coder Agent，当我完成任务后，我自动提取本次任务的关键经验（成功的模式、踩过的坑、学到的规则），将其写入 `inbox/` 目录。系统后台会把它合成到正确的实体中。
+**US-02**: 作为 Coder Agent，完成 Issue 后系统问"本次有什么经验/教训需要记录吗？"，我输出 draft 节点（可能是多种类型）进入审查队列。
 
-**US-03**: 作为 Coder Agent，当我引用某篇知识来解决当前问题时，我在 Issue comment 中用 `[[实体名]]` 标注引用来源，让人类能追溯我的决策依据。
+**US-03**: 作为内容 Agent，我要写一篇关于直播带货的文章，检索时输入"抖音直播带货规则"，返回结果按 freshness 自动排序，最新的（2025-Q2 验证）排在前面，2023 年的版本被标记为 outdated 但仍可查。
 
-**US-04**: 作为 Coder Agent，当我在执行过程中发现引用的知识已经过时（比如文档里记录的配置方式在最新版本不再有效），我会自动标记该实体需要刷新，并附上具体的过时原因。
+**US-04**: 作为 Curator Agent，我每周触发一次时效性巡检：扫所有 volatility=fast 节点，90 天未验证的创建验证 Issue。
 
 ### 3.2 知识管理视角
 
-**US-05**: 作为知识管理员，我定期收到系统生成的"知识巡检报告"——哪些实体从未被使用、哪些正在过期、哪些需要拆分。我可以一键创建对应的整理 Issue 分配给 Curator Agent。
+**US-05**: 作为缤果创始人，每周收到知识审查队列摘要，可在 Web UI 一键批准/驳回；高可信度（≥0.9）批量批准。
 
-**US-06**: 作为技术负责人，当一篇项目级知识被 3 个以上的项目引用时，系统自动创建 Issue 建议我将其提升为公司级。我审核后一键确认。
+**US-06**: 作为缤果创始人，看 `/knowledge/dashboard` 知道哪些节点最热、哪些过期、哪些孤儿、各业务域分布。
 
-**US-07**: 作为知识管理员，我在 Paperclip Web UI 中看到一个"热度 Dashboard"——按引用频次排序的实体列表，热度低且长期未更新的实体被高亮标记为需要审计。
+**US-07**: 作为缤果创始人，看 `/knowledge/graph` 直观看到"软件 A → 内容选题 B → 带货商品 C"的引用链路。
 
-### 3.3 团队协作视角
+### 3.3 外部接入视角
 
-**US-08**: 作为团队成员，我在 Paperclip Web UI 中搜索"PostgreSQL 死锁"，系统返回语义匹配的知识条目，每条都标注了可信度评分和最后验证时间，我能快速判断哪条知识是可信的。
+**US-08**: 作为 Claude Code 用户（在另一个项目里），通过 MCP 接入缤果知识库，写代码时让 Claude 查"我们公司的 Postgres schema 规范"，秒级返回。
 
-**US-09**: 作为团队成员，我在 Obsidian 中编辑一篇知识实体，修改后保存。下次 Agent 检索时自动使用最新版本。我不需要做任何额外操作，Obsidian 就是知识库的编辑器。
-
-**US-10**: 作为团队新人，当我被分配第一个任务时，系统根据任务类型自动推荐了 5 篇相关知识——这些是之前完成同类任务的 Agent 最常引用的知识。我快速获得上下文而不需要去问老同事。
-
-### 3.4 知识采集视角
-
-**US-11**: 作为知识管理员，我在 Web UI 上添加一个博客源 `https://martinfowler.com`，系统自动检测到其 RSS feed，按我设定的频率每周抓取。新文章自动流入 inbox，经合成管道处理后成为可检索的实体。我不需要手动去"搬运"外部知识。
-
-**US-12**: 作为 Curator Agent，我在每周巡检中自动扫描已配置的源，发现新内容后下载、清洗、转 Markdown、入 inbox。如果某篇文章与已有实体高度重复，我自动跳过；如果内容质量太低（评分 < 4），我丢弃并记录日志。
-
-**US-13**: 作为技术负责人，我在审查队列中看到 5 条待审核的知识变更——3 条来自爬虫采集，2 条来自 Agent 任务归档。我快速查看每条的可信度和变更摘要，一键批量批准高质量条目，驳回一条低质量采集。
-
-**US-14**: 作为第三方插件开发者，我实现了 `SlackThreadCollector`——一种新的知识采集器，自动将团队 Slack 频道中的技术讨论整理为知识笔记。通过 Paperclip 插件系统注册后，知识管理员就可以在源管理中添加 Slack 频道作为知识源。
+**US-09**: 作为团队新人，看 `/knowledge/search` 输入"为什么我们用 PG 不用 MySQL"，返回 decision 类型节点，能看到当年讨论的 options_considered。
 
 ---
 
-## 4. 功能需求
+## 3.4 非目标（明确不做什么）
 
-### F1: 知识合成管道
+边界声明，避免后续无序膨胀：
 
-#### F1.1 实体提取
+- **不是 Notion / Confluence 替代品**：单节点 content ≤ 2000 字硬约束；长文档应拆为多节点
+- **不做同节点实时协作编辑**：最后写入者覆盖；并发冲突场景留给版本回滚（revisions 表）
+- **不做 git-like 分支**：版本演化线性化（supersedes 时间线），不引入 branch / merge / rebase 概念
+- **不引入细粒度 RBAC/DAC**：权限只走 level 三档（personal/project/company）+ 创建者归属，不做"按节点 ACL"
+- **不做章节式大纲**：节点是原子知识单元，不维护层级目录结构（章节式组织诉求由 edges 网络替代）
+- **MVP 不做节点 i18n**：同一节点只有一种语言；翻译诉求走"新建节点 + references 边"
+- **不做匿名 / 公开分享**：所有知识严格在 company 内；跨公司流转留给后续显式 export 工具
+- **不做实时图谱编辑器**：图视图（FR14）是只读浏览器，编辑仍走详情页
 
-**描述**: LLM 读取一篇新笔记（Markdown），提取其中包含的关键实体。
+---
 
-**输入**: 单篇 Markdown 笔记
-**输出**: JSON 数组——每个实体包含 `name`、`type`、`claims`、`refs`
+## 4. 核心概念与设计原则
 
-**类型枚举**:
-- `concept` — 抽象概念（"CAP 定理"、"依赖注入"）
-- `tool` — 工具/技术（"PostgreSQL"、"Kubernetes"）
-- `person` — 人物（"某个关键贡献者"）
-- `project` — 项目（"微服务 A 的遗留系统"）
-- `process` — 流程/方法论（"部署流程"、"代码审查规范"）
-- `rule` — 规则/教训（"端口 3100 不能和 nginx 冲突"）
+### 4.1 三种核心实体
 
-#### F1.2 去重决策
+#### Node（节点）— 原子知识单元
 
-**描述**: 判断新提取的实体是否已存在于 vault 中。
+- 必有字段：`title` / `content`(Markdown) / `type` / `embedding` / `level` / `company_id`
+- 体积约束：单节点 content ≤ 2000 字
+- 互链方式：content 里写 `[[node-id]]`，后端解析时自动落 `knowledge_edges` 行（也可显式 API 加边）
 
-**算法**——双路召回:
+#### Edge（边）— 节点间有向关系，一等公民
 
-```
-路径 A（精确匹配）:
-  entityName → 标准化（小写、去空格、去特殊字符）→
-  查找 wiki/{normalized}.md 是否存在 → 命中则返回
+- 必有字段：`from_node_id` / `to_node_id` / `edge_type`
+- 支持双向遍历（"谁引用了我" / "我引用了谁"）
+- 同方向同类型唯一（A→B references 仅一条）
 
-路径 B（语义匹配）:
-  entityName → embedding →
-  SELECT * FROM wiki_entities
-  WHERE 1 - (embedding <=> query_embedding) > 0.85
-  ORDER BY embedding <=> query_embedding
-  LIMIT 1 →
-  命中则返回
+#### Draft（草稿）— 待审查的节点变更
 
-决策:
-  A 命中 → 直接 MERGE
-  A 未命中 + B 命中 → 提示 Agent 判断（可能实体名不同但指同一事物）
-  都未命中 → CREATE
-```
+- 三路写入（FR4）统一进 draft
+- 状态：pending / approved / rejected / revision_requested
+- 通过后才落到 `knowledge_nodes`，并自动生成 revision 记录
 
-#### F1.3 合成（Merge/Create）
+### 4.2 节点类型枚举（5 种）
 
-**描述**: LLM 将新笔记中的信息合并到已有实体（或创建新实体）。
+| type | 含义 | 典型来源 | 缤果业务场景 |
+|------|------|---------|-------------|
+| `concept` | 抽象概念 | 人工 / 外部源 | "幂等性"、"乐观锁" |
+| `lesson` | 教训（症状/根因/下次怎么做） | Agent 自评、失败信号 | "v0.2.3 发布误删 docs" |
+| `rule` | 强制规则（升自反复触发的 lesson） | 演化引擎升级 | "禁止内联 API key 到 agent config" |
+| `decision` | 决策记录（Why we chose X） | Approval 通过派生 | "选 PG 不选 MySQL 的理由" |
+| `fact` | 事实陈述 | 人工 / 自动同步 / 爬虫 | "抖音直播带货规则-2024-Q3" |
 
-**输入**:
-- 新笔记全文
-- 已有实体全文（如果有）
-- wiki/ 目录下所有实体名列表（用于双链）
-- 编辑指南 prompt
+### 4.3 边类型枚举（6 种）
 
-**输出**: 更新后的 Markdown 实体文件
+| edge_type | 含义 |
+|-----------|------|
+| `references` | 一般引用（[[wikilink]] 自动产生） |
+| `supersedes` | 推翻（新节点取代旧节点，维持时间线） |
+| `merged_from` | 合并自（多节点合并为新节点） |
+| `derived_from` | 派生自（lesson → rule 升级时记录） |
+| `conflicts_with` | 冲突（待人审裁决） |
+| `promoted_to` | 提升记录（project 级 → company 级） |
 
-**冲突处理规则**:
-1. 新旧信息冲突 → 不在正文中裁决，创建 `## 争议/待核实` 节，列出双方立场
-2. 新信息补充旧信息 → 合并，保留旧内容的精华
-3. 新信息覆盖旧信息 → 仅当旧信息明确"已过时/已废弃"时替换
+### 4.4 时效性模型（FR7）
 
-**可信度自评**: Agent 在 frontmatter 写入 `confidence: 0.0～1.0`:
-- 0.9+: 源自信任来源（如官方文档的直接引用）
-- 0.7-0.9: 来自 Agent 自身的成功执行经验
-- 0.5-0.7: 来自推断或间接证据
-- < 0.5: 来自猜测或模糊回忆——不进知识库，写入 inbox 等待人工审核
+节点必有 `volatility` 字段：
 
-#### F1.4 双链引擎
+| volatility | 含义 | 半衰期（验证有效期） | 典型 |
+|------------|------|-------------------|------|
+| `stable` | 几乎不变 | ∞ | 数学定理、设计模式、CAP |
+| `slow` | 缓慢变化 | 365 天 | 公司流程、技术选型理由 |
+| `fast` | 频繁变化 | 90 天 | 平台规则、API、价格、政策 |
 
-**正向链接**: 合成完成后，LLM 扫描正文，在 wiki/ 实体名列表中查找匹配项 → 包裹为 `[[实体名]]`。仅链接实际存在的实体。
+可选字段：
 
-**反向引用**: 纯文本操作（无需 LLM）:
-1. 解析实体中的所有 `[[链接]]`
-2. 对每个被链接的目标实体，检查是否包含回链
-3. 缺失 → 在目标实体的 `## 相关` 节追加 `- [[源实体名]]`
-4. 不触发递归：回链追加本身不触发新的链接检测
+- `valid_until`：显式有效截止时间
+- `verified_at`：上次人工/权威源验证时间
+- `source_url`：外部原文 URL
+- `external_version`：外部依赖快照 JSONB（如 `{"platform":"douyin","policy_version":"2024-Q3"}`）
 
-**死链检测**: 定期巡检任务（见 F4）→ 扫描所有实体的 `[[链接]]` → 对目标不存在的链接创建 Issue。
-
-**实体改名**: 改名时自动维护 YAML `aliases` 保留旧名兼容。不自动改引用处——巡检时检测到别名引用再提示更新。
-
-#### F1.5 编辑指南 Prompt
-
-合成阶段 Phase 3 传给 LLM 的完整系统 prompt（内嵌到 `prompts/editor.ts`）:
+#### 检索时 freshness_score（实时算，不存）
 
 ```
-## Role
-你是 Obsidian 知识库的首席编辑。将新笔记合并到已有实体文件或创建新实体。
-
-## Input
-- 一篇新笔记（Markdown，可能零散、口语化）
-- 一个现有实体文件（如果实体已存在），或者空
-- wiki/ 目录下已有实体的文件名列表（用于创建 [[WikiLink]]）
-
-## Rules
-
-### YAML Frontmatter
-每个文件顶部必须有 YAML frontmatter:
-  tags: 1-3 个分类标签
-  aliases: 其他常见名称列表
-  created: 首次创建日期 (ISO)
-  updated: 本次更新日期 (ISO)
-  confidence: 可信度 0.0-1.0
-  verified: false
-
-### 合并逻辑
-- 保留旧文件中仍正确的内容
-- 新旧冲突 → ## 争议/待核实
-- 更新过时内容时注明原因
-- 正文不超过 2000 字，超出的折叠到子实体
-
-### 结构规范
-每个实体必须包含:
-  ## 概述 — 1-2 句定义和重要性
-  ## 核心要点 — 3-5 条子弹列表
-  ## 细节 — 展开说明（如果存在）
-  ## 相关 — 至少 2 个 [[WikiLink]]
-  ## 来源 — 本次合并的来源笔记链接
-
-### 双链规则
-- 正文中识别已有实体 → 包裹 [[实体名]]
-- 只链接实际存在的实体
-- ## 相关 节至少 2 个已有实体链接
-
-### 风格
-- 简洁专业，中文撰写正文
-- 专业术语保留英文原词
-- 不用套话（"本文档将..."、"值得注意的是..."）
+freshness_score =
+  if valid_until 已过期: 0.0
+  elif valid_until 30 天内: 0.3
+  else:
+    age = days_since(verified_at)
+    half_life = { stable: ∞, slow: 365, fast: 90 }[volatility]
+    score = exp(-age / half_life)
 ```
 
-### F2: Agent 知识检索
+检索权重：`相似度 × 0.5 + experience_score × 0.3 + freshness_score × 0.2`
 
-#### F2.1 检索触发
+freshness 标签：
 
-**时机**: Agent checkout Issue 之后、执行任何动作之前。作为 `heartbeat-context` API 的一部分自动调用。
+| 标签 | 范围 | 行为 |
+|------|------|------|
+| `fresh` | ≥ 0.7 | 正常使用 |
+| `stale_warning` | 0.3 - 0.7 | 检索仍命中，但带警告 |
+| `outdated` | < 0.3 | 默认排除主搜索，可显式 include 查史 |
 
-#### F2.2 检索算法——两路合并
+### 4.5 业务域维度（FR10）—— 动态可扩展
 
-**路径 A: 语义搜索**
+业务域**不是硬编码枚举**，而是用户管理的资源。每个公司有自己的一套业务域集合（多租户隔离），可在 Web UI 自由增删改。
+
+#### 4.5.1 设计要点
+
+- 独立表 `business_domains`（详见 §9.8）
+- 节点持外键 `business_domain_id` NOT NULL（删除走 RESTRICT，关联节点保护）
+- 公司初始化时**自动 seed** `general` 业务域（兜底，保证节点必有归属）
+- 缤果场景可选择性 seed 当前 5 条业务作为示例：`software` / `content` / `distribution` / `community` + `general`
+- 用户后续可在 `/knowledge/domains` 增加业务（如 `consulting` / `ai-education` / `paid-membership`），仅前端操作，无 DB migration
+- 每个 domain 记录：name（slug 格式，URL 友好）/ display_label（人类可读，如"软件与 AI 工具"）/ color / icon / description / sort_order / archived
+
+#### 4.5.2 检索过滤
+
+检索 API `domain` 参数从枚举值改为字符串数组（按 name 匹配，按 company 隔离）：
+
 ```
-Issue 标题 + 描述 → embedding(text-embedding-3-small) →
-SELECT entity_name, file_path, level, confidence, verified,
-       1 - (embedding <=> query_embedding) AS similarity
-FROM wiki_entities
-WHERE 1 - (embedding <=> query_embedding) > 0.75
-  AND (level = 'company' OR (level = 'project' AND project_id = $current_project_id))
-ORDER BY embedding <=> query_embedding
+GET /api/knowledge/search?q=...&domain=software,content
+```
+
+#### 4.5.3 归档保护
+
+业务域不允许硬删除（删除会破坏关联节点引用）。归档操作（`archived=true`）将该 domain 从新建下拉和 UI 选择器中隐藏，但已关联节点不动、详情页仍能显示原 domain。
+
+#### 4.5.4 配色与图标
+
+每个 domain 在创建时由用户自配 color（hex）和 icon（lucide 图标 key）。设计令牌不再硬编码（详见 §11.1 调整）。
+
+---
+
+## 5. 功能需求总览（FR1-FR14）
+
+### A. 核心机制
+
+- **FR1** DB-first 载体
+- **FR2** 5 种节点类型
+- **FR3** 6 种边类型
+- **FR4** 三路写入 + 审查队列
+- **FR5** 两路检索（语义 + 经验推荐）
+
+### B. 演化与时效
+
+- **FR6** 演化 6 条（升规则 / 衰减 / 合并 / 冲突 / 时效巡检 / 模式涌现）
+- **FR7** 时效性 profile
+- **FR8** 历史可查（outdated 保留）
+- **FR9** 反馈四值（helped / outdated / wrong / irrelevant）
+
+### C. 业务集成
+
+- **FR10** 动态业务域管理（business_domains 表 + 节点关联）
+
+### D. 外部接入
+
+- **FR11** 外部源采集（爬虫 / RSS / GitHub / KnowledgeCollector 可插拔接口）
+- **FR12** Web UI（search / detail / review / dashboard / graph）
+- **FR13** MCP 服务暴露
+- **FR14** 图谱可视化
+
+---
+
+## 6. 详细功能规格
+
+### FR1: DB-first 载体
+
+- 所有知识为 PG 行，无文件系统
+- 8 张表：`business_domains` / `knowledge_nodes` / `knowledge_edges` / `knowledge_drafts` / `knowledge_node_revisions` / `knowledge_node_events` / `knowledge_sources` / `knowledge_metrics`（详见 §9）
+- 向量索引走 pgvector HNSW
+- Agent 通过 REST API 读写（详见 §10）
+- 备份：pg_dump；版本：revisions 表；历史：events 表
+
+### FR2: 节点类型
+
+详见 §4.2。MVP 实现 5 种类型，枚举可扩展（后续可增 `pattern` / `playbook` 等）。
+
+### FR3: 边类型
+
+详见 §4.3。MVP 实现 6 种边类型。content 内 `[[node-id]]` 在节点保存时自动解析为 `references` 边；其他边类型由演化引擎或显式 API 产生。
+
+### FR4: 三路写入 + 审查队列
+
+#### 4.1 路径 A：Agent 任务收尾自评
+
+- 触发：`afterTaskComplete` hook（Paperclip 现有钩子）
+- 流程：
+  1. Issue 状态 → done
+  2. 系统 prompt 追加："本次任务有什么需要记录的教训/规则/决策吗？"
+  3. Agent 输出 JSON：`{ nodes: [{ type, title, content, confidence, volatility, used_for, references_issue_ids }] }`
+  4. 每条 node 写入 `knowledge_drafts`，source=`agent_self_review`
+
+#### 4.2 路径 B：失败信号自动提取
+
+订阅 Paperclip 事件总线，触发以下事件时自动跑 LLM 提取：
+
+| 事件 | 触发器 |
+|------|--------|
+| Issue 被 reopened | Issues 状态机 |
+| Approval rejected | Approvals 服务 |
+| Run cancelled / timeout | Heartbeat 引擎 |
+| commit reverted | Git 事件（外部 webhook） |
+
+- Curator Agent 读相关 Run logs / Comments / Diff → LLM 输出 draft
+- 写入 `knowledge_drafts`，source=`failure_signal`
+
+#### 4.3 路径 C：人工写入
+
+- Web UI 编辑器 `/knowledge/editor`
+- Agent 显式工具 `propose_knowledge_node(...)`
+- 管理员可选 `skip_review=true`（高信任来源直接落地）
+- 写入 source=`manual`
+
+#### 4.4 审查队列（梯度审查 + Reviewer Agent）
+
+**为什么需要梯度**：三路写入 + 爬虫开起来，一周可能产出上百条 draft。缤果作为单操作者公司，单人审不过来。必须靠分层削减人工审查负担。
+
+**梯度策略**（draft 落地时分流）：
+
+| 档位 | 判定条件 | 行为 |
+|------|---------|------|
+| 自动通过 | `source=manual` 且 `confidence ≥ 0.9`；或 `created_by_user.is_admin=true` 且 `skip_review=true` | 直接写 nodes，不进队列 |
+| Reviewer Agent 初筛 | 其他所有 draft | 进队列后由 **Reviewer Agent** 先读，标 `pre_verdict ∈ {recommend_approve, recommend_reject, needs_human}` 和 reasoning |
+| 人审优先 | `pre_verdict=needs_human` 或检测到 `conflicts_with` 关系 | 队列顶部高亮 |
+| 人审默认 | `pre_verdict=recommend_approve/reject` | 队列下方，可一键应用 Reviewer 建议 |
+
+**Reviewer Agent 职责**：
+- 输入：draft 内容 + 既有相关节点（语义近邻 Top 5）+ 业务域上下文
+- 输出：pre_verdict + 简短理由（≤ 100 字）+ 检测到的潜在冲突节点 ID 列表
+- 实现：单独的 Agent 配置（type=`reviewer`），跑在高频 Routine `hourly-draft-pre-review`（见 §13.3）
+- 落库：写入 `knowledge_drafts.pre_verdict` 和 `pre_verdict_reasoning` 两个新字段（见 §9.4）
+
+**审查 UI 配套**（FR12 §12.4 详述）：
+- 队列界面 `/knowledge/review`
+- 默认排序：人审优先 → 按 `confidence × waiting_hours` 降序
+- 过滤：source / domain / volatility / pre_verdict
+- 批量操作："同源同类型一键应用"、"一键接受 Reviewer 所有 recommend_approve"
+
+**预期效果**：单人审查带宽放大 5-10 倍——只需关注 needs_human + 冲突类，其他用一键确认 Reviewer 建议。
+
+### FR5: 两路检索
+
+#### 5.1 触发时机
+
+- Agent checkout Issue 后，自动作为 `heartbeat-context` 一部分
+- Agent 显式调 `search_knowledge_base(query, opts)` 工具
+- Web UI 搜索框
+- MCP 工具 `search`（FR13）
+
+#### 5.2 检索算法（两路加权合并）
+
+**路径 A — 语义搜索**：
+```
+SELECT n.*, 1 - (n.embedding <=> $query_embedding) AS similarity
+FROM knowledge_nodes n
+JOIN business_domains d ON d.id = n.business_domain_id
+WHERE 1 - (n.embedding <=> $query_embedding) > 0.75
+  AND n.status = 'active'
+  AND (n.level = 'company' OR (n.level = 'project' AND n.project_id = $current))
+  AND (d.name = ANY($domain_names) OR d.name = 'general')   -- 业务域按 name 字符串数组过滤；general 永远兜底命中
+  AND n.company_id = $company_id
+ORDER BY n.embedding <=> $query_embedding
+LIMIT 10
+```
+
+**路径 B — 经验推荐**：
+```
+SELECT ... trigger_count * (1 / GREATEST(1, days_since_last_triggered)) AS exp_score
+WHERE used_for && $tags
+  AND status = 'active'
+  AND (level/domain 过滤同上)
+ORDER BY exp_score DESC
 LIMIT 5
 ```
 
-**路径 B: 经验推荐**
+**合并**：
 ```
-提取 Issue 的标签/类型（如 "bug-fix", "deployment"） →
-SELECT entity_name, file_path, use_count, last_used,
-       use_count * (1.0 / (1 + days_since_last_used)) AS experience_score
-FROM wiki_entities
-WHERE 'bug-fix' = ANY(used_for)
-  AND (level = 'company' OR (level = 'project' AND project_id = $current_project_id))
-ORDER BY experience_score DESC
-LIMIT 3
+final_score = similarity × 0.5 + exp_score × 0.3 + freshness_score × 0.2
+取 Top 5
 ```
 
-**合并去重**: 两路结果按 `0.6 × similarity + 0.4 × experience_score` 加权排序，取 Top 5。
-
-#### F2.3 上下文注入
-
-检索结果格式化为 Markdown:
+#### 5.3 上下文注入格式
 
 ```markdown
 ## 知识库相关条目
 
-- [[PostgreSQL 死锁排查]] (可信度: 0.9, 已验证) — 用于 bug-fix, database 场景，已引用 7 次
-- [[数据库连接池配置]] (可信度: 0.8) — 用于 deployment, performance 场景，已引用 4 次
+- [[a3f1...8c2e]] **PG 死锁排查** (fresh, lesson, confidence=0.9, 已防止 7 次)
+- [[b7d2...91ff]] **抖音直播带货规则** (⚠ stale_warning, fact, 验证于 2024-08, volatility=fast)
+- [[c1e9...44a0]] **选 PG 不选 MySQL 的理由** (fresh, decision, used_for=architecture)
 ```
 
-注入到 Agent 的 system prompt 末尾或作为工具 `search_knowledge_base` 的返回。
+### FR6: 演化 6 条
 
-#### F2.4 检索反馈
+| # | 名称 | 触发条件 | 行为 |
+|---|------|---------|------|
+| 1 | 升规则 | lesson 节点 trigger_count ≥ 3 且 prevention_score ≥ 0.7 | 创建 Issue "建议升级为 rule" 待人审；通过后改 type=rule + 加 derived_from 边 |
+| 2 | 衰减归档 | active 节点 180 天未被触发 | status=archived（搜索池排除） |
+| 3 | 合并提案 | 任两节点 cosine ≥ 0.9 | 创建合并 Issue 待人审；通过后写新节点 + merged_from 边 + 原节点 status=archived |
+| 4 | 冲突审查 | 新 draft 与既有 rule 经 LLM 判断为冲突 | 进入"冲突分组"审查队列 + conflicts_with 边 |
+| 5 | 时效性巡检 | valid_until 临近 7 天 / fast 90 天未验证 / slow 365 天未验证 | 创建"请验证 [节点]" Issue 给 Curator Agent |
+| 6 | **模式涌现** | 同 used_for + 同 domain 下 ≥ 5 条 lesson 经 LLM 聚类发现共性 | 创建 Issue "建议生成模式总结节点"；通过后写 `concept` 类节点（metadata.is_pattern=true），原 lesson 用 `references` 边连过来 |
 
-Agent 完成任务时评估每条被引用的知识是否对本次任务有帮助:
-- 有帮助 → 实体的 `use_count += 1`，`last_used = now`
-- 无用 → 记录日志，降低该实体在该任务类型下的推荐权重
-- 发现过时 → 触发 F4（新鲜度管理）
+**关于第 6 条"模式涌现"的细节**：
 
-### F3: 用途标签与知识推荐
+这是 Karpathy 范式中"活体"最关键的一环——不只是被动积累，而是主动抽象，让知识库从"档案"长成"理论"。
 
-#### F3.1 标签体系
+- **触发频次**：每周一次（在 `weekly-knowledge-evolution` 内），避免聚类噪音
+- **算法草案**：
+  1. 按 `(used_for_tag, business_domain_id)` 二维分组
+  2. 组内对 lesson 节点做 embedding 聚类（建议 HDBSCAN，密度敏感且不需预设 k）
+  3. 簇大小 ≥ 5 的调 LLM：给定该簇所有 lesson 的 title + content + metadata，提取"共性模式"
+  4. LLM 输出含 `pattern_name / pattern_summary / pattern_conditions / source_lesson_ids` 的 JSON
+  5. 写入 draft（type=concept, metadata.is_pattern=true, metadata.derived_from_lessons=[...]），走梯度审查
+- **失败模式**：LLM 抽不出有意义共性 → 标记此簇 cooldown=30 天，避免反复打扰
+- **预期效果**：3-6 个月后，company 级 concept 节点中应有 ≥ 10 个 is_pattern=true 的"理论性"节点，反映出企业真实积累的方法论
 
-初始标签集（可扩展）:
+演化引擎落地为 Routine：`weekly-knowledge-evolution`（cron `0 9 * * 1`），详见 §13.3。
 
-| 类别 | 标签 |
+### FR7: 时效性 profile
+
+详见 §4.4。
+
+### FR8: 历史可查
+
+- `outdated` 节点不进默认搜索，但：
+  - 详情页可访问
+  - 通过 `supersedes` 边可从新节点回溯到旧节点
+  - API `?include_outdated=true` 显式包含
+- 例：搜"抖音规则"默认得最新；显式带 outdated 得 2023/2024/2025 三版按时间线呈现
+
+### FR9: 反馈四值
+
+Agent 完成任务后对被检索过的每条节点反馈：
+
+| 反馈 | 行为 |
 |------|------|
-| 开发 | `bug-fix`, `feature-dev`, `refactoring`, `code-review` |
-| 运维 | `deployment`, `monitoring`, `incident-response`, `backup` |
-| 数据 | `schema-migration`, `query-optimization`, `data-export` |
-| 架构 | `system-design`, `api-design`, `security-review` |
-| 协作 | `onboarding`, `documentation`, `knowledge-sharing` |
+| `helped` | trigger_count +1；last_triggered=now；写 `triggered` 事件 |
+| `outdated` | freshness_score 强制降到 ≤ 0.3；自动创建验证 Issue |
+| `wrong` | 进冲突审查队列；写 `feedback` 事件 |
+| `irrelevant` | 降低该 used_for 标签下的推荐权重（写 `feedback` 事件，统计层处理） |
 
-#### F3.2 标签自动标注
+### FR10: 动态业务域管理
 
-Agent 完成任务后:
-1. 分析本次任务内容 + Issue 标签
-2. 评估每条被引用的知识是否帮助了本次任务
-3. 将任务类型标签追加到对应实体的 `used_for` 数组
+详见 §4.5。要点：
 
-标签可自动扩展——如果 Agent 发现当前任务类型不在现有标签中，可以提议新标签。
+- 业务域是用户可扩展资源（独立表 `business_domains`，按 company 隔离），不是硬编码枚举
+- 节点持 `business_domain_id` 外键 NOT NULL；公司初始化自动 seed `general`
+- 检索时可按 domain name 字符串数组过滤（`?domain=software,content`）
+- Dashboard 显示各 domain 的节点数和热度分布
+- Agent 在某 Issue 上工作时，domain_id 可由 Project 或 Issue 标签自动推断（如 Issue 标签含 "marketing" → 查找 name=`content` 的 domain）
 
-### F4: 新鲜度管理
+CRUD 操作：
 
-#### F4.1 定时巡检
+- 创建：`POST /api/knowledge/domains` { name, display_label, color, icon, description }
+- 编辑：`PATCH /api/knowledge/domains/:id`
+- 归档（软删）：`POST /api/knowledge/domains/:id/archive`，关联节点不动
+- 恢复：`POST /api/knowledge/domains/:id/restore`
+- 不允许硬删除（ON DELETE RESTRICT 保护关联节点）
 
-**触发**: Routine（cron `0 9 * * 1` — 每周一早上 9 点）
-**执行 Agent**: Curator Agent（专用知识管理 Agent）
+### FR11: 外部源采集
 
-**巡检逻辑**:
-1. 扫描所有实体，检查 `updated` 字段
-2. 超过 90 天未更新 → 标记 `freshness_score -= 0.3`
-3. 关联的技术栈有 breaking change → 标记 `## 争议/待核实`
-4. 生成巡检报告 Issue，列出需要关注的实体
+保留原 PRD F9 + F12 的能力（与 v1 一致）：
 
-#### F4.2 引用时评估
+#### 11.1 源管理
 
-Agent 在检索结果中发现某实体可能是过时的:
-1. 在上下文中标注 "⚠ 此条目上次更新于 90 天前，内容可能已过时"
-2. 任务完成后，Agent 可以标记该实体需要刷新
-3. 刷新需求自动创建 Issue
+`knowledge_sources` 表（与 v1 兼容）：
+- 字段：name / url / source_type / collector_name / crawl_frequency / trust_weight / last_crawled / article_selector / sitemap_url / enabled / crawl_config(JSONB)
+- 源类型：`blog / docs / github / forum / paper / rss / slack / custom`
 
-### F5: 知识生命周期
-
-#### F5.1 提升（Promote）
-
-| 触发 | 条件 | 行为 |
-|------|------|------|
-| 跨项目引用 | 项目级实体被 ≥3 个不同项目引用 | 创建 Issue "建议将 [实体名] 提升为公司级"，附引用来源 |
-| 手动提升 | 人类在 Web UI 点击"提升" | 直接提升 |
-| 确认后 | Issue 被标记 done | 实体的 `level` 改为 `company`，索引更新 |
-
-#### F5.2 分裂（Split）
-
-| 触发 | 条件 | 行为 |
-|------|------|------|
-| 体积过大 | 实体正文 > 2000 字 | 创建 Issue "建议拆分 [实体名]"，附 LLM 建议的拆分方案 |
-| 子话题 > 5 | 实体包含 ≥5 个独立子话题 | 同上 |
-| 确认后 | 人工批准拆分方案 | Agent 执行拆分，创建子实体，原实体保留为"索引页" |
-
-#### F5.3 合并（Merge）
-
-| 触发 | 条件 | 行为 |
-|------|------|------|
-| 高度相似 | pgvector 检测两个实体相似度 > 0.9 | 创建 Issue "建议合并 [A] 和 [B]"，附 LLM 建议的合并方案 |
-| 确认后 | 人工批准 | Agent 执行合并，保留主实体，备选实体添加重定向到主实体 |
-
-### F6: 知识消费（Web UI）
-
-#### F6.1 Paperclip Web UI 页面
-
-- **知识搜索页** (`/knowledge/search`): 搜索框 + 语义搜索结果列表。每条结果展示标题、摘要、可信度、引用次数、关联标签
-- **知识详情页** (`/knowledge/实体名`): 渲染 Markdown，展示完整 frontmatter 元数据，展示引用链（哪些实体引用了本实体），操作按钮（标记已验证、提升、创建整理 Issue）
-- **知识 Dashboard** (`/knowledge/dashboard`): 热度排行、未使用实体列表、过期实体列表、统计概览
-- **项目管理 → 知识库 Tab**: 项目设置中关联/解绑知识库
-
-#### F6.2 搜索 API
-
-```
-GET /api/knowledge/search?q=postgresql+deadlock&project_id=xxx
-→ { results: [{ entity_name, file_path, similarity, snippet, confidence, verified }] }
-```
-
-### F7: 知识层级与权限
-
-#### F7.1 三层模型
-
-| 层级 | YAML level | 可见范围 | 编辑权限 |
-|------|-----------|----------|----------|
-| personal | `personal` | 只有创建者可见 | 只有创建者可编辑 |
-| project | `project` | 该项目的所有成员 + 该公司所有 Agent | 项目成员可编辑，Agent 可写入 |
-| company | `company` | 全公司所有人 | 知识管理员 + Agent（需审核）|
-
-#### F7.2 Agent 检索权限
-
-```
-Agent 检索时:
-  WHERE level = 'company'
-     OR (level = 'project' AND project_id IN agent_accessible_projects)
-     OR (level = 'personal' AND created_by = agent_id)
-```
-
-### F8: 触发时机
-
-| 触发 | 实现方式 | 频率 | Agent |
-|------|----------|------|-------|
-| 自动归档 | Issue status→done → afterTaskComplete hook → 调用 engine.process() | 每次任务完成 | 执行任务的 Agent |
-| 定期巡检 | Routine: cron `0 9 * * 1` → Issue "每周知识巡检" | 每周 | Curator Agent |
-| 手动整理 | Issue "整理 knowledge/微服务" → Agent checkout → 处理指定目录 | 按需 | 分配的 Agent |
-| 爬虫采集 | Routine: cron 按源配置频率 → 发现新内容 → 入 inbox → 合成管道处理 | 按源配置 | Curator Agent |
-| 手动爬取 | Issue "搜集 LLM Agent 的最新架构实践" → Agent 执行爬虫 → 入 inbox | 按需 | 分配的 Agent |
-
-### F9: 爬虫与知识采集
-
-#### F9.1 源管理系统
-
-不是所有 URL 都值得爬。需要一个结构化的源管理模块。
-
-**源定义**（`wiki/sources/` 目录下每个源一个 `.md` 文件）:
-
-```yaml
----
-name: "Martin Fowler 博客"
-url: https://martinfowler.com
-type: blog              # blog | docs | github | forum | paper | rss
-crawl_frequency: weekly # daily | weekly | monthly | manual
-trust_weight: 0.9       # 该源的可信度权重，后续影响 Agent 自评 confidence
-last_crawled: 2026-05-12
-tags: [architecture, microservices]
-enabled: true
-article_selector: "article.post"  # CSS 选择器提取正文
-sitemap: https://martinfowler.com/feed.atom
----
-```
-
-**源管理操作**:
-- Agent 在 Web UI 添加/编辑/禁用源
-- 添加时自动检测 RSS/sitemap → 确认抓取频率
-- 按频率检查源是否有新内容
-
-#### F9.2 三层采集策略
-
-| 层级 | 描述 | 触发 | 产出 |
-|------|------|------|------|
-| 种子源 | 用户手动配置的权威源 | Routine 按频率触发 | 新文章/页面 → inbox |
-| 外链扩展 | 从种子源文章中的外链发现新源 | 每篇种子文章处理时 | 自动评估 → 建议加入白名单 |
-| 按需搜索 | Issue 触发的定向搜集 | 手动触发 | 搜索引擎 → 候选页面列表 → 入 inbox |
-
-**外链扩展的安全边界**:
-- 只评估种子源正文中的外链（不跟随 sidebar/footer 导航）
-- 每个外链域需人工确认后才加入白名单
-- 单一域的外链数上限 20 条（防止深度爬取失控）
-
-#### F9.3 HTML → Markdown 转换管道
-
-```
-网页 URL
-  → robots.txt 检查
-  → 下载 HTML（带 ETag/Last-Modified，增量）
-  → 去除广告/导航/评论区/侧边栏（Readability 算法）
-  → HTML → Markdown（turndown）
-  → 内容质量过滤（LLM 判断: 有实质信息？与现有知识重复？内容农场？）
-  → 通过 → 写入 inbox/{源名}-{日期}-{标题}.md
-  → 不通过 → 丢弃 + 记录日志
-```
-
-**关键约束**: 不是整页进知识库——爬虫采集的是"候选笔记"，需要经过合成管道（F1）的实体提取和合并才能成为正式知识。
-
-#### F9.4 内容质量过滤
-
-入 inbox 前过一道 LLM 质量判断:
-
-- 是否有实质信息（拒绝纯导航页、404 页、登录墙）？
-- 是否与现有知识重复（标题 + 前 3 段做语义比对）？
-- 是否来自低质量源（短文章、SEO 农场、纯广告）？
-- 评分 0-10，< 4 分自动丢弃
-
-#### F9.5 爬虫礼貌策略
-
-| 规则 | 值 |
-|------|-----|
-| User-Agent | `Paperclip-Knowledge-Crawler/1.0` |
-| robots.txt | 强制遵守 |
-| 请求间隔 | 默认 5s，根据源类型可调 |
-| 速率限制 | 单域并发 1，全局并发 3 |
-| 重试策略 | 429/503 → 指数退避（1s, 2s, 4s, 8s），最多 3 次 |
-| 不爬内容 | 需登录页面、付费墙、API 端点 |
-
-### F10: 知识审查队列
-
-#### F10.1 审查视图
-
-所有 Agent 写入的待审核内容汇聚到统一审查队列:
-
-```
-Paperclip Web UI: /knowledge/review
-
-┌─────────────────────────────────────────────────┐
-│  待审核 (5)   已通过 (23)   已驳回 (2)           │
-├─────────────────────────────────────────────────┤
-│                                                 │
-│  ☐ Kubernetes HPA 配置指南                      │
-│    来源: Coder Agent (任务 PAP-231 完成后写入)   │
-│    可信度: 0.85  │  层级: company               │
-│    变更: 新增 "minReplicas 配置建议" 节          │
-│    待审核时间: 2 小时前                          │
-│    [查看变更] [批准] [驳回] [请求修改]            │
-│                                                 │
-│  ☐ PostgreSQL 死锁排查                           │
-│    来源: 爬虫 (来自 pgdocs.io 采集)              │
-│    可信度: 0.9  │  层级: company                │
-│    变更: 新增 "死锁检测日志" 段                  │
-│    待审核时间: 5 小时前                          │
-│    [查看变更] [批准] [驳回] [请求修改]            │
-│                                                 │
-└─────────────────────────────────────────────────┘
-```
-
-#### F10.2 审查队列排序规则
-
-- 默认按"可信度 × 等待时间"排序——高可信且等得久的优先审
-- 低可信度（< 0.5）内容单独分组，需更高优先级处理
-- 同一来源（同一 Agent 或同一爬虫源）的批量审核支持
-
-#### F10.3 审查操作
-
-| 操作 | 效果 |
-|------|------|
-| 批准 | content → wiki/ 正式发布，`verified: true` |
-| 驳回 | 标记 `status: rejected`，从队列移除，不删除原始文件 |
-| 请求修改 | 创建 Issue 分配给写入者，附修改意见 |
-| 批量批准 | 同源、相似可信度的内容一键批量通过 |
-
-### F11: 知识模板系统
-
-#### F11.1 模板定义
-
-不同领域的知识需要不同的结构。定义可扩展模板:
-
-**技术概念模板** (`templates/concept-template.md`):
-```markdown
----
-tags: []
-created: {{date}}
----
-
-# {{title}}
-
-## 概述
-1-2 句定义该概念及为什么重要。
-
-## 核心原理
-- 
-
-## 使用场景
-- 
-
-## 相关技术
-- [[ ]]
-```
-
-**工具模板** (`templates/tool-template.md`):
-```markdown
----
-tags: [tool]
-created: {{date}}
----
-
-# {{title}}
-
-## 是什么
-
-
-## 安装/接入
-```bash
-```
-
-## 常用操作
-- 
-
-## 踩坑记录
-- 
-```
-
-**故障处理模板** (`templates/incident-template.md`):
-```markdown
----
-tags: [incident]
-created: {{date}}
----
-
-# {{title}}
-
-## 症状
-- 
-
-## 根因
-
-
-## 修复步骤
-1. 
-2. 
-
-## 预防措施
-- 
-```
-
-#### F11.2 模板自动匹配
-
-Agent 或爬虫在处理新笔记时:
-
-```
-内容类型识别（LLM） →
-  概念型 → concept-template.md
-  工具型 → tool-template.md
-  流程型 → process-template.md
-  故障型 → incident-template.md
-  决策型 → decision-template.md
-```
-
-模板匹配结果会传给合成阶段的 LLM，指导其按对应结构组织内容。
-
-#### F11.3 模板扩展
-
-- 用户可在 Obsidian `templates/` 目录下创建自定义模板
-- 模板也是 Markdown 文件，使用 `{{变量}}` 占位符
-- 新模板创建后自动被系统发现（chokidar 监控 `templates/` 目录）
-
-### F12: 外部源集成接口
-
-#### F12.1 可插拔采集器
-
-核心设计: 把"知识从哪里来"抽象为统一接口，爬虫只是其中一个实现:
+#### 11.2 KnowledgeCollector 可插拔接口
 
 ```typescript
 interface KnowledgeCollector {
-  /** 采集器唯一标识 */
   name: string;
-  
-  /** 采集并返回原始笔记列表 */
   collect(config: CollectorConfig): Promise<RawNote[]>;
-  
-  /** 检查源是否有新内容（用于增量抓取） */
   checkForUpdates(source: KnowledgeSource): Promise<boolean>;
-  
-  /** 采集器支持的源类型 */
   supportedSourceTypes: SourceType[];
 }
-
-interface RawNote {
-  title: string;
-  content: string;        // Markdown 格式
-  source: string;         // 来源 URL 或标识
-  sourceType: SourceType;
-  collectedAt: Date;
-  metadata: Record<string, unknown>;  // 采集器特有元数据
-}
 ```
 
-#### F12.2 内置采集器
+内置实现：
+- `WebCrawler`（HTML→MD + Readability + 质量过滤 + robots.txt）
+- `RSSCollector`
+- `GitHubCollector`（Issues / Discussions / README）
 
-| 采集器 | 类型 | 用途 |
-|--------|------|------|
-| `WebCrawler` | 内置 | Web 页面爬取（HTML→MD，F9 的爬虫功能） |
-| `RSSCollector` | 内置 | RSS/Atom feed 订阅 |
-| `GitHubCollector` | 内置 | GitHub Discussions/Issues/README |
-| `arXivCollector` | 可选 | arXiv API 论文摘要 |
-| `DocsWatcher` | 内置 | 本地文件系统监控（已配置的 docs 目录）|
+Plugin 系统可注册自定义 Collector（如 `SlackThreadCollector`）。
 
-#### F12.3 注册新采集器
+#### 11.3 三层采集策略
 
-通过 Paperclip Plugin 系统的扩展点注册:
+| 层级 | 描述 | 产出 |
+|------|------|------|
+| 种子源 | 用户手动配置的权威源 | 新文章 → draft |
+| 外链扩展 | 从种子源文章正文外链发现新候选源 | 域级白名单提案 |
+| 按需搜索 | Issue 触发的定向搜集 | 候选页面 → draft |
 
-```typescript
-// 第三方插件可以注册自定义采集器
-pluginContext.registerCollector({
-  name: "SlackThreadCollector",
-  supportedSourceTypes: ["slack"],
-  collect: async (config) => { /* Slack API 调用 */ },
-  checkForUpdates: async (source) => { /* 检查新消息 */ },
-});
-```
-
-#### F12.4 采集器执行模型
+#### 11.4 HTML → Markdown → Draft 管道
 
 ```
-Routine/Cron 触发
-  → 遍历所有已启用的 Source
-    → 匹配对应的 Collector（按 sourceType）
-    → Collector.checkForUpdates(source)
-    → 有新内容 → Collector.collect(config)
-    → RawNote[] → 质量过滤 → 写入 inbox
-    → 合成管道（F1）处理
+URL → robots.txt 检查 → 下载 → Readability 抽正文 → turndown → LLM 质量评分 → < 4 丢弃，否则写入 draft（source=manual + source_url 标注）
 ```
+
+#### 11.5 礼貌策略
+
+- User-Agent: `Paperclip-LLMWiki-Crawler/1.0`
+- 单域并发 1，全局并发 3
+- 请求间隔 ≥ 5s
+- 429/503 指数退避（1/2/4/8s，最多 3 次）
+
+### FR12: Web UI
+
+#### 12.1 页面清单
+
+| 路径 | 用途 |
+|------|------|
+| `/knowledge/search` | 搜索框 + 结果列表（按 type / domain / volatility / freshness 过滤） |
+| `/knowledge/:id` | 详情页（Markdown 渲染 + 正反向 edges + 事件时间线 + 元数据） |
+| `/knowledge/review` | 审查队列（pending / approved / rejected / revision_requested 四 Tab） |
+| `/knowledge/dashboard` | 热度 Top10 + 各 domain 分布 + 待审数 + outdated 数 + 即将过期 |
+| `/knowledge/graph` | 节点+边图视图（FR14） |
+| `/knowledge/editor` | Markdown 编辑器（手动写入入口） |
+| `/knowledge/sources` | 外部源管理 |
+| `/knowledge/domains` | 业务域管理（FR10：新增/编辑/归档业务条线） |
+
+#### 12.2 搜索结果列表
+
+每条卡片显示：
+- 标题 + 类型徽章（concept/lesson/rule/decision/fact 不同颜色）
+- 摘要片段（content 前 200 字）
+- freshness 徽章（fresh 绿 / stale 黄 / outdated 灰）
+- domain 徽章
+- 元数据条：trigger_count / verified_at / level
+
+#### 12.3 详情页
+
+- 上：Markdown 渲染正文，`[[node-id]]` 渲染为可点链接
+- 侧：元数据面板（type / level / domain / volatility / valid_until / verified_at / source_url / confidence / verified）
+- 下：双链区（"引用了 X 个节点" + "被 Y 个节点引用"）+ 时间线（revisions + events 合并展示）
+- 操作：标记已验证 / 提升到公司级 / 创建验证 Issue / 编辑
+
+#### 12.4 Dashboard `/knowledge/dashboard`
+
+布局自上而下：
+
+1. **健康指标栏**（顶部一行 6 个卡片，对应 §7.5 六个指标）
+   - 每卡片：数值 + 健康区间提示 + 状态点（绿/黄/红）
+   - 点击卡片跳详情视图
+2. **热度 Top 10**（横向条形图，按 trigger_count 排序，可按 domain 过滤）
+3. **业务域分布**（饼图：按 business_domain 分组节点数）
+4. **类型分布**（条形图：concept / lesson / rule / decision / fact 各多少）
+5. **演化轨迹**（最近 30 天内：升规则数 / 归档数 / 合并数 / 冲突未决数 / 模式涌现数）
+6. **待办栏**：审查待办数（按 pre_verdict 分类）+ 待验证数 + alarm Issue 链接
+
+异常指标点击后跳到对应详情列表（如"过期未巡检"→ 列出所有 fast + > 90d 节点）。
+
+#### 12.5 审查队列 `/knowledge/review`
+
+- 4 Tab：Pending / Approved / Rejected / Revision-requested
+- Pending 排序优先级：pre_verdict=needs_human → 检测到 conflicts_with → 高 confidence 等久 → 其余
+- 列表卡片显示：标题 + source 徽章 + pre_verdict 徽章 + Reviewer reasoning（折叠 1 行，hover 展开）
+- 批量勾选 → 一键应用："批准所有 recommend_approve" / "驳回所有 recommend_reject" / 自定义批量
+
+#### 12.6 业务域管理 `/knowledge/domains` （FR10）
+
+- 列表：表格展示所有业务域（含 archived），列字段 - 徽章预览 / display_label / name / 节点数 / sort_order / archived 状态 / 操作
+- 默认排序：按 sort_order 升序，archived 项灰显在最下
+- 顶部按钮："新增业务域"
+- 单条操作：编辑 / 归档 / 恢复（不提供硬删除）
+- 新增/编辑模态框字段：
+  - `name`（slug 自动校验：小写、字母数字、连字符；同公司唯一）
+  - `display_label`（中英文均可，必填）
+  - `description`（可选，长描述）
+  - `color`（color picker，默认灰色 `#6B7280`）
+  - `icon`（lucide 图标选择器，可选）
+  - `sort_order`（数字输入，默认 0）
+
+### FR13: MCP 服务暴露
+
+提供 Paperclip MCP Server，把知识库能力暴露给外部 Agent（Claude Code / Codex / Cursor 等）。
+
+#### 13.1 MCP 工具清单
+
+| Tool | 用途 |
+|------|------|
+| `search_knowledge` | 语义+经验两路检索 |
+| `get_node` | 按 ID 取详情（含 edges） |
+| `propose_node` | 提交 draft 节点 |
+| `record_feedback` | 反馈四值 |
+| `list_recent_lessons` | 拉取最近 N 条 lesson（供 Agent 启动时初始化用） |
+| `list_domains` | 列出当前 company 的所有可用业务域（name + display_label），供外部 Agent 在 propose_node 时选择 |
+
+#### 13.2 MCP 鉴权
+
+- 复用 Paperclip API Key 体系
+- 每个外部 Agent 对应一个 API Key + level 权限映射
+- 知识层级过滤强制在 MCP 服务端做（不信任客户端）
+
+### FR14: 图谱可视化
+
+`/knowledge/graph` 页面，技术栈选 Cytoscape.js 或 Sigma.js。
+
+#### 14.1 视图模式
+
+- **关系图**：节点为圆，边按 edge_type 上色（references 灰 / supersedes 红 / conflicts_with 橙 / merged_from 蓝）
+- **时间线图**：按 created_at 横轴排列，supersedes 边表示版本更替
+- **业务域聚类**：按 business_domain 着色，自然形成 4-5 个集群
+
+#### 14.2 交互
+
+- 点击节点 → 跳详情页
+- hover → 显示 title + 类型 + freshness
+- 过滤：domain / type / status / freshness
+- 搜索高亮：输入关键词，匹配的节点高亮，其他变灰
+
+#### 14.3 性能
+
+- 节点 ≤ 500 → 全量渲染
+- 节点 > 500 → 默认只显示种子节点（trigger_count Top 50），按需展开邻居
 
 ---
 
-## 5. 非功能需求
+## 7. 非功能需求
 
-### 5.1 性能
-
-| 指标 | 目标 |
-|------|------|
-| 语义搜索延迟 | < 500ms (P95) |
-| 实体合成耗时 | < 30s（含 LLM 调用） |
-| 文件监控响应 | 新文件进入 inbox/ 后 5s 内触发处理 |
-| pgvector HNSW 索引构建 | 全量重建 < 30s（10000 实体以内） |
-
-### 5.2 可靠性
+### 7.1 性能
 
 | 指标 | 目标 |
 |------|------|
-| 合成失败率 | < 5%（失败时保留原始 inbox 文件，不丢失数据） |
-| 向量索引一致性 | 每次文件变更后自动 re-index，超过 1 小时未索引触发告警 |
-| 数据持久性 | 全依赖 Obsidian vault 的 Git 备份策略 |
+| 语义搜索延迟 | P95 < 500ms（含 freshness 计算） |
+| Draft 写入 | < 100ms（不含 embedding 生成） |
+| Embedding 生成 | < 2s（OpenAI text-embedding-3-small） |
+| 图视图首屏渲染 | < 1s（500 节点以内） |
+| MCP 工具调用 | P95 < 800ms（含跨网络） |
 
-### 5.3 安全
+### 7.2 可靠性
+
+| 指标 | 目标 |
+|------|------|
+| Draft 落库失败率 | < 0.1% |
+| 向量索引一致性 | 节点写入后 5s 内可被检索 |
+| 演化 Routine 失败重试 | 3 次指数退避 |
+
+### 7.3 安全
 
 | 约束 | 实现 |
 |------|------|
-| 路径沙箱 | vault 路径白名单，拒绝访问根目录外的任何路径 |
-| SQL 注入 | 使用参数化查询，不拼接用户输入到 SQL |
-| 知识层级隔离 | SQL 查询强制添加 level 过滤条件 |
-| 敏感内容 | vault 中的 `.env`、`.secret` 类文件不索引 |
+| 层级权限 | SQL WHERE 强制过滤；MCP 服务端二次过滤 |
+| SQL 注入 | 参数化查询，绝不拼接用户输入 |
+| 内容审查 | LLM 在 draft 阶段过滤敏感内容（信用卡号、密钥等） |
+| API 鉴权 | 复用 Paperclip API Key + Run JWT 体系 |
 
-### 5.4 可扩展性
+### 7.4 可扩展性
 
-- 标签体系可扩展：新的任务类型标签可由 Agent 提议、人类批准后加入
-- 实体类型可扩展：`entity_type` 枚举可以追加新值
-- Embedding 模型可替换：抽象 `embed()` 接口，支持切换不同模型
+- 节点类型枚举可扩展（pgEnum + migration）
+- 边类型枚举可扩展
+- business_domain 可扩展
+- KnowledgeCollector 可插拔（FR11）
+- Embedding 模型可替换（抽象 `embed()` 接口）
+
+### 7.5 可观测性与健康指标
+
+系统健康用以下 6 个核心指标度量，在 Dashboard 顶部展示，超阈值时由"每日自检 Routine"创建 alarm Issue：
+
+| 指标 | 健康区间 | 异常含义 |
+|------|---------|---------|
+| 周新增 draft 数 | > 0 | 写入路径阻塞 / Agent 不再自评 |
+| 审查 backlog 时长（中位） | < 24h | 审查瓶颈，需调梯度策略或加 Reviewer Agent 频率 |
+| 检索命中后 helped 比例 | > 0.5 | 推荐质量差，检索算法或语料需调 |
+| 平均节点引用密度 | > 1.5 边/节点 | 知识"孤岛化"，未形成网络 |
+| 冲突未决数 | < 10 | 冲突堆积，质量管理失效 |
+| 过期未巡检数（fast + > 90d） | < 5 | 时效性巡检 Routine 失败或 Curator Agent 异常 |
+
+每日自检 Routine `daily-knowledge-healthcheck` 见 §13.3。
 
 ---
 
-## 6. 系统架构
+## 8. 系统架构
 
 ```
-┌──────────────────────────────────────────────────────────────┐
-│                    Paperclip Application                      │
-│                                                               │
-│  ┌──────────┐  ┌─────────┐  ┌──────────┐  ┌──────────────┐ │
-│  │ Heartbeat│  │ Routines│  │   Web UI │  │  API Routes  │ │
-│  │  Engine  │  │  (Cron) │  │ (React)  │  │  (Express)   │ │
-│  └────┬─────┘  └────┬────┘  └────┬─────┘  └──────┬───────┘ │
-│       │              │            │               │         │
-│       └──────────────┼────────────┼───────────────┘         │
-│                      │            │                          │
-│              ┌───────┴────────────┴────────┐                 │
-│              │   obsidian-wiki 服务层       │                 │
-│              │                              │                 │
-│  ┌───────────┴───────────┐  ┌──────────────┴──────────────┐ │
-│  │     写入管道            │  │       读取管道              │ │
-│  │  extractor → dedup    │  │  retriever (semantic)      │ │
-│  │  → synthesizer        │  │  + retriever (experience)  │ │
-│  │  → linker             │  │  → merge → inject_context  │ │
-│  └───────────────────────┘  └─────────────────────────────┘ │
-│  ┌──────────────────────┐  ┌──────────────────────────────┐ │
-│  │    维护任务            │  │      数据访问层               │ │
-│  │  freshness (cron)    │  │  wiki_entities (Drizzle)    │ │
-│  │  lifecycle (promote  │  │  + pgvector raw SQL         │ │
-│  │   /split/merge)      │  │  + gray-matter (YAML)       │ │
-│  └──────────────────────┘  └──────────────────────────────┘ │
-│                                                               │
-└──────────────────────────┬────────────────────────────────────┘
+┌────────────────────────────────────────────────────────────────┐
+│                      Paperclip Application                      │
+│                                                                 │
+│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌────────────────┐ │
+│  │Heartbeat │  │ Routines │  │  Web UI  │  │  REST + MCP    │ │
+│  │  Engine  │  │  (Cron)  │  │ (React)  │  │   Server       │ │
+│  └────┬─────┘  └────┬─────┘  └────┬─────┘  └────────┬───────┘ │
+│       │             │              │                  │         │
+│       └─────────────┼──────────────┼──────────────────┘         │
+│                     │              │                            │
+│            ┌────────┴──────────────┴────────┐                   │
+│            │     llm-wiki 服务层             │                   │
+│            │                                 │                   │
+│  ┌─────────┴──────────┐  ┌──────────────────┴────────────────┐ │
+│  │      写入管道           │  │          读取管道                │ │
+│  │ drafter → reviewer-agent│  │ retriever (semantic+experience │ │
+│  │ → node-writer           │  │   +freshness) → context-inject │ │
+│  │ → edge-resolver         │  │                                │ │
+│  └────────────────────────┘  └────────────────────────────────┘ │
+│  ┌──────────────────────┐  ┌────────────────────────────────┐  │
+│  │    演化引擎(6 条)     │  │     外部源采集                  │  │
+│  │ promote/decay/merge/ │  │ sources-manager + collectors   │  │
+│  │ conflict/freshness/  │  │ (WebCrawler/RSS/GitHub/...)    │  │
+│  │ pattern-emergence    │  │                                │  │
+│  └──────────────────────┘  └────────────────────────────────┘  │
+│  ┌──────────────────────┐  ┌────────────────────────────────┐  │
+│  │   健康自检 + 业务域   │  │       MCP Server               │  │
+│  │ daily-healthcheck +  │  │ search/get/propose/feedback/   │  │
+│  │ business-domains svc │  │ list_recent_lessons/list_domains│ │
+│  └──────────────────────┘  └────────────────────────────────┘  │
+│  ┌──────────────────────────────────────────────────────────┐  │
+│  │                  数据访问层                                │  │
+│  │  Drizzle ORM (8 tables: business_domains / nodes /       │  │
+│  │   edges / drafts / revisions / events / sources / metrics)│  │
+│  │  + pgvector raw SQL (HNSW search)                         │  │
+│  └──────────────────────────────────────────────────────────┘  │
+└──────────────────────────┬──────────────────────────────────────┘
                            │
-          ┌────────────────┼────────────────┐
-          ▼                ▼                 ▼
-   ┌──────────┐   ┌──────────────┐   ┌──────────────┐
-   │ Obsidian │   │  PostgreSQL   │   │  LLM Client  │
-   │  Vault   │   │  + pgvector   │   │  (Anthropic) │
-   │  (.md)   │   │               │   │              │
-   └──────────┘   └──────────────┘   └──────────────┘
+            ┌──────────────┼──────────────┐
+            ▼              ▼               ▼
+     ┌─────────────┐  ┌──────────┐  ┌──────────────┐
+     │ PostgreSQL  │  │   LLM    │  │  外部站点     │
+     │ + pgvector  │  │  Client  │  │ (RSS/HTML/   │
+     │ (8张表+索引)│  │(Anthropic)│  │  GitHub API) │
+     └─────────────┘  └──────────┘  └──────────────┘
 ```
 
 ---
 
-## 7. 数据模型
+## 9. 数据模型
 
-### 7.1 PostgreSQL 表: `wiki_entities`
+### 9.1 枚举类型
 
 ```sql
-CREATE EXTENSION IF NOT EXISTS vector;
+CREATE TYPE knowledge_node_type AS ENUM ('concept', 'lesson', 'rule', 'decision', 'fact');
+CREATE TYPE knowledge_level AS ENUM ('personal', 'project', 'company');
+CREATE TYPE knowledge_status AS ENUM ('active', 'archived', 'outdated', 'revoked');
+CREATE TYPE knowledge_volatility AS ENUM ('stable', 'slow', 'fast');
+-- NOTE: business_domain 不用枚举，改用独立表 business_domains（见 §9.8）以支持用户扩展
 
-CREATE TABLE wiki_entities (
-  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  entity_name   TEXT NOT NULL,
-  file_path     TEXT NOT NULL UNIQUE,           -- vault 内相对路径
-  level         TEXT NOT NULL DEFAULT 'project'  -- personal | project | company
-                CHECK (level IN ('personal', 'project', 'company')),
-  project_id    UUID REFERENCES projects(id),   -- 项目级/公司级关联
-  created_by    UUID REFERENCES agents(id),     -- 创建者（个人级用）
-  embedding     vector(1536),                   -- OpenAI text-embedding-3-small
-
-  -- 质量元数据
-  confidence    REAL DEFAULT 0.5,               -- Agent 自评 0-1
-  verified      BOOLEAN DEFAULT false,          -- 人工已验证
-  freshness_score REAL DEFAULT 1.0,             -- 1.0=最新, 0.0=完全过期
-
-  -- 使用统计
-  use_count     INTEGER DEFAULT 0,              -- 被引用次数
-  used_for      TEXT[] DEFAULT '{}',            -- 用途标签数组
-  last_used     TIMESTAMPTZ,                    -- 最近被引用时间
-
-  -- 时间戳
-  file_updated  TIMESTAMPTZ NOT NULL,           -- 文件最后修改时间
-  updated_at    TIMESTAMPTZ DEFAULT now(),
-  created_at    TIMESTAMPTZ DEFAULT now()
+CREATE TYPE knowledge_edge_type AS ENUM (
+  'references', 'supersedes', 'merged_from',
+  'derived_from', 'conflicts_with', 'promoted_to'
 );
 
--- HNSW 向量索引
-CREATE INDEX wiki_entities_embedding_idx ON wiki_entities
-  USING hnsw (embedding vector_cosine_ops)
-  WITH (m = 16, ef_construction = 200);
+CREATE TYPE knowledge_draft_source AS ENUM ('agent_self_review', 'failure_signal', 'manual');
+CREATE TYPE knowledge_draft_status AS ENUM ('pending', 'approved', 'rejected', 'revision_requested');
 
--- 知识源管理
-CREATE TABLE knowledge_sources (
-  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  name          TEXT NOT NULL,
-  url           TEXT NOT NULL,
-  source_type   TEXT NOT NULL DEFAULT 'blog'
-                CHECK (source_type IN ('blog','docs','github','forum','paper','rss','slack','custom')),
-  collector_name TEXT NOT NULL DEFAULT 'WebCrawler',  -- 匹配 KnowledgeCollector.name
-  crawl_frequency TEXT NOT NULL DEFAULT 'weekly'
-                CHECK (crawl_frequency IN ('daily','weekly','monthly','manual')),
-  trust_weight  REAL DEFAULT 0.5,
-  last_crawled  TIMESTAMPTZ,
-  article_selector TEXT,          -- CSS 选择器提取正文
-  sitemap_url   TEXT,             -- RSS/sitemap URL
-  tags          TEXT[] DEFAULT '{}',
-  enabled       BOOLEAN DEFAULT true,
-  crawl_config  JSONB DEFAULT '{}',  -- 采集器特有配置
-  created_at    TIMESTAMPTZ DEFAULT now(),
-  updated_at    TIMESTAMPTZ DEFAULT now()
+CREATE TYPE knowledge_event_type AS ENUM (
+  'created', 'updated', 'triggered', 'feedback',
+  'verified', 'superseded', 'archived', 'promoted', 'revoked'
 );
 
--- 审查队列
-CREATE TABLE knowledge_reviews (
-  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  entity_name   TEXT NOT NULL,
-  file_path     TEXT NOT NULL,
-  source_type   TEXT NOT NULL       -- 'agent' | 'crawler' | 'manual'
-                CHECK (source_type IN ('agent','crawler','manual')),
-  source_id     TEXT,               -- Agent ID / Source name / User ID
-  content       TEXT NOT NULL,      -- 待审核的 Markdown 内容
-  existing_content TEXT,            -- 已有内容（如果是更新）
-  confidence    REAL DEFAULT 0.5,
-  level         TEXT NOT NULL DEFAULT 'project'
-                CHECK (level IN ('personal','project','company')),
-  status        TEXT NOT NULL DEFAULT 'pending'
-                CHECK (status IN ('pending','approved','rejected','revision_requested')),
-  reviewed_by   UUID,              -- 审核人 ID
-  review_notes  TEXT,              -- 审核意见
-  created_at    TIMESTAMPTZ DEFAULT now(),
-  reviewed_at   TIMESTAMPTZ
+CREATE TYPE knowledge_pre_verdict AS ENUM (
+  'recommend_approve', 'recommend_reject', 'needs_human'
 );
 ```
 
-### 7.2 Markdown YAML Frontmatter 规范
+### 9.2 表 1: `knowledge_nodes`
 
-```yaml
----
-tags: [deployment, kubernetes]
-aliases: [k8s-deploy, deploy-flow]
-created: 2026-05-01
-updated: 2026-05-12
-confidence: 0.9
-verified: false
-level: company
-project_id: null
-used_for: [deployment, infrastructure]
-use_count: 4
----
+详细字段：
+- 标识：`id` UUID PK，`title` TEXT，`content` TEXT
+- 类型：`type` (5 枚举)，`status` (4 枚举)，`level` (3 枚举)
+- 业务域：`business_domain_id` UUID NOT NULL REFERENCES business_domains(id) ON DELETE RESTRICT（不允许硬删，保护关联节点）
+- 归属：`company_id` FK NOT NULL，`project_id` FK NULL
+- 向量：`embedding` vector(1536)
+- 质量：`confidence` REAL，`verified` BOOL
+- 时效：`volatility` (3 枚举)，`valid_until` TIMESTAMPTZ，`verified_at` TIMESTAMPTZ，`source_url` TEXT，`external_version` JSONB
+- 统计：`trigger_count` INT，`last_triggered` TIMESTAMPTZ，`used_for` TEXT[]，`prevention_score` REAL
+- 元数据：`metadata` JSONB（按 type 携带不同字段，如 lesson 的 symptom/root_cause/next_time）
+- 来源：`created_by_agent` FK，`created_by_user` FK
+- 时间：`created_at`，`updated_at`
 
-# 实体标题
+索引：
+- HNSW on embedding
+- (company_id, business_domain_id, status) WHERE status='active'
+- (company_id, level, status) WHERE status='active'
+- GIN on used_for
+- (type, status), (volatility, verified_at), (valid_until)
 
-正文内容...
-```
+### 9.3 表 2: `knowledge_edges`
 
-### 7.3 目录结构规范
+字段：`id` / `from_node_id` / `to_node_id` / `edge_type` / `created_by_agent` / `created_by_user` / `auto_generated` BOOL / `metadata` JSONB / `created_at`
 
-```
-vault/
-├── inbox/                  # Agent 写入的待处理笔记
-│   └── 2026-05-12-xxx.md
-├── wiki/                   # 经过合成的正式知识实体
-│   ├── PostgreSQL-死锁排查.md
-│   ├── K8s-部署流程.md
-│   └── ...
-├── personal/               # 个人级（人类和 Agent 不可见他人内容）
-│   └── ...
-├── templates/              # 实体模板文件
-│   └── entity-template.md
-└── .obsidian/              # Obsidian 配置（不纳入索引）
-```
+约束：自指禁止；(from, to, edge_type) UNIQUE
 
----
+索引：(from_node_id, edge_type)，(to_node_id, edge_type)
 
-## 8. API 契约
+### 9.4 表 3: `knowledge_drafts`
 
-### 8.1 知识搜索
+字段：`id` / `target_node_id`(可空，新建为空) / `proposed_*`(title/content/type/level/metadata/volatility/valid_until) / `source` / `source_*`(agent_id/run_id/issue_id/user_id) / `confidence` / `status` / `reviewed_by` / `review_notes` / `company_id` / `created_at` / `reviewed_at`
 
-```
-GET /api/knowledge/search?q=<query>&project_id=<pid>&limit=5
+**Reviewer Agent 初筛字段**（FR4 §6.4 梯度审查）：
+- `pre_verdict` knowledge_pre_verdict ENUM（`recommend_approve` / `recommend_reject` / `needs_human` / NULL 未筛）
+- `pre_verdict_reasoning` TEXT —— Reviewer 输出的简短理由（≤ 200 字）
+- `pre_verdict_at` TIMESTAMPTZ —— Reviewer 完成初筛时间
+- `detected_conflicts` UUID[] —— Reviewer 检测到的可能冲突节点 ID 数组
 
-Response:
-{
-  "results": [
-    {
-      "entity_name": "PostgreSQL 死锁排查",
-      "file_path": "wiki/PostgreSQL-死锁排查.md",
-      "similarity": 0.92,
-      "snippet": "PostgreSQL 死锁通常由并发事务持有互斥锁导致...",
-      "confidence": 0.9,
-      "verified": true,
-      "used_for": ["bug-fix", "database"],
-      "use_count": 7,
-      "last_used": "2026-05-10T...",
-      "level": "company",
-      "project_id": null
-    }
-  ],
-  "search_type": "semantic + experience",
-  "took_ms": 120
-}
-```
+索引：(company_id, status, created_at) WHERE status='pending'，(source, status)，(status, pre_verdict) WHERE status='pending'
 
-### 8.2 知识写入（手动）
+### 9.5 表 4: `knowledge_node_revisions`
 
-```
-POST /api/knowledge/entities
-{
-  "file_path": "wiki/新实体名.md",
-  "content": "# 标题\n\n正文...",
-  "level": "project",
-  "project_id": "uuid"
-}
+字段：`id` / `node_id` / `title` / `content` / `type` / `level` / `metadata`（修改前快照） / `changeset_summary` / `editor_agent_id` / `editor_user_id` / `draft_id` / `created_at`
 
-Response: { "entity_name": "新实体名", "file_path": "wiki/新实体名.md" }
-```
+索引：(node_id, created_at DESC)
 
-### 8.3 知识更新
+### 9.6 表 5: `knowledge_node_events`
 
-```
-PATCH /api/knowledge/entities/{entity_name}
-{
-  "verified": true,
-  "level": "company"
-}
-```
+字段：`id` / `node_id` / `event_type` / `agent_id` / `run_id` / `issue_id` / `user_id` / `feedback`(反馈值) / `metadata` / `created_at`
 
-### 8.4 触发合成（手动）
+索引：(node_id, event_type, created_at DESC)，(issue_id) WHERE issue_id IS NOT NULL
 
-```
-POST /api/knowledge/synthesize
-{
-  "inbox_file": "inbox/2026-05-12-部署踩坑.md"
-}
+### 9.7 表 6: `knowledge_sources`（FR11 复用 v1 设计）
 
-Response: { "output_path": "wiki/K8s-部署流程.md", "synthesized": true }
-```
+字段：name / url / source_type / collector_name / crawl_frequency / trust_weight / last_crawled / article_selector / sitemap_url / tags[] / enabled / crawl_config(JSONB) / company_id / created_at / updated_at
 
-### 8.5 获取统计
+### 9.8 表 7: `business_domains`（FR10 动态业务域）
+
+承载 §4.5 的可扩展业务域。每个公司有独立的 domain 集合。
+
+字段：
+- `id` UUID PK
+- `company_id` UUID NOT NULL REFERENCES companies(id) ON DELETE CASCADE
+- `name` TEXT NOT NULL —— slug 风格（小写、连字符），如 `software` / `ai-education`，作 API 参数和 URL 用
+- `display_label` TEXT NOT NULL —— 人类可读名，如 "软件与 AI 工具"
+- `description` TEXT —— 业务域简介，可选
+- `color` TEXT NOT NULL DEFAULT '#6B7280' —— UI 徽章颜色（hex 格式）
+- `icon` TEXT —— 可选 lucide 图标 key
+- `sort_order` INTEGER NOT NULL DEFAULT 0 —— UI 列表排序权重
+- `archived` BOOLEAN NOT NULL DEFAULT false —— 软删标记，archived=true 时新建/检索下拉不出现，已关联节点不动
+- `created_at` / `updated_at` TIMESTAMPTZ
+
+索引：
+- UNIQUE (company_id, name) —— 同公司内 name 唯一
+- (company_id, sort_order) WHERE archived = false —— UI 列表查询主索引
+
+公司初始化 seed：每个新 company 自动 INSERT `general`（兜底）。缤果场景可选 seed 当前 5 条业务作为示例（`software` / `content` / `distribution` / `community` 各一条）。
+
+### 9.9 表 8: `knowledge_metrics`（健康指标缓存，§7.5 + §13.3 Routine 3）
+
+每日自检 Routine 计算 §7.5 六个健康指标后写入本表，Dashboard 读本表展示，避免每次请求都现算。
+
+字段：
+- `id` UUID PK
+- `company_id` UUID FK NOT NULL
+- `metric_name` TEXT NOT NULL —— 如 `weekly_new_drafts` / `review_backlog_hours_p50` / `helped_ratio` / `avg_edges_per_node` / `unresolved_conflicts` / `stale_unchecked_fast`
+- `metric_value` NUMERIC NOT NULL
+- `status` TEXT —— `healthy` / `warning` / `critical`（按 §7.5 阈值判定）
+- `computed_at` TIMESTAMPTZ NOT NULL
+- `details` JSONB —— 计算明细（如哪些节点过期、哪些 draft 等待最久），便于 Dashboard 点击下钻
+
+索引：(company_id, metric_name, computed_at DESC)
+
+只保留每个 (company, metric) 的最新一条 + 90 天历史用于趋势图。超过 90 天的自动归档清理。
+
+### 9.10 表关系
 
 ```
-GET /api/knowledge/stats
-
-Response:
-{
-  "total_entities": 150,
-  "by_level": { "personal": 30, "project": 80, "company": 40 },
-  "verified_rate": 0.65,
-  "avg_confidence": 0.82,
-  "most_used": [{ "entity_name": "...", "use_count": 12 }],
-  "stale_count": 8,
-  "unused_count": 25
-}
+companies ──┬─< business_domains ←─┐
+            │                       │
+            ├─< knowledge_nodes ────┴ ──┬──< knowledge_edges (from/to)
+            │   (business_domain_id FK) ├──< knowledge_node_revisions
+            │                           └──< knowledge_node_events
+            ├─< knowledge_drafts ──→ knowledge_nodes (target)
+            │           ↓
+            │           └─→ knowledge_node_revisions (via draft_id)
+            ├─< knowledge_sources
+            └─< knowledge_metrics
 ```
+
+完整 SQL DDL 见附录 A。
 
 ---
 
-## 9. UI/UX 规范
+## 10. API 契约
 
-### 9.1 Paperclip Web UI
+**详细规范请见 [API 设计文档](../design/2026-05-12-llm-wiki-knowledge-engine-api.md)**。本节仅列资源概要：
 
-#### 知识搜索页
+### 10.1 资源清单
 
-- 搜索框居中，支持输入后自动补全实体名
-- 搜索结果左侧显示实体列表（标题 + 摘要 + 标签）
-- 右侧展示选中实体的完整 Markdown 渲染
-- 每条搜索结果显示可信度徽章（绿色=已验证，黄色=高可信，灰色=待验证）
+| 资源前缀 | 主要操作 | 详细参见 |
+|---------|---------|---------|
+| `/api/knowledge/nodes` | GET / POST / PATCH / DELETE | API 文档 §4.1 |
+| `/api/knowledge/search` | GET 语义+经验检索 | API 文档 §4.2 |
+| `/api/knowledge/edges` | POST / DELETE 边管理 | API 文档 §4.3 |
+| `/api/knowledge/drafts` | POST / approve / reject / request-revision / batch-approve | API 文档 §4.4 |
+| `/api/knowledge/nodes/:id/feedback` | POST 反馈四值 | API 文档 §4.5 |
+| `/api/knowledge/nodes/:id/promote-to-rule` 等 | 人工演化触发 | API 文档 §4.6 |
+| `/api/knowledge/domains` | 业务域 CRUD + 归档（FR10） | API 文档 §4.7 |
+| `/api/knowledge/sources` | 外部源管理 | API 文档 §4.8 |
+| `/api/knowledge/stats` | 总览统计 | API 文档 §4.9 |
 
-#### 知识详情页
+### 10.2 鉴权
 
-- 上半部分：Markdown 渲染的正文
-- 侧边栏：元数据面板（标签、层级、可信度、最后更新、引用次数）
-- 底部：引用链（哪些实体引用了本实体）和反向引用（本实体引用了哪些实体）
-- 操作按钮：标记已验证 / 提升到公司级 / 创建整理 Issue
+三种方式：Session Cookie（Web UI）/ API Key（Agent 与脚本）/ Run JWT（Paperclip 内部 Agent）。详见 API 文档 §2。
 
-#### 知识 Dashboard
+### 10.3 错误码与通用约定
 
-- 顶部：概览卡片（总实体数、已验证比例、平均可信度、待处理数）
-- 中部：热度 Top 10（水平柱状图）
-- 底部左：未使用实体列表（红色警告）
-- 底部右：即将过期实体列表（黄色警告）
-
-### 9.2 Obsidian 端
-
-- 使用 Obsidian Dataview 插件展示知识索引
-- Agent 修改过的文件在 Obsidian Git 面板中显示 diff
-- 无需额外插件——纯 Markdown + 标准 Obsidian 功能
+参数校验 / metadata schema 校验 / 跨公司隔离 / 速率限制等。详见 API 文档 §3、§7。
 
 ---
 
-## 10. 与 Paperclip 集成规范
+## 11. UI/UX 规范
 
-### 10.1 Agent 工具注册
+**详细规范请见 [UI / 交互设计文档](../design/2026-05-12-llm-wiki-knowledge-engine-ui.md)**。本节仅列要点：
 
-Agent 通过 Paperclip Plugin 系统的 Tool Dispatcher 注册以下工具:
+### 11.1 页面清单（8 个）
+
+`/knowledge/search` · `/knowledge/:id` · `/knowledge/review` · `/knowledge/dashboard` · `/knowledge/editor` · `/knowledge/sources` · `/knowledge/domains` · `/knowledge/graph`
+
+### 11.2 设计令牌
+
+- 节点类型徽章（5 色，固定）、freshness 标签（4 色，固定）、边类型（6 种，固定）
+- **业务域配色**：用户自配（创建 business_domain 时选 color/icon），全站徽章读 `business_domains.color`，详见 UI 文档 §2.4
+
+### 11.3 关键交互
+
+- 搜索：`type:lesson domain:content` 快捷过滤语法
+- 编辑器：`[[` 触发节点自动补全 + 实时预览
+- 详情页：`[[id]]` 可点 + hover 预览小卡
+- 审查队列：Reviewer Agent 初筛结果 + 一键批量
+- 图谱：Cytoscape 三种视图（关系/时间线/域聚类）
+
+### 11.4 移动端
+
+MVP 不针对移动端优化，≥768px 屏幕保证可用。详见 UI 文档 §7。
+
+---
+
+## 12. MCP 服务暴露规范
+
+**详细规范请见 [API 设计文档 §5](../design/2026-05-12-llm-wiki-knowledge-engine-api.md#5-mcp-协议规范)**。本节仅列要点：
+
+### 12.1 工具清单（6 个）
+
+| Tool | 用途 |
+|------|------|
+| `search_knowledge` | 语义+经验检索 |
+| `get_node` | 按 ID 取详情（含 edges） |
+| `propose_node` | 提交 draft 节点 |
+| `record_feedback` | 反馈四值 |
+| `list_recent_lessons` | 拉取最近 N 条 lesson |
+| `list_domains` | 列出当前 company 业务域（供 propose_node 选 domain） |
+
+### 12.2 鉴权
+
+API Key 绑定 `company_id` + `level`，服务端强制 SQL WHERE 过滤，绝不信任客户端声明。详见 API 文档 §5.
+
+### 12.3 部署形态
+
+- 内嵌 Paperclip Server 提供 HTTP/SSE 端点：`/mcp/v1/sse`
+- 独立 stdio 模式：`paperclipai mcp --api-key=<key>`
+
+---
+
+## 13. 与 Paperclip 集成规范
+
+### 13.1 Agent 工具注册
+
+通过 Paperclip Plugin Tool Dispatcher 注册：
 
 ```typescript
 tools: [
-  { name: "search_knowledge_base",  description: "搜索知识库", ... },
-  { name: "write_to_wiki",          description: "将经验写入 wiki/inbox", ... },
-  { name: "mark_entity_stale",      description: "标记实体可能过时", ... },
-  { name: "propose_new_tag",        description: "提议新的用途标签", ... },
+  { name: "search_knowledge_base", description: "搜索 Paperclip 知识库" },
+  { name: "propose_knowledge_node", description: "提交知识节点到审查队列" },
+  { name: "record_knowledge_feedback", description: "对已检索节点反馈" },
+  { name: "mark_node_outdated", description: "标记节点过时" },
 ]
 ```
 
-### 10.2 心跳集成
+### 13.2 心跳集成
 
 ```
 Agent checkout Issue
   → heartbeat-context API
-    → retriever.search(issue.title + issue.description)
+    → retriever.search(issue.title + issue.description, domain=infer(issue.tags))
     → 结果注入 context.knowledge_entries
-  → Agent 执行任务（可随时调用 search_knowledge_base）
+  → Agent 执行
+    → 可随时调 search_knowledge_base
   → 任务完成
     → afterTaskComplete hook
-      → engine.process(extracted_experience)
+      → "本次有教训吗" 提问 → drafter.create()
 ```
 
-### 10.3 Routine 注册
+### 13.3 Routine 注册
+
+需要注册 3 个 Routine：
 
 ```
-Routine: weekly-knowledge-audit
-  触发: cron "0 9 * * 1"
-  Agent: curator-agent
-  Action: freshness.audit() + lifecycle.check()
-  Output: 巡检报告 Issue
+Routine 1: weekly-knowledge-evolution
+  Cron: "0 9 * * 1"               # 每周一 9:00
+  Agent: Curator Agent
+  Actions:
+    - promotion-check()             # 演化第 1 条：升规则
+    - decay-scan()                  # 演化第 2 条：衰减归档
+    - merge-candidate-detect()      # 演化第 3 条：合并提案
+    - conflict-detect()             # 演化第 4 条：冲突审查
+    - freshness-audit()             # 演化第 5 条：时效性巡检
+    - pattern-emergence()           # 演化第 6 条：模式涌现
+  Output: 各类提案 Issue + 巡检报告 Issue
+
+Routine 2: hourly-draft-pre-review
+  Cron: "0 * * * *"                 # 每小时
+  Agent: Reviewer Agent
+  Actions:
+    - 拉取所有 status=pending 且 pre_verdict IS NULL 的 draft
+    - 对每条 draft 跑 LLM 初筛 → 输出 pre_verdict + reasoning + conflicts[]
+    - 写回 knowledge_drafts.pre_verdict / pre_verdict_reasoning / detected_conflicts
+  Output: 审查队列的优先级和初筛建议
+
+Routine 3: daily-knowledge-healthcheck
+  Cron: "0 8 * * *"                 # 每日 8:00
+  Agent: Curator Agent
+  Actions:
+    - 计算 §7.5 六个健康指标，写入 knowledge_metrics 缓存表
+    - 与阈值对比，超阈值生成 alarm Issue
+    - 检测系统是否"沉默"：24h 无 draft / 7d 无审查通过 / embedding 队列堆积
+    - 检测 Routine 1 和 Routine 2 是否按预期执行（失败重试 3 次后告警）
+  Output: 异常时创建 alarm Issue 分配给管理员
 ```
+
+### 13.4 失败信号订阅
+
+`server/src/services/llm-wiki/listeners.ts` 订阅：
+- `issue.reopened`
+- `approval.rejected`
+- `run.cancelled` / `run.timeout`
+- `commit.reverted`（来自 git webhook）
+
+每个监听器调用 `failure-signal-extractor.extract(event)` → 写入 draft。
 
 ---
 
-## 11. 安全与权限模型
+## 14. 安全与权限模型
 
-### 11.1 知识层级访问控制矩阵
+### 14.1 层级访问控制
 
-| 角色 | personal（他人） | project（本项目） | project（他项目） | company |
-|------|------------------|-------------------|-------------------|---------|
-| Agent（本项目） | ✗ | ✓ | ✗ | ✓ |
-| Agent（其他项目） | ✗ | ✗ | ✓（同company） | ✓ |
-| 人类（本项目成员） | ✗ | ✓ | ✗ | ✓ |
-| 人类（知识管理员） | ✗ | ✓ | ✓ | ✓ |
+| 角色 | personal | project | company |
+|------|----------|---------|---------|
+| Agent（本项目） | ✗ | ✓ | ✓ |
+| Agent（他项目，同公司） | ✗ | ✗ | ✓ |
+| 人类（本项目成员） | ✗ | ✓ | ✓ |
+| 人类（公司管理员） | ✗ | ✓ | ✓ |
+| 个人节点创建者 | ✓（自己的） | — | — |
+| 外部 MCP Agent | 按 API Key 权限 | 按 API Key 权限 | 按 API Key 权限 |
 
-### 11.2 写入保护
+### 14.2 写入门控
 
-- Agent 写入 personal 级别 → 拒绝（Agent 不能写入人类个人空间）
-- Agent 写入 project/company 级别 → 允许，但 confidence < 0.7 的内容自动进入 `## 争议/待核实`
-- 人类 Web UI 写入 → 直接通过（不设审核门控）
+- Agent 写入 → 强制走 draft，不能直接落 nodes
+- 人类管理员可 `skip_review=true` 直接写入
+- confidence < 0.5 的内容自动进入"低可信度审查队列"
 
-### 11.3 路径沙箱
+### 14.3 跨公司隔离
 
-```typescript
-const VAULT_ROOT = "/home/admin/obsidian-vault";
-const ALLOWED_DIRS = ["inbox", "wiki", "personal", "templates"];
+- 所有查询强制 `company_id = current_company`
+- MCP API Key 绑定单一 company_id，不可跨公司
 
-function validatePath(filePath: string): void {
-  const resolved = path.resolve(VAULT_ROOT, filePath);
-  if (!resolved.startsWith(VAULT_ROOT)) {
-    throw new Error("Path traversal detected");
-  }
-  const relative = path.relative(VAULT_ROOT, resolved);
-  const topDir = relative.split(path.sep)[0];
-  if (!ALLOWED_DIRS.includes(topDir)) {
-    throw new Error(`Directory not allowed: ${topDir}`);
-  }
-}
-```
+### 14.4 敏感内容过滤
+
+- Draft 写入前过一遍正则 + LLM 过滤：信用卡号、API Key、密码、个人身份信息
+- 命中后阻断写入并记录事件
 
 ---
 
-## 12. 分阶段实施计划
+## 15. 分阶段实施计划
+
+> **关于 implementation plan 的拆分**：本 PRD 涵盖 8 个 Phase（约 10 周）。**每个 Phase 应独立产出一份 implementation plan**（走 `writing-plans` 流程），避免把整套系统压到一份巨型 plan。Phase 之间有依赖（Phase 1 依赖 Phase 0；Phase 2 依赖 Phase 1；其他 Phase 大部分并行可行），建议串行交付以验证每个 Phase 的稳态后再开启下一个。
 
 ### Phase 0: 基础设施（Week 1）
 
-- [ ] Docker 环境升级：`postgres:16-alpine` → `pgvector/pgvector:pg16`
-- [ ] 创建 `wiki_entities` 表和 HNSW 索引
-- [ ] 创建 `server/src/services/obsidian-wiki/` 目录结构
-- [ ] 实现 `utils/fs.ts`（gray-matter 读写 YAML frontmatter）
-- [ ] 实现 `utils/embed.ts`（embedding 生成 + pgvector CRUD）
+- [ ] PG 替换为 `pgvector/pgvector:pg16`（或确认现有镜像已含扩展）
+- [ ] 创建 9 个枚举 + 8 张表 + 索引（migration `0084_llm_wiki_engine.sql`）
+- [ ] **`business_domains` 表先于 `knowledge_nodes` 创建**（节点 FK 依赖）
+- [ ] **公司初始化 seed 逻辑**：新 company 创建时自动 INSERT `general` 业务域；缤果场景可选 seed 当前 5 条业务作为示例数据
+- [ ] Drizzle schema 定义
+- [ ] embedding 服务封装（OpenAI text-embedding-3-small）
 
-**验收**:
-- pgvector 扩展已加载
-- 可以写入/读取 Markdown 文件的 YAML frontmatter
-- 可以生成 embedding 并存到 pgvector 表
+**验收**：
+- pgvector 已加载
+- 8 张表（business_domains / nodes / edges / drafts / revisions / events / sources / metrics）可正常 CRUD
+- 新建 company 时 `general` 业务域自动落地
+- 节点写入时 `business_domain_id` FK 约束生效（指向不存在的 domain → 报错）
+- 可生成 embedding 并 upsert 到 nodes
 
-### Phase 1: 合成管道（Week 2-3）
+### Phase 1: 三路写入 + 审查（Week 2-3）
 
-- [ ] 实现 `extractor.ts`（LLM 实体提取 + JSON 输出）
-- [ ] 实现 `dedup.ts`（双路召回去重）
-- [ ] 实现 `synthesizer.ts`（LLM 合成 Merge/Create）
-- [ ] 实现 `linker.ts`（正向链接 + 反向引用）
-- [ ] 实现 `engine.ts`（主入口 process()）
-- [ ] 编写 `prompts/editor.ts` 和 `prompts/extractor.ts`
+- [ ] Draft 服务：`POST /api/knowledge/drafts`
+- [ ] 审查 API：approve / reject / request-revision / batch
+- [ ] Path A：afterTaskComplete hook + LLM 自评 prompt
+- [ ] Path B：事件监听器（issue.reopened, approval.rejected, run.cancelled, commit.reverted）
+- [ ] Path C：Web UI 编辑器 + Agent tool `propose_knowledge_node`
+- [ ] Draft 通过后自动落 nodes + 解析 [[id]] 生成 edges
 
-**验收**:
-- 向 inbox/ 放一篇测试笔记 → engine.process() → wiki/ 输出正确的实体文件
-- 向 inbox/ 放第二篇相关笔记 → 正确合并到已有实体而非创建新文件
-- 实体文件包含正确的 YAML frontmatter 和 [[双链]]
-- 反向引用自动追加
+**验收**：
+- 三路都能产出 draft
+- 审查通过后正确写 nodes + edges + revisions + events
+- 路径 C 跳审查可直接写入（管理员权限）
 
-### Phase 2: Agent 检索（Week 3-4）
+### Phase 2: 检索 + Agent 集成（Week 3-4）
 
-- [ ] 实现 `retriever.ts`（语义搜索 + 经验推荐两路合并）
-- [ ] 集成到 `heartbeat-context` API
-- [ ] 实现检索反馈闭环（use_count、last_used 更新）
-- [ ] 注册 `search_knowledge_base` Agent tool
+- [ ] Retriever：语义 + 经验两路 + freshness 加权
+- [ ] `GET /api/knowledge/search`
+- [ ] heartbeat-context 集成
+- [ ] Agent tool `search_knowledge_base`
+- [ ] 反馈 API `POST /api/knowledge/nodes/:id/feedback`
 
-**验收**:
-- Agent checkout Issue → heartbeat-context 返回相关知识条目
-- 搜索结果受层级权限正确过滤
-- 完成任务后 use_count 自动递增
+**验收**：
+- Agent checkout 后 context 注入 Top-5 节点
+- freshness 标签正确（fresh / stale / outdated）
+- 反馈写入正确驱动统计变化
 
-### Phase 3: 维护与生命周期（Week 4-5）
+### Phase 3: 演化引擎 + Reviewer + 自检（Week 4-5）
 
-- [ ] 实现 `freshness.ts`（巡检 + 引用评估）
-- [ ] 实现 `lifecycle.ts`（提升/分裂/合并检测）
-- [ ] 注册 Curator Agent 和 weekly-knowledge-audit Routine
-- [ ] 实现用途标签自动标注
+- [ ] Routine 1 `weekly-knowledge-evolution`
+- [ ] **6 条自动行为**：升规则 / 衰减 / 合并 / 冲突 / 时效巡检 / **模式涌现**
+- [ ] Curator Agent 配置
+- [ ] **Reviewer Agent 配置 + Routine 2 `hourly-draft-pre-review`**（梯度审查）
+- [ ] **Routine 3 `daily-knowledge-healthcheck`** + 6 个健康指标计算 + `knowledge_metrics` 缓存表
+- [ ] 演化产生的 Issue 自动指派
 
-**验收**:
-- 每周自动生成巡检报告
-- 跨项目引用触发提升建议
-- 超大实体触发拆分建议
-- 高相似度实体触发合并建议
+**验收**：
+- 模拟数据触发 6 条行为，分别正确产生 Issue
+- 升规则后 type 改 + derived_from 边生成
+- outdated 节点正确从主搜索池排除
+- 模式涌现：5+ 条同主题 lesson → 产出 `concept`（is_pattern=true）节点 + references 边
+- Reviewer Agent 对所有 pending draft 写入 pre_verdict
+- 自检 Routine 在异常时正确开 alarm Issue（沉默检测 + 阈值检测）
 
 ### Phase 4: Web UI + 审查队列（Week 5-6）
 
-- [ ] 知识搜索页（`/knowledge/search`）
-- [ ] 知识详情页（`/knowledge/实体名`）
-- [ ] 知识 Dashboard（`/knowledge/dashboard`）
-- [ ] 审查队列页（`/knowledge/review`）: 待审核/已通过/已驳回 三 Tab
-- [ ] 审查操作 API（批准/驳回/请求修改/批量批准）
-- [ ] API 路由实现（搜索、CRUD、合成触发、统计、审查）
+- [ ] `/knowledge/search` + `/knowledge/:id`
+- [ ] `/knowledge/review`（4 Tab + 批量审批）
+- [ ] `/knowledge/dashboard`
+- [ ] `/knowledge/editor`
+- [ ] `/knowledge/sources`
 
-**验收**:
-- 搜索框输入 → 返回语义匹配结果
-- 详情页正确渲染 Markdown + 元数据
-- Dashboard 展示统计数据
-- 审查队列正常展示 Agent 写入和爬虫采集的待审核内容
-- 一键批准/驳回功能正常
+**验收**：
+- 搜索 / 详情 / 审查 / Dashboard 端到端可用
+- 编辑器支持 `[[id]]` 自动补全
+- 审查支持批量勾选
 
-### Phase 5: 爬虫 + 采集器 + 模板（Week 7-8）
+### Phase 5: 外部源采集 + 模板（Week 7-8）
 
-- [ ] 实现 `KnowledgeCollector` 接口
-- [ ] 实现 `WebCrawler`（HTML→MD、质量过滤、礼貌策略）
-- [ ] 实现 `RSSCollector`
-- [ ] 实现源管理系统（Web UI + API）
-- [ ] 实现模板系统（自动匹配、模板发现）
-- [ ] 实现外链扩展检测（种子源→发现新源→建议加入白名单）
+- [ ] KnowledgeCollector 接口
+- [ ] WebCrawler / RSSCollector / GitHubCollector 三个内置
+- [ ] 源管理 UI
+- [ ] 三层采集策略
+- [ ] 质量过滤（LLM 评分 < 4 丢弃）
+- [ ] 礼貌策略（robots.txt / 速率限制）
 
-**验收**:
-- 添加源 → 自动检测 RSS → 按频率抓取
-- 新文章入 inbox → 合成管道正常处理
-- 质量过滤正确丢弃低质量内容
-- 模板根据内容类型自动匹配
-- 插件系统可注册自定义 Collector
+**验收**：
+- 添加源 → 自动按频率抓 → 入 draft → 审查 → 落 nodes
+- 质量过滤正确丢弃低质内容
+- 单域并发/全局并发约束生效
 
-### Phase 6: 上线与调优（Week 8-9）
+### Phase 6: MCP 暴露（Week 8-9）
 
-- [ ] 全链路测试（写入 → 检索 → 反馈 → 维护 闭环）
-- [ ] 性能优化（pgvector 查询调优、HNSW 参数调优）
-- [ ] 安全审计（路径沙箱、SQL 注入、权限隔离）
-- [ ] 文档上线（开发者指南、用户指南）
+- [ ] Paperclip MCP Server（HTTP/SSE + stdio）
+- [ ] 5 个 MCP 工具实现
+- [ ] API Key 鉴权与多租户隔离
+- [ ] CLI 子命令 `paperclipai mcp`
+
+**验收**：
+- Claude Code 通过 MCP 可成功 search / propose / feedback
+- 跨公司隔离严格（用 A 公司 key 查不到 B 公司知识）
+
+### Phase 7: 图谱可视化（Week 9-10）
+
+- [ ] `/knowledge/graph` 页面（Cytoscape.js）
+- [ ] 三种视图（关系图 / 时间线 / 业务域聚类）
+- [ ] 节点 > 500 时的种子节点 + 按需展开
+
+**验收**：
+- 500 节点以内首屏渲染 < 1s
+- 三种视图正确呈现
+- 搜索高亮与跳转正常
 
 ---
 
-## 13. 验收标准
+## 16. 验收标准
 
-### 13.1 功能验收
-
-| 验收项 | 标准 |
-|--------|------|
-| 知识写入 | Agent 完成任务后，经验自动写入 inbox 并合成到 wiki/ |
-| 知识检索 | Agent checkout 任务后，上下文包含 ≤5 条相关知识和 ≤3 条经验推荐 |
-| 双链完整性 | 实体创建后，所有被引用实体包含回链 |
-| 可信度 | confidence < 0.5 的内容在 inbox 等待审核，不进 wiki/ |
-| 新鲜度 | 超过 90 天未更新实体被巡检标记 |
-| 层级隔离 | 项目 A 的 Agent 搜不到项目 B 的项目级知识 |
-| 生命周期 | 满足条件的实体自动生成提升/分裂/合并 Issue |
-
-### 13.2 性能验收
+### 16.1 功能验收
 
 | 验收项 | 标准 |
 |--------|------|
-| 搜索延迟 | P95 < 500ms |
-| 合成耗时 | 单实体 < 30s |
-| 文件监控 | inbox 新文件 5s 内触发处理 |
+| 知识写入 | 三路都能产出 draft 并经审查落地 |
+| 知识检索 | 任务上下文包含 Top-5 节点，带 freshness 标签 |
+| 双链完整 | content 内 `[[id]]` 自动落 edge，反向引用可查 |
+| 时效降权 | volatility=fast 节点 90 天未验证后 freshness < 0.7 |
+| 演化触发 | 6 条自动行为分别能正确产生 Issue（含模式涌现） |
+| 层级隔离 | 项目 A 的 Agent 无法搜到项目 B 的 project 级节点 |
+| MCP 接入 | Claude Code 通过 MCP 能正常工作 |
+| 图谱可视 | 500 节点以内图视图流畅 |
+| Reviewer Agent | 所有 pending draft 都被打上 pre_verdict；人审带宽放大 ≥ 5 倍 |
+| 健康自检 | 6 项健康指标在 Dashboard 显示；任一异常时自动开 alarm Issue |
+| 模式涌现 | 同主题 ≥ 5 条 lesson 能涌现出 concept 节点（is_pattern=true） |
 
-### 13.3 安全验收
+### 16.2 性能验收
 
-| 验收项 | 标准 |
-|--------|------|
-| 路径沙箱 | 任何 `../` 或绝对路径无法逃逸 vault 根目录 |
-| SQL 注入 | 参数化查询，无法拼接 SQL |
-| 层级权限 | SQL WHERE 子句强制过滤 |
+| 指标 | 标准 |
+|------|------|
+| 语义搜索 P95 | < 500ms |
+| Draft 写入 | < 100ms |
+| MCP 工具调用 P95 | < 800ms |
+| 图谱首屏 | < 1s（500 节点） |
 
+### 16.3 安全验收
 
-## 14. 附录
+| 项 | 标准 |
+|----|------|
+| 层级权限 | SQL WHERE 强制过滤，MCP 服务端二次过滤 |
+| 跨公司隔离 | API Key 绑定 company_id，跨公司查询返回空 |
+| 敏感内容 | 信用卡 / API Key / 密码模式被阻断 |
 
-### 14.1 术语表
+---
+
+## 17. 附录
+
+### 17.1 术语表
 
 | 术语 | 定义 |
 |------|------|
-| Vault | Obsidian 知识库的根目录 |
-| 实体 (Entity) | wiki/ 下的一篇 Markdown 文件，代表一个独立的知识条目 |
-| 一入一出 | 每次处理一个新文件 + 一个已有实体的原子化操作模式 |
-| 正向链接 | 在正文中识别已有实体名并包裹 `[[WikiLink]]` |
-| 反向引用 | 在目标实体中追加指向源实体的链接 |
-| 自适应检查 | 检查实体 A 引用 B 时，B 是否也包含对 A 的引用 |
-| 新鲜度评分 | freshness_score: 1.0 = 最新，0.0 = 完全过期 |
-| 爬虫 | 自动从配置的外部源采集知识内容的程序，遵守 robots.txt 和礼貌策略 |
-| 采集器 (Collector) | 实现 `KnowledgeCollector` 接口的插件，可接入不同的知识来源（Web、RSS、GitHub 等）|
-| 源 (Source) | 爬虫/采集器的数据来源，是 URL、RSS feed、GitHub 仓库等 |
-| 审查队列 | 所有待审核知识变更的统一管理界面，支持批量审批 |
-| 知识模板 | 针对不同知识类型（概念/工具/流程/故障）的 Markdown 结构模板 |
+| Node | 知识库的原子单元，对应 `knowledge_nodes` 表一行 |
+| Edge | 节点间有向关系，对应 `knowledge_edges` 表一行 |
+| Draft | 待审查的节点变更草稿 |
+| Revision | 节点修改快照（每次 UPDATE 前自动写） |
+| Freshness | 节点时效评分（实时算，基于 volatility + verified_at + valid_until） |
+| Volatility | 节点变化速率（stable / slow / fast） |
+| Business Domain | 业务条线维度，由用户在 `business_domains` 表中自由定义（每公司独立集合）；系统默认 seed `general` 兜底；不是固定枚举 |
+| Curator Agent | 专职维护知识库的 Agent，跑演化 Routine |
+| Reviewer Agent | 专职初筛 draft 的 Agent，输出 pre_verdict 给人审参考（见 §6.4） |
+| KnowledgeCollector | 外部源采集器可插拔接口 |
+| MCP | Model Context Protocol，外部 Agent 接入协议 |
 
-### 14.2 技术依赖
+### 17.2 技术依赖
 
 | 依赖 | 版本 | 用途 |
 |------|------|------|
-| pgvector | 0.7+ | 向量存储和检索 |
-| gray-matter | 4.x | Markdown frontmatter 解析 |
-| chokidar | 3.x | 文件系统监控 |
-| @anthropic-ai/sdk | 复用 Paperclip 现有 | LLM 调用（合成、提取） |
-| drizzle-orm | 复用 Paperclip 现有 | wiki_entities 表操作 |
+| pgvector | 0.7+ | 向量存储与 HNSW 检索 |
+| Drizzle ORM | 复用 | 全部 8 张表（business_domains / nodes / edges / drafts / revisions / events / sources / metrics）操作 |
+| @anthropic-ai/sdk | 复用 | LLM 调用（自评、合成、冲突检测） |
+| OpenAI Embedding API | — | text-embedding-3-small（1536 维） |
+| Cytoscape.js | 3.x | 图谱可视化 |
+| @modelcontextprotocol/sdk | latest | MCP Server 实现 |
+| turndown + readability | — | HTML → Markdown 转换（FR11 爬虫） |
 
-### 14.3 参考资料
+### 17.3 参考资料
 
-- Karpathy "LLM-Wiki" 范式: 一种让 LLM 主动维护结构化知识库的方法论
-- pgvector HNSW 索引: https://github.com/pgvector/pgvector#hnsw
-- Obsidian YAML frontmatter: https://help.obsidian.md/Editing+and+formatting/Properties
+- Karpathy "LLM-friendly Wiki" 范式
+- pgvector HNSW: <https://github.com/pgvector/pgvector#hnsw>
+- Model Context Protocol: <https://modelcontextprotocol.io>
+- 前置设计：[2026-05-12-obsidian-wiki-engine-design.md](./2026-05-12-obsidian-wiki-engine-design.md)（v1 精简设计版，保留）
+- 前置设计：[2026-05-12-obsidian-wiki-database-design.md](./2026-05-12-obsidian-wiki-database-design.md)（v1 数据库设计版，部分内容复用）
+
+### 17.4 SQL DDL 完整定义
+
+完整 8 张表 + 9 个枚举的 DDL 见后续 migration 文件 `packages/db/src/migrations/0084_llm_wiki_engine.sql`（实现阶段产出，不在 PRD 内嵌）。本 PRD §9 已给出字段级描述。
+
+---
+
+**结束**
