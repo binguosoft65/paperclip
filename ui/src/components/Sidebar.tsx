@@ -12,6 +12,7 @@ import {
   Repeat,
   GitBranch,
   Settings,
+  BookOpen,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { SidebarSection } from "./SidebarSection";
@@ -118,6 +119,7 @@ export function Sidebar() {
           <SidebarNavItem to="/skills" label={t("sidebar.skills")} icon={Boxes} />
           <SidebarNavItem to="/costs" label={t("sidebar.costs")} icon={DollarSign} />
           <SidebarNavItem to="/activity" label={t("sidebar.activity")} icon={History} />
+          <SidebarNavItem to="/knowledge/drafts" label="知识库" icon={BookOpen} />
           <SidebarNavItem to="/company/settings" label={t("sidebar.settings")} icon={Settings} />
         </SidebarSection>
 
