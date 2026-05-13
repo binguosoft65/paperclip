@@ -186,6 +186,14 @@ const BUNDLED_PLUGIN_EXAMPLES: AvailablePluginExample[] = [
     localPath: "packages/plugins/examples/plugin-orchestration-smoke-example",
     tag: "example",
   },
+  {
+    packageName: "@paperclipai/plugin-knowledge-engine",
+    pluginKey: "paperclip.knowledge-engine",
+    displayName: "Knowledge Engine",
+    description: "First-party LLM-Wiki plugin (Phase 1b-2): exposes propose_knowledge_node Agent tool for writing into the Paperclip knowledge graph.",
+    localPath: "packages/plugins/paperclip-plugin-knowledge-engine",
+    tag: "example",
+  },
 ];
 
 function listBundledPluginExamples(): AvailablePluginExample[] {
