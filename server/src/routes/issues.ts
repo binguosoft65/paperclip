@@ -65,6 +65,7 @@ import {
   workProductService,
   type KnowledgeDrafterService,
 } from "../services/index.js";
+import { type KnowledgeRetrieverService, type SearchResultItem } from "../services/knowledge-retriever.js";
 import { logger } from "../middleware/logger.js";
 import { conflict, forbidden, HttpError, notFound, unauthorized, unprocessable } from "../errors.js";
 import { assertBoard, assertCompanyAccess, getActorInfo } from "./authz.js";
@@ -739,11 +740,13 @@ export function issueRoutes(
     searchRateLimiter?: CompanySearchRateLimiter;
     pluginWorkerManager?: PluginWorkerManager;
     knowledgeDrafter?: KnowledgeDrafterService;
+    knowledgeRetriever?: KnowledgeRetrieverService;
   } = {},
 ) {
   const router = Router();
   const svc = issueService(db);
   const drafter = opts.knowledgeDrafter;
+  const retriever = opts.knowledgeRetriever;
   const access = accessService(db);
   const heartbeat = heartbeatService(db, {
     pluginWorkerManager: opts.pluginWorkerManager,
@@ -1528,6 +1531,26 @@ export function issueRoutes(
         currentExecutionWorkspacePromise,
       ]);
 
+    // Phase 2b: 注入 Top-5 知识节点。retriever 失败 fail-open（返回空数组）。
+    let knowledgeNodes: SearchResultItem[] = [];
+    if (retriever) {
+      const query = `${issue.title}\n\n${issue.description ?? ""}`.trim();
+      try {
+        const result = await retriever.search({
+          companyId: issue.companyId,
+          projectId: issue.projectId ?? null,
+          query,
+          limit: 5,
+        });
+        knowledgeNodes = result.results;
+      } catch (err) {
+        logger.warn(
+          { err, issueId: issue.id },
+          "knowledge retriever failed in heartbeat-context",
+        );
+      }
+    }
+
     res.json({
       issue: {
         id: issue.id,
@@ -1598,6 +1621,7 @@ export function issueRoutes(
           }
         : null,
       currentExecutionWorkspace,
+      knowledgeNodes,
     });
   });
 
