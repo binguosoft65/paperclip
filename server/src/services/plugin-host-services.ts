@@ -49,6 +49,7 @@ import { documentService } from "./documents.js";
 import { heartbeatService } from "./heartbeat.js";
 import { budgetService } from "./budgets.js";
 import { issueApprovalService } from "./issue-approvals.js";
+import { knowledgeDraftService } from "./knowledge-drafts.js";
 import { subscribeCompanyLiveEvents } from "./live-events.js";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
@@ -537,6 +538,7 @@ export function buildHostServices(
   const budgets = budgetService(db);
   const issueApprovals = issueApprovalService(db);
   const assets = assetService(db);
+  const knowledgeDrafts = knowledgeDraftService(db);
   const scopedBus = eventBus.forPlugin(pluginKey);
 
   // Track active session event subscriptions for cleanup
@@ -2104,6 +2106,52 @@ export function buildHostServices(
           .returning()
           .then((rows) => rows.length);
         if (deleted === 0) throw new Error(`Session not found: ${params.sessionId}`);
+      },
+    },
+
+    knowledge: {
+      async proposeDraft(params) {
+        const companyId = ensureCompanyId(params.companyId);
+        await ensurePluginAvailableForCompany(companyId);
+
+        // Plugin 调用时由 host 决定 actor，不接受 plugin 伪造身份。
+        // Phase 1b-2 简化：source="manual"，actor 用 system user 兜底。
+        // 后续 phase 若要写真实 sourceAgentId 需要从 plugin worker 调用上下文
+        // 透传 agentId（当前 host bridge 接口未传，留给以后扩展）。
+        const actor = { type: "user" as const, userId: "system", isAdmin: false };
+
+        const validUntil = params.valid_until ? new Date(params.valid_until) : null;
+        const metadataCombined: Record<string, unknown> = {
+          ...(params.metadata ?? {}),
+          ...(params.used_for ? { used_for: params.used_for } : {}),
+        };
+
+        const created = await knowledgeDrafts.create({
+          companyId,
+          actor,
+          payload: {
+            title: params.title,
+            content: params.content,
+            type: params.type,
+            level: params.level,
+            business_domain_name: params.business_domain_name,
+            metadata: metadataCombined,
+            volatility: params.volatility,
+            valid_until: validUntil,
+            confidence: params.confidence ?? 0.5,
+            source: "manual",
+            source_run_id: params.source_run_id ?? null,
+            source_issue_id: params.source_issue_id ?? null,
+            target_node_id: params.target_node_id ?? null,
+            skip_review: false,
+          },
+        });
+
+        return {
+          id: created.id,
+          status: created.status,
+          preVerdict: created.preVerdict ?? null,
+        };
       },
     },
 
