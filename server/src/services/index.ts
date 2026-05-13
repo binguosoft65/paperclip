@@ -82,3 +82,9 @@ export {
   type KnowledgeFeedbackService,
   type KnowledgeFeedbackInput,
 } from "./knowledge-feedback.js";
+export {
+  reviewerAgentService,
+  type ReviewerAgentService,
+  type ReviewerLlmClient,
+  REVIEWER_SYSTEM_PROMPT,
+} from "./knowledge-reviewer.js";
