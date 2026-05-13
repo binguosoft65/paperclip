@@ -70,3 +70,10 @@ export {
   type KnowledgeDrafterTriggerKind,
   type DrafterChatClient,
 } from "./knowledge-drafter.js";
+export {
+  knowledgeRetrieverService,
+  type KnowledgeRetrieverService,
+  type KnowledgeSearchInput,
+  type SearchResultItem,
+  type KnowledgeSearchResult,
+} from "./knowledge-retriever.js";
