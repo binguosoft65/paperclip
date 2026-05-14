@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
+import { logger } from "../middleware/logger.js";
 import type { LlmWikiService } from "./llm-wiki.js";
 import type { KnowledgeRetrieverService } from "./knowledge-retriever.js";
 import type { IssueServiceLike } from "./knowledge-healthcheck.js";
@@ -128,13 +129,87 @@ export function knowledgeEvolutionService(
   _llm: LlmWikiService,
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   _retriever: KnowledgeRetrieverService,
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  _issueSvc: IssueServiceLike | null,
+  issueSvc: IssueServiceLike | null,
 ) {
-  // The unused-prefixed params are wired into the factory now so subsequent
-  // Task 3-6 commits can add methods that consume them without changing the
-  // factory signature (and therefore without changing the call sites in
-  // routes/knowledge.ts and app.ts that Tasks 7-8 will set up).
+  // _llm + _retriever remain unused until Tasks 4 + 6 (merge / pattern_emergence).
+  // issueSvc is now consumed by promotionCheck + freshnessAudit (Task 3) and
+  // will be reused by mergeCandidateDetect + conflictDetect + patternEmergence.
+
+  // ──────────────────────────────────────────────────────────────────
+  // Internal helpers (shared by behaviors that propose via Issue)
+  // ──────────────────────────────────────────────────────────────────
+
+  /**
+   * Create an Issue with the v0.2-correct issueSvc.create signature
+   * (positional companyId; no `labels`, no `metadata` data fields).
+   * Returns the new Issue's id on success; returns null and logs a
+   * warning if issueSvc is unavailable or create() throws.
+   * Caller decides whether null is a soft skip or a counted error.
+   */
+  async function proposeViaIssue(
+    companyId: string,
+    titlePrefix: string,
+    title: string,
+    body: string,
+  ): Promise<string | null> {
+    if (!issueSvc) {
+      logger.warn(
+        { companyId, titlePrefix },
+        "evolution: issueSvc unavailable, Issue not created",
+      );
+      return null;
+    }
+    try {
+      const issue = await issueSvc.create(companyId, {
+        title: `${titlePrefix} ${title}`,
+        description: body,
+        status: "todo",
+        priority: "medium",
+      });
+      return issue.id;
+    } catch (err) {
+      logger.warn(
+        { err, companyId, titlePrefix },
+        "evolution: Issue creation failed",
+      );
+      return null;
+    }
+  }
+
+  /**
+   * After a successful proposal Issue creation, record the dedup marker
+   * on the source node + write an audit event. Both mutations land in a
+   * single CTE statement so callers only issue one db.execute per
+   * successful proposal (matches decayScan's single-statement pattern;
+   * keeps test mocking simple).
+   *
+   * v0.2 dedup strategy: writes to knowledge_nodes.metadata, NOT to
+   * issues.metadata (which does not exist in this fork's schema).
+   */
+  async function recordProposalSuccess(params: {
+    nodeId: string;
+    proposalAtKey: string; // e.g. 'last_promotion_proposal_at'
+    issueIdKey: string; // e.g. 'last_promotion_issue_id'
+    issueId: string;
+    eventType: string; // e.g. 'promoted' / 'verification_requested'
+  }): Promise<void> {
+    await db.execute(sql`
+      WITH up AS (
+        UPDATE knowledge_nodes
+        SET metadata = metadata || jsonb_build_object(
+          ${params.proposalAtKey}::text, NOW()::text,
+          ${params.issueIdKey}::text, ${params.issueId}::text
+        )
+        WHERE id = ${params.nodeId}::uuid
+        RETURNING id
+      )
+      INSERT INTO knowledge_node_events (node_id, event_type, metadata, created_at)
+      SELECT id, ${params.eventType}::text,
+             jsonb_build_object('proposed', true, 'issue_id', ${params.issueId}::text),
+             NOW()
+      FROM up
+    `);
+  }
 
   // ──────────────────────────────────────────────────────────────────
   // Behavior #2 — decayScan (PRD §FR6 row 2)
@@ -182,6 +257,229 @@ export function knowledgeEvolutionService(
     };
   }
 
+  // ──────────────────────────────────────────────────────────────────
+  // Behavior #1 — promotionCheck (PRD §FR6 row 1)
+  //
+  // Trigger: type='lesson' AND status='active'
+  //          AND trigger_count >= 3 AND prevention_score >= 0.7
+  //          AND NOT in cooldown (per-node metadata, 7-day default).
+  // Effect:  for each candidate, create a proposal Issue
+  //          "[Evolution:promotion] 建议升级为 rule: {title}".
+  //          On Issue success: write knowledge_nodes.metadata
+  //          .last_promotion_proposal_at + last_promotion_issue_id +
+  //          an audit event with event_type='promoted', proposed=true.
+  //          NOT a direct type change — human approves the Issue to
+  //          flip type lesson→rule (Phase 4 UI / manual route call).
+  // ──────────────────────────────────────────────────────────────────
+  async function promotionCheck(companyId: string): Promise<BehaviorResult> {
+    const t = BEHAVIOR_LIMITS.promotion_check;
+    const candidates = (await db.execute(sql`
+      SELECT id, title, type, trigger_count, prevention_score
+      FROM knowledge_nodes
+      WHERE company_id = ${companyId}
+        AND type = 'lesson'
+        AND status = 'active'
+        AND trigger_count >= ${t.triggerCountMin}::int
+        AND prevention_score >= ${t.preventionScoreMin}::numeric
+        AND (metadata->>'evolution_cooldown_until' IS NULL
+             OR (metadata->>'evolution_cooldown_until')::timestamptz < NOW())
+        AND (metadata->>'last_promotion_proposal_at' IS NULL
+             OR (metadata->>'last_promotion_proposal_at')::timestamptz
+                  < NOW() - (${String(t.cooldownDays)} || ' days')::INTERVAL)
+      ORDER BY prevention_score DESC, trigger_count DESC
+      LIMIT 50
+    `)) as Array<{
+      id: string;
+      title: string;
+      type: string;
+      trigger_count: number;
+      prevention_score: number;
+    }>;
+
+    let issuesCreated = 0;
+    const errors: Array<{ subject: string; reason: string }> = [];
+
+    for (const c of candidates) {
+      const body = [
+        `Node id: ${c.id}`,
+        `当前 type: ${c.type}`,
+        `trigger_count: ${c.trigger_count} (≥ ${t.triggerCountMin})`,
+        `prevention_score: ${c.prevention_score} (≥ ${t.preventionScoreMin})`,
+        ``,
+        `请人审决定是否升级为 rule。通过后类型将改为 rule + 添加 derived_from 边。`,
+      ].join("\n");
+      const issueId = await proposeViaIssue(
+        companyId,
+        "[Evolution:promotion]",
+        `建议升级为 rule: ${c.title}`,
+        body,
+      );
+      if (issueId === null) {
+        errors.push({ subject: c.id, reason: "issue_create_failed_or_unavailable" });
+        continue;
+      }
+      try {
+        await recordProposalSuccess({
+          nodeId: c.id,
+          proposalAtKey: "last_promotion_proposal_at",
+          issueIdKey: "last_promotion_issue_id",
+          issueId,
+          eventType: "promoted",
+        });
+        issuesCreated += 1;
+      } catch (err) {
+        errors.push({
+          subject: c.id,
+          reason: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+
+    return {
+      behavior: "promotion_check",
+      candidatesFound: candidates.length,
+      issuesCreated,
+      draftsCreated: 0,
+      edgesCreated: 0,
+      nodesModified: issuesCreated,
+      errors,
+      details: {
+        trigger_count_min: t.triggerCountMin,
+        prevention_score_min: t.preventionScoreMin,
+        cooldown_days: t.cooldownDays,
+      },
+    };
+  }
+
+  // ──────────────────────────────────────────────────────────────────
+  // Behavior #5 — freshnessAudit (PRD §FR6 row 5)
+  //
+  // 3-way UNION ALL: (a) valid_until 临近 7 天 / (b) volatility=fast
+  // 90 天未验证 / (c) volatility=slow 365 天未验证.
+  // Per matched row, create "[Evolution:freshness] 请验证 [节点]" Issue.
+  // On success: record proposal marker on node metadata + write event
+  // event_type='verification_requested'. Does NOT touch verified_at —
+  // that's the human reviewer's job after they actually verify.
+  // ──────────────────────────────────────────────────────────────────
+  async function freshnessAudit(companyId: string): Promise<BehaviorResult> {
+    const t = BEHAVIOR_LIMITS.freshness_audit;
+    const candidates = (await db.execute(sql`
+      (
+        SELECT id, title, 'expiring_validity'::text AS reason,
+               valid_until, verified_at, volatility
+        FROM knowledge_nodes
+        WHERE company_id = ${companyId}
+          AND status = 'active'
+          AND valid_until IS NOT NULL
+          AND valid_until BETWEEN NOW()
+               AND NOW() + (${String(t.validUntilWindowDays)} || ' days')::INTERVAL
+          AND (metadata->>'last_freshness_proposal_at' IS NULL
+               OR (metadata->>'last_freshness_proposal_at')::timestamptz
+                    < NOW() - (${String(t.cooldownDays)} || ' days')::INTERVAL)
+      )
+      UNION ALL
+      (
+        SELECT id, title, 'fast_stale'::text AS reason,
+               valid_until, verified_at, volatility
+        FROM knowledge_nodes
+        WHERE company_id = ${companyId}
+          AND status = 'active'
+          AND volatility = 'fast'
+          AND (verified_at IS NULL
+               OR verified_at < NOW() - (${String(t.fastVerifyWindowDays)} || ' days')::INTERVAL)
+          AND (metadata->>'last_freshness_proposal_at' IS NULL
+               OR (metadata->>'last_freshness_proposal_at')::timestamptz
+                    < NOW() - (${String(t.cooldownDays)} || ' days')::INTERVAL)
+      )
+      UNION ALL
+      (
+        SELECT id, title, 'slow_stale'::text AS reason,
+               valid_until, verified_at, volatility
+        FROM knowledge_nodes
+        WHERE company_id = ${companyId}
+          AND status = 'active'
+          AND volatility = 'slow'
+          AND (verified_at IS NULL
+               OR verified_at < NOW() - (${String(t.slowVerifyWindowDays)} || ' days')::INTERVAL)
+          AND (metadata->>'last_freshness_proposal_at' IS NULL
+               OR (metadata->>'last_freshness_proposal_at')::timestamptz
+                    < NOW() - (${String(t.cooldownDays)} || ' days')::INTERVAL)
+      )
+      ORDER BY reason, id
+      LIMIT 100
+    `)) as Array<{
+      id: string;
+      title: string;
+      reason: string;
+      valid_until: Date | string | null;
+      verified_at: Date | string | null;
+      volatility: string;
+    }>;
+
+    let issuesCreated = 0;
+    const errors: Array<{ subject: string; reason: string }> = [];
+    const reasonCounts: Record<string, number> = {
+      expiring_validity: 0,
+      fast_stale: 0,
+      slow_stale: 0,
+    };
+
+    for (const c of candidates) {
+      reasonCounts[c.reason] = (reasonCounts[c.reason] ?? 0) + 1;
+      const body = [
+        `Node id: ${c.id}`,
+        `volatility: ${c.volatility}`,
+        `verified_at: ${c.verified_at ?? "(never)"}`,
+        `valid_until: ${c.valid_until ?? "(none)"}`,
+        `Reason: ${c.reason}`,
+        ``,
+        `请人审验证该节点的内容仍然准确。验证后将 verified_at 设为当前时间。`,
+      ].join("\n");
+      const issueId = await proposeViaIssue(
+        companyId,
+        "[Evolution:freshness]",
+        `请验证: ${c.title}`,
+        body,
+      );
+      if (issueId === null) {
+        errors.push({ subject: c.id, reason: "issue_create_failed_or_unavailable" });
+        continue;
+      }
+      try {
+        await recordProposalSuccess({
+          nodeId: c.id,
+          proposalAtKey: "last_freshness_proposal_at",
+          issueIdKey: "last_freshness_issue_id",
+          issueId,
+          eventType: "verification_requested",
+        });
+        issuesCreated += 1;
+      } catch (err) {
+        errors.push({
+          subject: c.id,
+          reason: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+
+    return {
+      behavior: "freshness_audit",
+      candidatesFound: candidates.length,
+      issuesCreated,
+      draftsCreated: 0,
+      edgesCreated: 0,
+      nodesModified: issuesCreated,
+      errors,
+      details: {
+        valid_until_window_days: t.validUntilWindowDays,
+        fast_verify_window_days: t.fastVerifyWindowDays,
+        slow_verify_window_days: t.slowVerifyWindowDays,
+        cooldown_days: t.cooldownDays,
+        reason_counts: reasonCounts,
+      },
+    };
+  }
+
   return {
     /**
      * Internal methods exposed for unit tests. Task 7's runEvolution
@@ -191,6 +489,8 @@ export function knowledgeEvolutionService(
      */
     __test__: {
       decayScan,
+      promotionCheck,
+      freshnessAudit,
     },
   };
 }

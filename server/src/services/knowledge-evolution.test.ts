@@ -108,3 +108,245 @@ describe("BEHAVIOR_LIMITS", () => {
     expect(ds.cooldownDays).toBeUndefined();
   });
 });
+
+// ──────────────────────────────────────────────────────────────────
+// promotionCheck (PRD §FR6 row 1: lesson + trigger_count≥3 +
+//                                  prevention_score≥0.7 → propose
+//                                  upgrade to rule via Issue)
+// ──────────────────────────────────────────────────────────────────
+
+/**
+ * fakeIssueSvc returns canned id values from `.create.mockResolvedValueOnce`
+ * sequence. Test code seeds the mocks before calling the behavior.
+ */
+function fakeIssueSvc() {
+  return { create: vi.fn() } as never;
+}
+
+describe("promotionCheck", () => {
+  it("creates one Issue per candidate + records dedup metadata", async () => {
+    // 1st execute: candidate SELECT returns 2 rows.
+    // Then per candidate: 1 execute for recordProposalSuccess CTE.
+    const db = fakeDb(
+      [
+        { id: "n-1", title: "Avoid singletons", type: "lesson", trigger_count: 5, prevention_score: 0.85 },
+        { id: "n-2", title: "Always validate input", type: "lesson", trigger_count: 4, prevention_score: 0.75 },
+      ],
+      [], // recordProposalSuccess for n-1 (no return rows needed)
+      [], // recordProposalSuccess for n-2
+    );
+    const issueSvc = fakeIssueSvc();
+    (issueSvc as never as { create: { mockResolvedValueOnce: (v: unknown) => unknown } }).create.mockResolvedValueOnce({ id: "iss-1" });
+    (issueSvc as never as { create: { mockResolvedValueOnce: (v: unknown) => unknown } }).create.mockResolvedValueOnce({ id: "iss-2" });
+
+    const svc = knowledgeEvolutionService(db, fakeLlm, fakeRetriever, issueSvc);
+    const r = await svc.__test__.promotionCheck("co-1");
+
+    expect(r.behavior).toBe("promotion_check");
+    expect(r.candidatesFound).toBe(2);
+    expect(r.issuesCreated).toBe(2);
+    expect(r.nodesModified).toBe(2);
+    expect(r.errors).toEqual([]);
+    expect(r.details).toMatchObject({
+      trigger_count_min: 3,
+      prevention_score_min: 0.7,
+      cooldown_days: 7,
+    });
+
+    // issueSvc.create called with v0.2-correct signature: positional companyId
+    const createCalls = (issueSvc as never as { create: { mock: { calls: unknown[][] } } }).create.mock.calls;
+    expect(createCalls).toHaveLength(2);
+    expect(createCalls[0][0]).toBe("co-1");
+    const data1 = createCalls[0][1] as { title: string; description: string; status: string; priority: string };
+    expect(data1.title).toMatch(/^\[Evolution:promotion\] 建议升级为 rule:/);
+    expect(data1.title).toContain("Avoid singletons");
+    expect(data1.status).toBe("todo");
+    expect(data1.priority).toBe("medium");
+    // No `labels` and no `metadata` in data object (v0.2 schema-truth)
+    expect((data1 as never as { labels?: unknown }).labels).toBeUndefined();
+    expect((data1 as never as { metadata?: unknown }).metadata).toBeUndefined();
+  });
+
+  it("returns 0 issues when no candidates match (empty SELECT)", async () => {
+    const db = fakeDb([]);
+    const svc = knowledgeEvolutionService(db, fakeLlm, fakeRetriever, fakeIssueSvc());
+    const r = await svc.__test__.promotionCheck("co-1");
+    expect(r.candidatesFound).toBe(0);
+    expect(r.issuesCreated).toBe(0);
+    expect(r.errors).toEqual([]);
+  });
+
+  it("degrades gracefully when issueSvc is null (logs warning, counts error)", async () => {
+    const db = fakeDb([
+      { id: "n-1", title: "x", type: "lesson", trigger_count: 5, prevention_score: 0.9 },
+    ]);
+    const svc = knowledgeEvolutionService(db, fakeLlm, fakeRetriever, null);
+    const r = await svc.__test__.promotionCheck("co-1");
+    expect(r.candidatesFound).toBe(1);
+    expect(r.issuesCreated).toBe(0);
+    expect(r.errors).toEqual([
+      { subject: "n-1", reason: "issue_create_failed_or_unavailable" },
+    ]);
+    // No metadata UPDATE was attempted (only 1 execute call: the SELECT)
+    expect((db as never as { execute: { mock: { calls: unknown[] } } }).execute.mock.calls).toHaveLength(1);
+  });
+
+  it("counts errors when issueSvc.create throws but continues with next candidate", async () => {
+    const db = fakeDb(
+      [
+        { id: "n-1", title: "x", type: "lesson", trigger_count: 5, prevention_score: 0.9 },
+        { id: "n-2", title: "y", type: "lesson", trigger_count: 4, prevention_score: 0.8 },
+      ],
+      [], // recordProposalSuccess for n-2 only
+    );
+    const issueSvc = fakeIssueSvc();
+    (issueSvc as never as { create: { mockRejectedValueOnce: (v: unknown) => unknown } }).create.mockRejectedValueOnce(new Error("DB down"));
+    (issueSvc as never as { create: { mockResolvedValueOnce: (v: unknown) => unknown } }).create.mockResolvedValueOnce({ id: "iss-2" });
+
+    const svc = knowledgeEvolutionService(db, fakeLlm, fakeRetriever, issueSvc);
+    const r = await svc.__test__.promotionCheck("co-1");
+
+    expect(r.candidatesFound).toBe(2);
+    expect(r.issuesCreated).toBe(1); // n-2 succeeded
+    expect(r.errors).toHaveLength(1);
+    expect(r.errors[0]).toEqual({
+      subject: "n-1",
+      reason: "issue_create_failed_or_unavailable",
+    });
+  });
+});
+
+// ──────────────────────────────────────────────────────────────────
+// freshnessAudit (PRD §FR6 row 5: valid_until≤7d / fast≥90d /
+//                                 slow≥365d → propose verify via Issue)
+// ──────────────────────────────────────────────────────────────────
+
+describe("freshnessAudit", () => {
+  it("creates Issues + counts reasons across all 3 UNION branches", async () => {
+    const db = fakeDb(
+      [
+        {
+          id: "n-1",
+          title: "API key expiring",
+          reason: "expiring_validity",
+          valid_until: "2026-05-20T00:00:00Z",
+          verified_at: null,
+          volatility: "stable",
+        },
+        {
+          id: "n-2",
+          title: "Douyin policy",
+          reason: "fast_stale",
+          valid_until: null,
+          verified_at: "2026-02-01T00:00:00Z",
+          volatility: "fast",
+        },
+        {
+          id: "n-3",
+          title: "Architecture pattern",
+          reason: "slow_stale",
+          valid_until: null,
+          verified_at: "2025-04-01T00:00:00Z",
+          volatility: "slow",
+        },
+      ],
+      [],
+      [],
+      [],
+    );
+    const issueSvc = fakeIssueSvc();
+    (issueSvc as never as { create: { mockResolvedValueOnce: (v: unknown) => unknown } }).create
+      .mockResolvedValueOnce({ id: "iss-a" })
+      .mockResolvedValueOnce({ id: "iss-b" })
+      .mockResolvedValueOnce({ id: "iss-c" });
+
+    const svc = knowledgeEvolutionService(db, fakeLlm, fakeRetriever, issueSvc);
+    const r = await svc.__test__.freshnessAudit("co-1");
+
+    expect(r.behavior).toBe("freshness_audit");
+    expect(r.candidatesFound).toBe(3);
+    expect(r.issuesCreated).toBe(3);
+    expect(r.errors).toEqual([]);
+    expect(r.details.reason_counts).toEqual({
+      expiring_validity: 1,
+      fast_stale: 1,
+      slow_stale: 1,
+    });
+
+    // All Issues use the [Evolution:freshness] prefix
+    const calls = (issueSvc as never as { create: { mock: { calls: unknown[][] } } }).create.mock.calls;
+    for (const call of calls) {
+      const data = call[1] as { title: string };
+      expect(data.title).toMatch(/^\[Evolution:freshness\] 请验证:/);
+    }
+  });
+
+  it("returns 0 candidates when no nodes meet any of the 3 conditions", async () => {
+    const db = fakeDb([]);
+    const svc = knowledgeEvolutionService(db, fakeLlm, fakeRetriever, fakeIssueSvc());
+    const r = await svc.__test__.freshnessAudit("co-1");
+    expect(r.candidatesFound).toBe(0);
+    expect(r.issuesCreated).toBe(0);
+    expect(r.details.reason_counts).toEqual({
+      expiring_validity: 0,
+      fast_stale: 0,
+      slow_stale: 0,
+    });
+  });
+
+  it("does NOT touch verified_at on success (only the human reviewer flips that)", async () => {
+    const db = fakeDb(
+      [
+        {
+          id: "n-1",
+          title: "x",
+          reason: "fast_stale",
+          valid_until: null,
+          verified_at: null,
+          volatility: "fast",
+        },
+      ],
+      [], // recordProposalSuccess only does metadata UPDATE + event INSERT, not verified_at
+    );
+    const issueSvc = fakeIssueSvc();
+    (issueSvc as never as { create: { mockResolvedValueOnce: (v: unknown) => unknown } }).create.mockResolvedValueOnce({ id: "iss-x" });
+
+    const svc = knowledgeEvolutionService(db, fakeLlm, fakeRetriever, issueSvc);
+    const r = await svc.__test__.freshnessAudit("co-1");
+
+    expect(r.issuesCreated).toBe(1);
+    // Only 2 execute calls: SELECT + recordProposalSuccess CTE
+    expect((db as never as { execute: { mock: { calls: unknown[] } } }).execute.mock.calls).toHaveLength(2);
+    // The 2nd call should NOT mention verified_at in its SQL
+    const secondCallSql = JSON.stringify((db as never as { execute: { mock: { calls: unknown[][] } } }).execute.mock.calls[1]);
+    expect(secondCallSql).not.toContain("verified_at");
+  });
+
+  it("uses [Evolution:freshness] title prefix (no labels per v0.2 schema-truth)", async () => {
+    const db = fakeDb(
+      [
+        {
+          id: "n-1",
+          title: "Sample",
+          reason: "expiring_validity",
+          valid_until: "2026-05-20T00:00:00Z",
+          verified_at: null,
+          volatility: "stable",
+        },
+      ],
+      [],
+    );
+    const issueSvc = fakeIssueSvc();
+    (issueSvc as never as { create: { mockResolvedValueOnce: (v: unknown) => unknown } }).create.mockResolvedValueOnce({ id: "iss-1" });
+
+    const svc = knowledgeEvolutionService(db, fakeLlm, fakeRetriever, issueSvc);
+    await svc.__test__.freshnessAudit("co-1");
+
+    const call = (issueSvc as never as { create: { mock: { calls: unknown[][] } } }).create.mock.calls[0];
+    expect(call[0]).toBe("co-1");
+    const data = call[1] as { title: string };
+    expect(data.title.startsWith("[Evolution:freshness]")).toBe(true);
+    expect((data as never as { labels?: unknown }).labels).toBeUndefined();
+    expect((data as never as { metadata?: unknown }).metadata).toBeUndefined();
+  });
+});
