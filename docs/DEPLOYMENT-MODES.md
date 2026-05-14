@@ -142,4 +142,4 @@ This prevents lockout when a user migrates from long-running local trusted usage
 - implementation plan: `docs/plans/deployment-auth-mode-consolidation.md`
 - V1 contract: `docs/SPEC-implementation.md`
 - operator workflows: `docs/DEVELOPING.md` and `docs/CLI.md`
-- invite/join state map: `docs/spec/invite-flow.md`
+- invite/join state map: `docs/specs/invite-flow.md`
