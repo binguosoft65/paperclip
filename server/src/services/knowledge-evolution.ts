@@ -542,6 +542,194 @@ export function knowledgeEvolutionService(
   }
 
   // ──────────────────────────────────────────────────────────────────
+  // Behavior #4 — conflictDetect (PRD §FR6 row 4) — v0.1 Decision C
+  //
+  // Strategy: materialize Phase 3b-detected conflicts. The Reviewer
+  // Agent (Phase 3b) already runs LLM on every pending draft and
+  // writes detected_conflicts UUID[] when it finds duplicates. This
+  // behavior turns that flagged data into:
+  //   1. conflicts_with edges (when draft has target_node_id set)
+  //   2. proposal Issues per (draft, conflict_node) pair
+  //   3. array clear on the source draft so next tick won't reprocess
+  //
+  // No LLM in v0.1 — Phase 3b already paid that cost. Duplicate
+  // detection (cosine vs LLM) is wasted compute. v0.2 may add an
+  // independent active-rule-pair scan, but PRD §FR6 row 4 originally
+  // says "新 draft 与既有 rule" which is exactly the draft-rule
+  // scenario Phase 3b handles.
+  //
+  // Dedup: ON CONFLICT (from, to, edge_type) DO NOTHING on the
+  // knowledge_edges_unique_directed index. If the edge already exists
+  // we skip the Issue too (so re-running with same conflicts is a
+  // no-op except for the array clear).
+  // ──────────────────────────────────────────────────────────────────
+  async function conflictDetect(companyId: string): Promise<BehaviorResult> {
+    const t = BEHAVIOR_LIMITS.conflict_detect;
+
+    // 1. Flatten (draft × conflict_node) pairs via LATERAL unnest.
+    //    LEFT JOIN knowledge_nodes to surface conflict_node's title
+    //    in the Issue body (NULL if the conflict node was deleted).
+    const pairs = (await db.execute(sql`
+      WITH limited_drafts AS (
+        SELECT id, company_id, target_node_id, proposed_title, detected_conflicts
+        FROM knowledge_drafts
+        WHERE company_id = ${companyId}
+          AND status = 'pending'
+          AND detected_conflicts IS NOT NULL
+          AND array_length(detected_conflicts, 1) >= 1
+        ORDER BY created_at ASC
+        LIMIT ${t.maxDraftsPerTick}::int
+      )
+      SELECT
+        d.id AS draft_id,
+        d.target_node_id,
+        d.proposed_title,
+        conflict_id AS conflict_node_id,
+        cn.title AS conflict_node_title
+      FROM limited_drafts d
+      CROSS JOIN LATERAL unnest(d.detected_conflicts) AS conflict_id
+      LEFT JOIN knowledge_nodes cn
+        ON cn.id = conflict_id AND cn.company_id = d.company_id
+      ORDER BY d.id, conflict_id
+    `)) as Array<{
+      draft_id: string;
+      target_node_id: string | null;
+      proposed_title: string;
+      conflict_node_id: string;
+      conflict_node_title: string | null;
+    }>;
+
+    let issuesCreated = 0;
+    let edgesCreated = 0;
+    const errors: Array<{ subject: string; reason: string }> = [];
+    const processedDrafts = new Set<string>();
+
+    for (const p of pairs) {
+      processedDrafts.add(p.draft_id);
+      const subjectKey = `${p.draft_id}:${p.conflict_node_id}`;
+
+      // 2a. If draft has a materialized target node, attempt the
+      //     conflicts_with edge upsert. If the edge already existed
+      //     (ON CONFLICT DO NOTHING returns empty), we treat that as
+      //     "already proposed" and skip the Issue creation below.
+      let edgeWasNew = false;
+      if (p.target_node_id !== null) {
+        try {
+          const inserted = (await db.execute(sql`
+            INSERT INTO knowledge_edges
+              (from_node_id, to_node_id, edge_type, auto_generated, metadata)
+            VALUES (
+              ${p.target_node_id}::uuid,
+              ${p.conflict_node_id}::uuid,
+              'conflicts_with',
+              true,
+              jsonb_build_object('source_draft', ${p.draft_id}::text)
+            )
+            ON CONFLICT (from_node_id, to_node_id, edge_type) DO NOTHING
+            RETURNING id
+          `)) as Array<{ id: string }>;
+          if (inserted.length > 0) {
+            edgesCreated += 1;
+            edgeWasNew = true;
+          }
+        } catch (err) {
+          errors.push({
+            subject: subjectKey,
+            reason: err instanceof Error ? err.message : String(err),
+          });
+          continue;
+        }
+      }
+
+      // 2b. Issue creation rules:
+      //     - target_node_id null (brand-new draft, no node yet)
+      //       → always propose (no edge to dedup against)
+      //     - target_node_id set AND edge was new
+      //       → propose
+      //     - target_node_id set AND edge already existed
+      //       → skip (already-proposed dedup; clearing array below
+      //         still happens so we don't reprocess on next tick)
+      const shouldCreateIssue = p.target_node_id === null || edgeWasNew;
+      if (!shouldCreateIssue) {
+        continue;
+      }
+
+      const conflictDisplayName =
+        p.conflict_node_title ?? `(节点 ${p.conflict_node_id})`;
+      const body = [
+        `Draft id: ${p.draft_id}`,
+        `Draft 标题: ${p.proposed_title}`,
+        `Draft target node: ${p.target_node_id ?? "(无,新提案,尚未物化)"}`,
+        ``,
+        `冲突节点 id: ${p.conflict_node_id}`,
+        `冲突节点标题: ${conflictDisplayName}`,
+        ``,
+        p.target_node_id !== null
+          ? `已在 knowledge_edges 表落 conflicts_with 边 (${p.target_node_id} → ${p.conflict_node_id}).`
+          : `Draft 尚未物化为节点; 审查通过后再 materialize 边.`,
+        ``,
+        `请人审决定:`,
+        `1. 接受 draft + 把冲突节点 status 改为 outdated`,
+        `2. 拒绝 draft (保留冲突节点)`,
+        `3. 合并 draft + conflict_node 形成新版本`,
+      ].join("\n");
+
+      const issueId = await proposeViaIssue(
+        companyId,
+        "[Evolution:conflict]",
+        `冲突: [${p.proposed_title}] 与 [${conflictDisplayName}]`,
+        body,
+      );
+      if (issueId === null) {
+        errors.push({
+          subject: subjectKey,
+          reason: "issue_create_failed_or_unavailable",
+        });
+        continue;
+      }
+      issuesCreated += 1;
+    }
+
+    // 3. Clear detected_conflicts on every draft we processed (single
+    //    UPDATE with id = ANY($1::uuid[]) covers all of them at once).
+    //    Even drafts whose pairs all skipped due to edge dedup get
+    //    cleared — the conflicts ARE already represented in the edge
+    //    table; reprocessing on every tick is wasteful.
+    if (processedDrafts.size > 0) {
+      try {
+        const draftIds = Array.from(processedDrafts);
+        await db.execute(sql`
+          UPDATE knowledge_drafts
+          SET detected_conflicts = '{}'::uuid[]
+          WHERE company_id = ${companyId}::uuid
+            AND id = ANY(${draftIds}::uuid[])
+        `);
+      } catch (err) {
+        errors.push({
+          subject: "array_clear",
+          reason: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+
+    return {
+      behavior: "conflict_detect",
+      candidatesFound: pairs.length,
+      issuesCreated,
+      draftsCreated: 0,
+      edgesCreated,
+      // conflictDetect mutates knowledge_drafts (clearing arrays) and
+      // knowledge_edges (new edges), but not knowledge_nodes.
+      nodesModified: 0,
+      errors,
+      details: {
+        max_drafts_per_tick: t.maxDraftsPerTick,
+        processed_drafts: processedDrafts.size,
+      },
+    };
+  }
+
+  // ──────────────────────────────────────────────────────────────────
   // Behavior #5 — freshnessAudit (PRD §FR6 row 5)
   //
   // 3-way UNION ALL: (a) valid_until 临近 7 天 / (b) volatility=fast
@@ -682,6 +870,7 @@ export function knowledgeEvolutionService(
       promotionCheck,
       freshnessAudit,
       mergeCandidateDetect,
+      conflictDetect,
     },
   };
 }

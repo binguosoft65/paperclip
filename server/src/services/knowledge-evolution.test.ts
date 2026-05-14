@@ -541,3 +541,214 @@ describe("mergeCandidateDetect", () => {
     ]);
   });
 });
+
+// ──────────────────────────────────────────────────────────────────
+// conflictDetect (PRD §FR6 row 4 + Decision C: materialize Phase 3b
+//   detected_conflicts → conflicts_with edges + Issues + clear array)
+// ──────────────────────────────────────────────────────────────────
+
+describe("conflictDetect", () => {
+  it("creates conflicts_with edge + Issue per pair when draft has target_node_id (then clears array)", async () => {
+    // 1 SELECT (2 pairs) + 2 edge upserts (each returning 1 row = new) + 1 array-clear UPDATE.
+    const db = fakeDb(
+      [
+        {
+          draft_id: "d-1",
+          target_node_id: "n-target",
+          proposed_title: "Use HNSW",
+          conflict_node_id: "n-c1",
+          conflict_node_title: "Use IVFFlat",
+        },
+        {
+          draft_id: "d-1",
+          target_node_id: "n-target",
+          proposed_title: "Use HNSW",
+          conflict_node_id: "n-c2",
+          conflict_node_title: "Avoid vector indexes",
+        },
+      ],
+      [{ id: "e-1" }], // edge upsert 1 — new
+      [{ id: "e-2" }], // edge upsert 2 — new
+      [], // array clear UPDATE (no return)
+    );
+    const issueSvc = fakeIssueSvc();
+    (issueSvc as never as { create: { mockResolvedValueOnce: (v: unknown) => unknown } }).create
+      .mockResolvedValueOnce({ id: "iss-c1" })
+      .mockResolvedValueOnce({ id: "iss-c2" });
+
+    const svc = knowledgeEvolutionService(db, fakeLlm, fakeRetriever, issueSvc);
+    const r = await svc.__test__.conflictDetect("co-1");
+
+    expect(r.behavior).toBe("conflict_detect");
+    expect(r.candidatesFound).toBe(2);
+    expect(r.edgesCreated).toBe(2);
+    expect(r.issuesCreated).toBe(2);
+    expect(r.nodesModified).toBe(0); // no node mutation
+    expect(r.errors).toEqual([]);
+    expect(r.details).toMatchObject({
+      max_drafts_per_tick: 50,
+      processed_drafts: 1, // both pairs from same draft d-1
+    });
+
+    // Issue title prefix [Evolution:conflict] + uses conflict_node_title
+    const calls = (issueSvc as never as { create: { mock: { calls: unknown[][] } } }).create.mock.calls;
+    const data1 = calls[0][1] as { title: string; description: string };
+    expect(data1.title).toMatch(/^\[Evolution:conflict\] 冲突:/);
+    expect(data1.title).toContain("Use HNSW");
+    expect(data1.title).toContain("Use IVFFlat");
+    expect(data1.description).toContain("Draft id: d-1");
+    expect(data1.description).toContain("已在 knowledge_edges 表落 conflicts_with 边");
+  });
+
+  it("brand-new draft (target_node_id null) → 0 edges, 1 Issue per conflict", async () => {
+    const db = fakeDb(
+      [
+        {
+          draft_id: "d-1",
+          target_node_id: null,
+          proposed_title: "New idea",
+          conflict_node_id: "n-c1",
+          conflict_node_title: "Existing idea",
+        },
+        {
+          draft_id: "d-1",
+          target_node_id: null,
+          proposed_title: "New idea",
+          conflict_node_id: "n-c2",
+          conflict_node_title: "Other existing",
+        },
+      ],
+      // No edge upserts (target_node_id null short-circuits the edge block)
+      [], // array clear UPDATE
+    );
+    const issueSvc = fakeIssueSvc();
+    (issueSvc as never as { create: { mockResolvedValueOnce: (v: unknown) => unknown } }).create
+      .mockResolvedValueOnce({ id: "iss-1" })
+      .mockResolvedValueOnce({ id: "iss-2" });
+
+    const svc = knowledgeEvolutionService(db, fakeLlm, fakeRetriever, issueSvc);
+    const r = await svc.__test__.conflictDetect("co-1");
+
+    expect(r.candidatesFound).toBe(2);
+    expect(r.edgesCreated).toBe(0);
+    expect(r.issuesCreated).toBe(2);
+
+    const data = (issueSvc as never as { create: { mock: { calls: unknown[][] } } }).create.mock.calls[0][1] as { description: string };
+    expect(data.description).toContain("Draft 尚未物化为节点");
+  });
+
+  it("edge already exists (ON CONFLICT returns empty) → skips Issue creation", async () => {
+    const db = fakeDb(
+      [
+        {
+          draft_id: "d-1",
+          target_node_id: "n-target",
+          proposed_title: "x",
+          conflict_node_id: "n-c1",
+          conflict_node_title: "y",
+        },
+      ],
+      [], // edge upsert RETURNING empty = edge already existed
+      [], // array clear UPDATE
+    );
+    const issueSvc = fakeIssueSvc();
+    const svc = knowledgeEvolutionService(db, fakeLlm, fakeRetriever, issueSvc);
+    const r = await svc.__test__.conflictDetect("co-1");
+
+    expect(r.candidatesFound).toBe(1);
+    expect(r.edgesCreated).toBe(0);
+    expect(r.issuesCreated).toBe(0);
+    expect(r.details.processed_drafts).toBe(1); // draft is still in clear set
+    // No Issue create call attempted (deduped via edge existence)
+    expect((issueSvc as never as { create: { mock: { calls: unknown[] } } }).create.mock.calls).toHaveLength(0);
+  });
+
+  it("empty SELECT → no candidates, no array clear UPDATE", async () => {
+    const db = fakeDb([]);
+    const svc = knowledgeEvolutionService(db, fakeLlm, fakeRetriever, fakeIssueSvc());
+    const r = await svc.__test__.conflictDetect("co-1");
+    expect(r.candidatesFound).toBe(0);
+    expect(r.edgesCreated).toBe(0);
+    expect(r.issuesCreated).toBe(0);
+    expect(r.details.processed_drafts).toBe(0);
+    // Only the SELECT execute happened — no array-clear UPDATE attempted
+    expect((db as never as { execute: { mock: { calls: unknown[] } } }).execute.mock.calls).toHaveLength(1);
+  });
+
+  it("conflict node deleted (LEFT JOIN returns NULL title) → uses fallback display", async () => {
+    const db = fakeDb(
+      [
+        {
+          draft_id: "d-1",
+          target_node_id: null,
+          proposed_title: "New idea",
+          conflict_node_id: "deleted-node-uuid",
+          conflict_node_title: null,
+        },
+      ],
+      [],
+    );
+    const issueSvc = fakeIssueSvc();
+    (issueSvc as never as { create: { mockResolvedValueOnce: (v: unknown) => unknown } }).create.mockResolvedValueOnce({ id: "iss-1" });
+
+    const svc = knowledgeEvolutionService(db, fakeLlm, fakeRetriever, issueSvc);
+    await svc.__test__.conflictDetect("co-1");
+
+    const data = (issueSvc as never as { create: { mock: { calls: unknown[][] } } }).create.mock.calls[0][1] as { title: string; description: string };
+    expect(data.title).toContain("(节点 deleted-node-uuid)");
+    expect(data.description).toContain("(节点 deleted-node-uuid)");
+  });
+
+  it("issueSvc null on a target_node_id-set draft → edge IS created, Issue counted as error", async () => {
+    const db = fakeDb(
+      [
+        {
+          draft_id: "d-1",
+          target_node_id: "n-target",
+          proposed_title: "x",
+          conflict_node_id: "n-c1",
+          conflict_node_title: "y",
+        },
+      ],
+      [{ id: "e-1" }], // edge upsert succeeds even though issueSvc is null
+      [], // array clear
+    );
+    const svc = knowledgeEvolutionService(db, fakeLlm, fakeRetriever, null);
+    const r = await svc.__test__.conflictDetect("co-1");
+
+    expect(r.candidatesFound).toBe(1);
+    expect(r.edgesCreated).toBe(1); // edge still landed (independent of Issue)
+    expect(r.issuesCreated).toBe(0);
+    expect(r.errors).toEqual([
+      { subject: "d-1:n-c1", reason: "issue_create_failed_or_unavailable" },
+    ]);
+  });
+
+  it("edge upsert throws → counted as error, draft still in clear set", async () => {
+    const db = {
+      execute: vi
+        .fn()
+        .mockResolvedValueOnce([
+          {
+            draft_id: "d-1",
+            target_node_id: "n-target",
+            proposed_title: "x",
+            conflict_node_id: "n-c1",
+            conflict_node_title: "y",
+          },
+        ])
+        .mockRejectedValueOnce(new Error("FK violation"))
+        .mockResolvedValueOnce([]), // array clear still runs
+    } as never;
+    const svc = knowledgeEvolutionService(db, fakeLlm, fakeRetriever, fakeIssueSvc());
+    const r = await svc.__test__.conflictDetect("co-1");
+
+    expect(r.candidatesFound).toBe(1);
+    expect(r.edgesCreated).toBe(0);
+    expect(r.issuesCreated).toBe(0);
+    expect(r.errors).toEqual([
+      { subject: "d-1:n-c1", reason: "FK violation" },
+    ]);
+    expect(r.details.processed_drafts).toBe(1); // d-1 still tracked for array clear
+  });
+});
