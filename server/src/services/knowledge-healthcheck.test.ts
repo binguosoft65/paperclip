@@ -161,3 +161,181 @@ describe("computeStaleUncheckedFast", () => {
     expect(r.status).toBe("critical");
   });
 });
+
+// ──────────────────────────────────────────────────────────────────
+// computeHelpedRatio (PRD §7.5: ≥0.5 healthy / [0.3,0.5) warning / <0.3 critical)
+// Maintainer decision 1A: total < 10 → healthy + low_sample flag
+// ──────────────────────────────────────────────────────────────────
+
+describe("computeHelpedRatio", () => {
+  it("returns healthy + low_sample when total < 10 (decision 1A)", async () => {
+    const svc = knowledgeHealthcheckService(
+      fakeDb([{ total: 5, ratio: 0.2 }]),
+    );
+    const r = await svc.__test__.computeHelpedRatio("co-1");
+    // Even ratio=0.2 (which would normally be critical) → healthy because low_sample
+    expect(r.status).toBe("healthy");
+    expect(r.value).toBe(0.2);
+    expect(r.details.low_sample).toBe(true);
+    expect(r.details.total_feedback).toBe(5);
+    expect(r.details.low_sample_threshold).toBe(10);
+  });
+
+  it("returns healthy + low_sample when no feedback at all (total=0)", async () => {
+    const svc = knowledgeHealthcheckService(
+      fakeDb([{ total: 0, ratio: 0 }]),
+    );
+    const r = await svc.__test__.computeHelpedRatio("co-1");
+    expect(r.status).toBe("healthy");
+    expect(r.details.low_sample).toBe(true);
+  });
+
+  it("returns healthy when total ≥ 10 and ratio ≥ 0.5", async () => {
+    const svc = knowledgeHealthcheckService(
+      fakeDb([{ total: 20, ratio: 0.7 }]),
+    );
+    const r = await svc.__test__.computeHelpedRatio("co-1");
+    expect(r.status).toBe("healthy");
+    expect(r.value).toBe(0.7);
+    expect(r.details.low_sample).toBeUndefined();
+  });
+
+  it("returns healthy at boundary ratio = 0.5", async () => {
+    const svc = knowledgeHealthcheckService(
+      fakeDb([{ total: 20, ratio: 0.5 }]),
+    );
+    const r = await svc.__test__.computeHelpedRatio("co-1");
+    expect(r.status).toBe("healthy");
+  });
+
+  it("returns warning when ratio in [0.3, 0.5)", async () => {
+    const svc = knowledgeHealthcheckService(
+      fakeDb([{ total: 20, ratio: 0.4 }]),
+    );
+    const r = await svc.__test__.computeHelpedRatio("co-1");
+    expect(r.status).toBe("warning");
+  });
+
+  it("returns warning at boundary ratio = 0.3", async () => {
+    const svc = knowledgeHealthcheckService(
+      fakeDb([{ total: 20, ratio: 0.3 }]),
+    );
+    const r = await svc.__test__.computeHelpedRatio("co-1");
+    expect(r.status).toBe("warning");
+  });
+
+  it("returns critical when ratio < 0.3", async () => {
+    const svc = knowledgeHealthcheckService(
+      fakeDb([{ total: 30, ratio: 0.15 }]),
+    );
+    const r = await svc.__test__.computeHelpedRatio("co-1");
+    expect(r.status).toBe("critical");
+    expect(r.value).toBe(0.15);
+  });
+
+  it("coerces numeric-as-string ratio safely", async () => {
+    const svc = knowledgeHealthcheckService(
+      fakeDb([{ total: 15, ratio: "0.6" }]),
+    );
+    const r = await svc.__test__.computeHelpedRatio("co-1");
+    expect(r.value).toBe(0.6);
+    expect(r.status).toBe("healthy");
+  });
+});
+
+// ──────────────────────────────────────────────────────────────────
+// computeAvgEdgesPerNode (PRD §7.5: ≥1.5 healthy / [1.0,1.5) warning / <1.0 critical)
+// Maintainer decision 2C: weighted human=1.0 / auto=0.5
+// ──────────────────────────────────────────────────────────────────
+
+describe("computeAvgEdgesPerNode", () => {
+  it("returns healthy + no_nodes when no nodes exist", async () => {
+    const svc = knowledgeHealthcheckService(
+      fakeDb([{ node_count: 0, weighted: 0, auto_count: 0, human_count: 0, total: 0 }]),
+    );
+    const r = await svc.__test__.computeAvgEdgesPerNode("co-1");
+    expect(r.value).toBe(0);
+    expect(r.status).toBe("healthy");
+    expect(r.details.no_nodes).toBe(true);
+  });
+
+  it("returns healthy when weighted avg ≥ 1.5 (e.g. 4 human + 0 auto over 2 nodes = 2.0)", async () => {
+    const svc = knowledgeHealthcheckService(
+      fakeDb([{ node_count: 2, weighted: 4.0, auto_count: 0, human_count: 4, total: 4 }]),
+    );
+    const r = await svc.__test__.computeAvgEdgesPerNode("co-1");
+    expect(r.value).toBe(2.0);
+    expect(r.status).toBe("healthy");
+    expect(r.details.weighting).toEqual({ human: 1.0, auto: 0.5 });
+    expect(r.details.auto_edges).toBe(0);
+    expect(r.details.human_edges).toBe(4);
+  });
+
+  it("returns healthy at boundary value = 1.5", async () => {
+    const svc = knowledgeHealthcheckService(
+      fakeDb([{ node_count: 2, weighted: 3.0, auto_count: 0, human_count: 3, total: 3 }]),
+    );
+    const r = await svc.__test__.computeAvgEdgesPerNode("co-1");
+    expect(r.value).toBe(1.5);
+    expect(r.status).toBe("healthy");
+  });
+
+  it("returns warning when weighted avg in [1.0, 1.5)", async () => {
+    // 5 nodes / 4 human + 4 auto = weighted (4*1.0 + 4*0.5) / 5 = 6/5 = 1.2
+    const svc = knowledgeHealthcheckService(
+      fakeDb([{ node_count: 5, weighted: 6.0, auto_count: 4, human_count: 4, total: 8 }]),
+    );
+    const r = await svc.__test__.computeAvgEdgesPerNode("co-1");
+    expect(r.value).toBe(1.2);
+    expect(r.status).toBe("warning");
+  });
+
+  it("returns critical when weighted avg < 1.0 (e.g. all auto edges)", async () => {
+    // 5 nodes / 0 human + 4 auto = weighted (0 + 4*0.5) / 5 = 2/5 = 0.4
+    const svc = knowledgeHealthcheckService(
+      fakeDb([{ node_count: 5, weighted: 2.0, auto_count: 4, human_count: 0, total: 4 }]),
+    );
+    const r = await svc.__test__.computeAvgEdgesPerNode("co-1");
+    expect(r.value).toBe(0.4);
+    expect(r.status).toBe("critical");
+    expect(r.details.auto_edges).toBe(4);
+    expect(r.details.human_edges).toBe(0);
+  });
+
+  it("treats auto edges as half-weighted (10 auto over 5 nodes = 1.0)", async () => {
+    // 5 nodes / 0 human + 10 auto = weighted (0 + 10*0.5) / 5 = 5/5 = 1.0
+    // 1.0 is exactly criticalMax, so status = critical (per `< healthyMin && < criticalMax`)
+    // BUT criticalMax = 1.0 and check is `value < criticalMax`, so value=1.0 falls into warning branch
+    const svc = knowledgeHealthcheckService(
+      fakeDb([{ node_count: 5, weighted: 5.0, auto_count: 10, human_count: 0, total: 10 }]),
+    );
+    const r = await svc.__test__.computeAvgEdgesPerNode("co-1");
+    expect(r.value).toBe(1.0);
+    expect(r.status).toBe("warning"); // boundary: 1.0 is not < 1.0, so warning not critical
+  });
+});
+
+// ──────────────────────────────────────────────────────────────────
+// computeUnresolvedConflicts (decision 3A: source-unavailable fallback)
+// Phase 3a 落地前一律返回 healthy + source_unavailable
+// ──────────────────────────────────────────────────────────────────
+
+describe("computeUnresolvedConflicts", () => {
+  it("returns source-unavailable fallback (healthy / value=0) when Phase 3a not landed", async () => {
+    // execute should NOT be called — computer is purely synthetic until Phase 3a lands
+    const db = { execute: vi.fn() };
+    const svc = knowledgeHealthcheckService(db as never);
+    const r = await svc.__test__.computeUnresolvedConflicts("co-1");
+    expect(r.value).toBe(0);
+    expect(r.status).toBe("healthy");
+    expect(r.details.source_unavailable).toBe(true);
+    expect(r.details.reason).toMatch(/Phase 3a/);
+    expect(db.execute).not.toHaveBeenCalled();
+  });
+
+  it("documents the future-switch contract via will_switch_when", async () => {
+    const svc = knowledgeHealthcheckService({ execute: vi.fn() } as never);
+    const r = await svc.__test__.computeUnresolvedConflicts("co-1");
+    expect(r.details.will_switch_when).toMatch(/Phase 3a/);
+  });
+});
