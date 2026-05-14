@@ -83,6 +83,19 @@ export {
   type KnowledgeFeedbackInput,
 } from "./knowledge-feedback.js";
 export {
+  knowledgeHealthcheckService,
+  shouldCreateAlarm,
+  formatAlarmBody,
+  METRIC_THRESHOLDS as KNOWLEDGE_METRIC_THRESHOLDS,
+  type KnowledgeHealthcheckService,
+  type IssueServiceLike,
+} from "./knowledge-healthcheck.js";
+export {
+  startHealthcheckScheduler,
+  type HealthcheckSchedulerDeps,
+  type HealthcheckSchedulerHandle,
+} from "./knowledge-healthcheck-scheduler.js";
+export {
   reviewerAgentService,
   type ReviewerAgentService,
   type ReviewerLlmClient,

@@ -29,6 +29,14 @@ const mockReviewer = vi.hoisted(() => ({
   screenDraft: vi.fn(),
 }));
 
+const mockHealthcheck = vi.hoisted(() => ({
+  runHealthcheck: vi.fn(),
+}));
+
+const mockIssueService = vi.hoisted(() => ({
+  create: vi.fn(),
+}));
+
 vi.mock("../services/index.js", () => ({
   knowledgeDraftService: () => mockDraftService,
   knowledgeNodeWriterService: () => mockNodeWriter,
@@ -36,6 +44,8 @@ vi.mock("../services/index.js", () => ({
   knowledgeRetrieverService: () => mockRetriever,
   knowledgeFeedbackService: () => mockFeedback,
   reviewerAgentService: () => mockReviewer,
+  knowledgeHealthcheckService: () => mockHealthcheck,
+  issueService: () => mockIssueService,
 }));
 
 async function createApp(actor: Record<string, unknown>) {
@@ -371,6 +381,72 @@ describe.sequential("POST /api/knowledge/reviewer/run", () => {
       request(base).post("/api/knowledge/reviewer/run").send({}),
     );
     expect(res.status).toBe(400);
+  });
+});
+
+describe.sequential("POST /api/knowledge/healthcheck/run", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("200 + { metricsComputed, alarmsCreated } summary", async () => {
+    mockHealthcheck.runHealthcheck.mockResolvedValueOnce({
+      metricsComputed: 6,
+      alarmsCreated: 2,
+    });
+    const app = await createApp(boardActor);
+    const res = await requestApp(app, (base) =>
+      request(base)
+        .post("/api/knowledge/healthcheck/run?companyId=c-1")
+        .send({}),
+    );
+    expect(res.status).toBe(200);
+    expect(res.body.data).toEqual({ metricsComputed: 6, alarmsCreated: 2 });
+    expect(mockHealthcheck.runHealthcheck).toHaveBeenCalledWith("c-1", {
+      metrics: expect.arrayContaining([
+        "weekly_new_drafts",
+        "review_backlog_hours_p50",
+        "helped_ratio",
+        "avg_edges_per_node",
+        "unresolved_conflicts",
+        "stale_unchecked_fast",
+      ]),
+    });
+  });
+
+  it("passes opts.metrics subset to service", async () => {
+    mockHealthcheck.runHealthcheck.mockResolvedValueOnce({
+      metricsComputed: 2,
+      alarmsCreated: 0,
+    });
+    const app = await createApp(boardActor);
+    const res = await requestApp(app, (base) =>
+      request(base)
+        .post("/api/knowledge/healthcheck/run?companyId=c-1")
+        .send({ metrics: ["weekly_new_drafts", "helped_ratio"] }),
+    );
+    expect(res.status).toBe(200);
+    expect(res.body.data.metricsComputed).toBe(2);
+    expect(mockHealthcheck.runHealthcheck).toHaveBeenCalledWith("c-1", {
+      metrics: ["weekly_new_drafts", "helped_ratio"],
+    });
+  });
+
+  it("400 when companyId query is missing", async () => {
+    const app = await createApp(boardActor);
+    const res = await requestApp(app, (base) =>
+      request(base).post("/api/knowledge/healthcheck/run").send({}),
+    );
+    expect(res.status).toBe(400);
+  });
+
+  it("400 when metrics array contains an unknown name", async () => {
+    const app = await createApp(boardActor);
+    const res = await requestApp(app, (base) =>
+      request(base)
+        .post("/api/knowledge/healthcheck/run?companyId=c-1")
+        .send({ metrics: ["bogus_metric"] }),
+    );
+    expect(res.status).toBe(400);
+    expect(mockHealthcheck.runHealthcheck).not.toHaveBeenCalled();
   });
 });
 

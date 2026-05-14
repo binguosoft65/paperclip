@@ -12,6 +12,7 @@ import {
   knowledgeSearchQuerySchema,
   reviewerRunQuerySchema,
   batchApplyVerdictSchema,
+  healthcheckRunQuerySchema,
 } from "@paperclipai/shared";
 import { badRequest, notFound } from "../errors.js";
 import { validate } from "../middleware/validate.js";
@@ -22,6 +23,8 @@ import {
   knowledgeRetrieverService,
   knowledgeFeedbackService,
   reviewerAgentService,
+  knowledgeHealthcheckService,
+  issueService,
 } from "../services/index.js";
 import { assertBoard, assertCompanyAccess, getActorInfo } from "./authz.js";
 
@@ -51,6 +54,7 @@ export function knowledgeRoutes(db: Db) {
     },
   };
   const reviewer = reviewerAgentService(db, retriever, reviewerLlm);
+  const healthcheck = knowledgeHealthcheckService(db, issueService(db));
 
   function requireCompanyId(req: Request): string {
     const raw = req.query.companyId;
@@ -331,6 +335,27 @@ export function knowledgeRoutes(db: Db) {
     const result = await reviewer.screenPendingDrafts({
       companyId,
       limit: parsed.data.limit,
+    });
+    res.json({ data: result });
+  });
+
+  // ============================================================
+  // POST /api/knowledge/healthcheck/run (Phase 3c Task 4)
+  //
+  // 触发一次健康指标计算 + alarm Issue 创建（PRD §7.5 + §13.3）。
+  // Body 可选 { metrics?: KnowledgeMetricName[] } 限定子集；缺省跑全 6 个。
+  // 返回 { data: { metricsComputed, alarmsCreated } }。
+  // ============================================================
+  router.post("/healthcheck/run", async (req, res) => {
+    const companyId = requireCompanyId(req);
+    assertCompanyAccess(req, companyId);
+    assertBoard(req);
+    const parsed = healthcheckRunQuerySchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      throw badRequest("invalid body", parsed.error.format());
+    }
+    const result = await healthcheck.runHealthcheck(companyId, {
+      metrics: parsed.data.metrics,
     });
     res.json({ data: result });
   });

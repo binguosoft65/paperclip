@@ -42,8 +42,10 @@ import { pluginRoutes } from "./routes/plugins.js";
 import { adapterRoutes } from "./routes/adapters.js";
 import { pluginUiStaticRoutes } from "./routes/plugin-ui-static.js";
 import { knowledgeRoutes } from "./routes/knowledge.js";
-import { llmWikiService, knowledgeDrafterService, knowledgeRetrieverService, reviewerAgentService } from "./services/index.js";
+import { llmWikiService, knowledgeDrafterService, knowledgeRetrieverService, reviewerAgentService, knowledgeHealthcheckService } from "./services/index.js";
 import { startReviewerScheduler } from "./services/knowledge-reviewer-scheduler.js";
+import { startHealthcheckScheduler } from "./services/knowledge-healthcheck-scheduler.js";
+import { issueService } from "./services/issues.js";
 import { companies as companiesTable } from "@paperclipai/db";
 import { setKnowledgeDrafterForHeartbeat } from "./services/heartbeat.js";
 import { applyUiBranding } from "./ui-branding.js";
@@ -217,6 +219,17 @@ export async function createApp(
         return llmWikiClient.completeChat({ system: systemMsg, user: userMsg });
       },
     }),
+  });
+  // 知识 Healthcheck 进程内调度器（Phase 3c）；env KNOWLEDGE_HEALTHCHECK_ENABLED=true 开启
+  // 默认 1440 min (24h) 一次,可由 KNOWLEDGE_HEALTHCHECK_INTERVAL_MINUTES 覆盖。
+  // 不阻塞进程退出（同 reviewer scheduler）;handle 由 graceful-shutdown 模块统一处理。
+  const healthcheckSchedulerHandle = startHealthcheckScheduler({
+    listCompanies: async () => {
+      const rows = await db.select({ id: companiesTable.id }).from(companiesTable);
+      return rows;
+    },
+    healthcheckForCompany: (_companyId) =>
+      knowledgeHealthcheckService(db, issueService(db)),
   });
   api.use(issueRoutes(db, opts.storageService, {
     feedbackExportService: opts.feedbackExportService,
@@ -467,6 +480,7 @@ export async function createApp(
   process.once("exit", () => {
     if (feedbackExportTimer) clearInterval(feedbackExportTimer);
     reviewerSchedulerHandle?.stop();
+    healthcheckSchedulerHandle?.stop();
     devWatcher?.close();
     viteHtmlRenderer?.dispose();
     hostServiceCleanup.disposeAll();
