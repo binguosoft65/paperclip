@@ -1,6 +1,22 @@
 import { sql } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
-import type { KnowledgeMetricStatus } from "@paperclipai/shared";
+import { knowledgeMetrics } from "@paperclipai/db";
+import {
+  KNOWLEDGE_METRIC_NAMES,
+  type KnowledgeMetricName,
+  type KnowledgeMetricStatus,
+} from "@paperclipai/shared";
+import { issueService as createIssueService } from "./issues.js";
+import { logger } from "../middleware/logger.js";
+
+/**
+ * issueService 注入类型别名 —— 便于测试 mock。
+ * 实际 issueService(db) 返回值由 server/src/services/issues.ts 决定。
+ */
+export type IssueServiceLike = Pick<
+  ReturnType<typeof createIssueService>,
+  "create"
+>;
 
 /**
  * Phase 3c 健康指标计算服务（PRD §7.5 + §13.3 Routine 3）。
@@ -74,7 +90,93 @@ export interface MetricResult {
   details: Record<string, unknown>;
 }
 
-export function knowledgeHealthcheckService(db: Db) {
+/**
+ * 阈值的人读描述,用于 alarm Issue body。改 thresholds 时同步更新这里。
+ */
+const THRESHOLD_DESCRIPTIONS: Record<KnowledgeMetricName, string> = {
+  weekly_new_drafts:
+    "≥ 1 healthy / = 0 critical (no warning band; zero new drafts in 7d means write path is blocked)",
+  review_backlog_hours_p50:
+    "≤ 24h healthy / (24, 48] warning / > 48 critical (median wait time for pending drafts)",
+  helped_ratio:
+    "≥ 0.5 healthy / [0.3, 0.5) warning / < 0.3 critical (skipped if < 10 feedback events in 30d)",
+  avg_edges_per_node:
+    "≥ 1.5 healthy / [1.0, 1.5) warning / < 1.0 critical (weighted: human edge = 1.0, auto-generated edge = 0.5)",
+  unresolved_conflicts:
+    "< 10 healthy (Phase 3a evolution engine not yet emitting conflicts_with edges)",
+  stale_unchecked_fast:
+    "≤ 4 healthy / [5, 10] warning / > 10 critical (volatility=fast nodes ≥ 90d unverified)",
+};
+
+/**
+ * 决定本次 status 相对上次 status 是否"恶化",触发 alarm Issue 创建。
+ *
+ * 规则:
+ * - 首次跑(无历史)且本次 != healthy → 创建
+ * - 上次 healthy 且本次 != healthy → 创建(状态恶化)
+ * - 上次 warning 本次 critical → 创建(继续恶化)
+ * - 上次 warning 本次 warning → 不创建(稳定,已有 alarm)
+ * - 上次 critical 本次 critical → 不创建(稳定,已有 alarm)
+ * - 上次 warning/critical 本次 healthy → 不创建(恢复了,无需 alarm)
+ *
+ * 不基于 Issue 状态(是否 closed)做 dedup,因为关闭 alarm Issue 不应抑制
+ * 新一轮恶化告警。
+ */
+export function shouldCreateAlarm(
+  lastStatus: KnowledgeMetricStatus | undefined,
+  currentStatus: KnowledgeMetricStatus,
+): boolean {
+  if (currentStatus === "healthy") return false;
+  if (lastStatus === undefined || lastStatus === "healthy") return true;
+  if (lastStatus === "warning" && currentStatus === "critical") return true;
+  return false;
+}
+
+/**
+ * 格式化 alarm Issue 的 description 字段(markdown body)。
+ * Title 在 runHealthcheck 中按 `[LLM-Wiki Health] {metric} = {value} ({status})` 生成。
+ */
+export function formatAlarmBody(
+  metric: KnowledgeMetricName,
+  value: number,
+  status: KnowledgeMetricStatus,
+  details: Record<string, unknown>,
+  computedAt: Date,
+): string {
+  const lines = [
+    `LLM-Wiki health metric in **${status}** state.`,
+    ``,
+    `- Metric: \`${metric}\``,
+    `- Value: ${value}`,
+    `- Status: **${status}**`,
+    `- Threshold (PRD §7.5): ${THRESHOLD_DESCRIPTIONS[metric]}`,
+    `- Computed at: ${computedAt.toISOString()}`,
+    ``,
+    `## Details`,
+    ``,
+    "```json",
+    JSON.stringify(details, null, 2),
+    "```",
+    ``,
+    `## Auto-generated`,
+    ``,
+    `This alarm is created by the \`daily-knowledge-healthcheck\` routine.`,
+    `See \`docs/plans/2026-05-14-llm-wiki-phase-3c-healthcheck.md\` for the full spec.`,
+    ``,
+    `Dedup logic is based on whether the metric status _worsened_ since the previous run, not on whether this issue is open or closed. Closing this issue does not suppress future alarms.`,
+  ];
+  return lines.join("\n");
+}
+
+export function knowledgeHealthcheckService(
+  db: Db,
+  /**
+   * Phase 3c Task 3 起 runHealthcheck 需要创建 alarm Issue,通过本参数注入。
+   * Task 2 的 computer 单元测试不需要,因此设为 optional——传 db 即可。
+   * 调用方应在 app.ts wire 时传 issueService(db)。
+   */
+  issueSvc?: IssueServiceLike,
+) {
   /**
    * weekly_new_drafts —— 过去 7 天创建的 knowledge_drafts 数。
    * 归零意味着写入路径阻塞 / Agent 不再自评（PRD §7.5）。
@@ -339,11 +441,118 @@ export function knowledgeHealthcheckService(db: Db) {
     };
   }
 
+  /** metric_name → computer 函数的注册表。 */
+  const COMPUTERS: Record<
+    KnowledgeMetricName,
+    (companyId: string) => Promise<MetricResult>
+  > = {
+    weekly_new_drafts: computeWeeklyNewDrafts,
+    review_backlog_hours_p50: computeReviewBacklogHoursP50,
+    helped_ratio: computeHelpedRatio,
+    avg_edges_per_node: computeAvgEdgesPerNode,
+    unresolved_conflicts: computeUnresolvedConflicts,
+    stale_unchecked_fast: computeStaleUncheckedFast,
+  };
+
+  /**
+   * 跑指定 company 的一次健康检查（PRD §13.3 Routine 3 daily-knowledge-healthcheck）。
+   *
+   * 流程：
+   *   1. 对每个请求的 metric 调对应 computer（并行）
+   *   2. 一次性 batch insert 6 行到 knowledge_metrics（避免 6 次单独写）
+   *   3. 对每个 metric 查上一次 status,与本次对比
+   *   4. 状态恶化(详见 shouldCreateAlarm 注释) → 调 issueSvc.create 创建 alarm Issue
+   *   5. 返回 summary { metricsComputed, alarmsCreated }
+   *
+   * 失败处理：
+   * - 单个 metric computer 抛错 → 整个 runHealthcheck 抛错（暴露问题）
+   * - alarm Issue 创建失败 → log + 继续（不让 alarm 创建失败掩盖 metric 写入）
+   * - issueSvc 未注入 → log + 跳过 alarm 创建（仍写 metrics）
+   */
+  async function runHealthcheck(
+    companyId: string,
+    opts?: { metrics?: KnowledgeMetricName[] },
+  ): Promise<{ metricsComputed: number; alarmsCreated: number }> {
+    const requested = opts?.metrics ?? [...KNOWLEDGE_METRIC_NAMES];
+    const computedAt = new Date();
+
+    // 1. 跑所有 computer（并行）
+    const results = await Promise.all(
+      requested.map(async (name) => {
+        const r = await COMPUTERS[name](companyId);
+        return { name, ...r };
+      }),
+    );
+
+    // 2. Batch insert（空数组防御）
+    if (results.length > 0) {
+      await db.insert(knowledgeMetrics).values(
+        results.map((r) => ({
+          companyId,
+          metricName: r.name,
+          /** numeric 列接受 string,避免精度问题 */
+          metricValue: String(r.value),
+          status: r.status,
+          computedAt,
+          details: r.details,
+        })),
+      );
+    }
+
+    // 3-4. 对每个 metric 查上一次 status,决定 alarm
+    let alarmsCreated = 0;
+    for (const r of results) {
+      const lastRows = (await db.execute(sql`
+        SELECT status FROM knowledge_metrics
+        WHERE company_id = ${companyId}
+          AND metric_name = ${r.name}
+          AND computed_at < ${computedAt}
+        ORDER BY computed_at DESC
+        LIMIT 1
+      `)) as Array<{ status: KnowledgeMetricStatus } | undefined>;
+      const lastStatus = lastRows[0]?.status;
+
+      if (!shouldCreateAlarm(lastStatus, r.status)) continue;
+
+      if (!issueSvc) {
+        logger.warn(
+          { companyId, metric: r.name, value: r.value, status: r.status },
+          "healthcheck: issueSvc not provided; skipping alarm Issue creation",
+        );
+        continue;
+      }
+
+      try {
+        await issueSvc.create(companyId, {
+          title: `[LLM-Wiki Health] ${r.name} = ${r.value} (${r.status})`,
+          description: formatAlarmBody(
+            r.name,
+            r.value,
+            r.status,
+            r.details,
+            computedAt,
+          ),
+          status: "todo",
+          priority: r.status === "critical" ? "high" : "medium",
+        });
+        alarmsCreated += 1;
+      } catch (err) {
+        // alarm Issue 创建失败不阻断后续 metric 的告警尝试 + 不掩盖 metric 已落库
+        logger.warn(
+          { err, companyId, metric: r.name },
+          "healthcheck: failed to create alarm Issue",
+        );
+      }
+    }
+
+    return { metricsComputed: results.length, alarmsCreated };
+  }
+
   return {
+    runHealthcheck,
     /**
-     * Internal computers 暴露给单元测试。Task 3 的 runHealthcheck 落地后,
-     * 公开 API 会改为 runHealthcheck(companyId, opts?) 一个入口,本字段保留
-     * 给测试场景。
+     * Internal computers 暴露给单元测试 + scheduler 调试用。
+     * 生产代码应该走 runHealthcheck 一个入口。
      */
     __test__: {
       computeWeeklyNewDrafts,

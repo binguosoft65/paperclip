@@ -1066,6 +1066,9 @@ export {
   KNOWLEDGE_PRE_VERDICT_VALUES,
   reviewerRunQuerySchema,
   batchApplyVerdictSchema,
+  KNOWLEDGE_METRIC_NAMES,
+  KNOWLEDGE_METRIC_STATUSES,
+  healthcheckRunQuerySchema,
 } from "./validators/index.js";
 export type {
   CreateKnowledgeDraft,
@@ -1079,4 +1082,7 @@ export type {
   KnowledgePreVerdict,
   ReviewerRunQuery,
   BatchApplyVerdict,
+  KnowledgeMetricName,
+  KnowledgeMetricStatus,
+  HealthcheckRunQuery,
 } from "./validators/index.js";

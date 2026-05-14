@@ -425,6 +425,9 @@ export {
   KNOWLEDGE_PRE_VERDICT_VALUES,
   reviewerRunQuerySchema,
   batchApplyVerdictSchema,
+  KNOWLEDGE_METRIC_NAMES,
+  KNOWLEDGE_METRIC_STATUSES,
+  healthcheckRunQuerySchema,
   type CreateKnowledgeDraft,
   type ApproveKnowledgeDraft,
   type RejectKnowledgeDraft,
@@ -436,4 +439,7 @@ export {
   type KnowledgePreVerdict,
   type ReviewerRunQuery,
   type BatchApplyVerdict,
+  type KnowledgeMetricName,
+  type KnowledgeMetricStatus,
+  type HealthcheckRunQuery,
 } from "./knowledge.js";

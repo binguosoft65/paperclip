@@ -2,6 +2,8 @@ import { describe, it, expect, vi } from "vitest";
 import {
   knowledgeHealthcheckService,
   METRIC_THRESHOLDS,
+  shouldCreateAlarm,
+  formatAlarmBody,
 } from "./knowledge-healthcheck.js";
 
 /**
@@ -337,5 +339,302 @@ describe("computeUnresolvedConflicts", () => {
     const svc = knowledgeHealthcheckService({ execute: vi.fn() } as never);
     const r = await svc.__test__.computeUnresolvedConflicts("co-1");
     expect(r.details.will_switch_when).toMatch(/Phase 3a/);
+  });
+});
+
+// ──────────────────────────────────────────────────────────────────
+// shouldCreateAlarm helper (Task 3 dedup logic)
+// ──────────────────────────────────────────────────────────────────
+
+describe("shouldCreateAlarm", () => {
+  it("first run + critical → alarm", () => {
+    expect(shouldCreateAlarm(undefined, "critical")).toBe(true);
+  });
+  it("first run + warning → alarm", () => {
+    expect(shouldCreateAlarm(undefined, "warning")).toBe(true);
+  });
+  it("first run + healthy → no alarm", () => {
+    expect(shouldCreateAlarm(undefined, "healthy")).toBe(false);
+  });
+  it("healthy → warning → alarm (degradation)", () => {
+    expect(shouldCreateAlarm("healthy", "warning")).toBe(true);
+  });
+  it("healthy → critical → alarm (degradation)", () => {
+    expect(shouldCreateAlarm("healthy", "critical")).toBe(true);
+  });
+  it("healthy → healthy → no alarm (stable)", () => {
+    expect(shouldCreateAlarm("healthy", "healthy")).toBe(false);
+  });
+  it("warning → critical → alarm (further degradation)", () => {
+    expect(shouldCreateAlarm("warning", "critical")).toBe(true);
+  });
+  it("warning → warning → no alarm (stable, dedup)", () => {
+    expect(shouldCreateAlarm("warning", "warning")).toBe(false);
+  });
+  it("warning → healthy → no alarm (recovered)", () => {
+    expect(shouldCreateAlarm("warning", "healthy")).toBe(false);
+  });
+  it("critical → critical → no alarm (stable, dedup)", () => {
+    expect(shouldCreateAlarm("critical", "critical")).toBe(false);
+  });
+  it("critical → healthy → no alarm (recovered)", () => {
+    expect(shouldCreateAlarm("critical", "healthy")).toBe(false);
+  });
+});
+
+// ──────────────────────────────────────────────────────────────────
+// formatAlarmBody helper
+// ──────────────────────────────────────────────────────────────────
+
+describe("formatAlarmBody", () => {
+  const computedAt = new Date("2026-05-14T08:00:00Z");
+
+  it("includes metric / value / status / threshold / computed_at", () => {
+    const body = formatAlarmBody(
+      "review_backlog_hours_p50",
+      72.5,
+      "critical",
+      { pending_count: 42 },
+      computedAt,
+    );
+    expect(body).toContain("`review_backlog_hours_p50`");
+    expect(body).toContain("72.5");
+    expect(body).toContain("**critical**");
+    expect(body).toContain("≤ 24h healthy");
+    expect(body).toContain("2026-05-14T08:00:00.000Z");
+  });
+
+  it("includes details as JSON code fence", () => {
+    const body = formatAlarmBody(
+      "helped_ratio",
+      0.2,
+      "critical",
+      { total_feedback: 30, window_days: 30 },
+      computedAt,
+    );
+    expect(body).toContain("```json");
+    expect(body).toContain('"total_feedback": 30');
+  });
+
+  it("references the plan + dedup contract", () => {
+    const body = formatAlarmBody(
+      "weekly_new_drafts",
+      0,
+      "critical",
+      {},
+      computedAt,
+    );
+    expect(body).toContain("2026-05-14-llm-wiki-phase-3c-healthcheck.md");
+    expect(body).toMatch(/Closing this issue does not suppress/i);
+  });
+});
+
+// ──────────────────────────────────────────────────────────────────
+// runHealthcheck (integration of computers + insert + alarm)
+// ──────────────────────────────────────────────────────────────────
+
+/**
+ * Build a mock db that:
+ * - returns sequential execute() results
+ * - captures insert(table).values(rows) into `db.__insertedRows`
+ */
+function fakeDbForRun(executeResults: unknown[][]) {
+  const insertedRows: unknown[][] = [];
+  const valuesFn = vi.fn().mockImplementation((rows: unknown[]) => {
+    insertedRows.push(rows);
+    return Promise.resolve(undefined);
+  });
+  const db = {
+    execute: vi.fn(),
+    insert: vi.fn().mockReturnValue({ values: valuesFn }),
+    __insertedRows: insertedRows,
+    __valuesFn: valuesFn,
+  };
+  for (const r of executeResults) {
+    db.execute.mockResolvedValueOnce(r);
+  }
+  return db as never;
+}
+
+function fakeIssueSvc() {
+  return {
+    create: vi.fn().mockResolvedValue({ id: "issue-uuid-stub" }),
+  };
+}
+
+/** Compose execute results for runHealthcheck with full default 6 metrics:
+ * - 6 computer execute() results in declared order
+ * - 6 "last status" execute() results in same order
+ * (computeUnresolvedConflicts does NOT call execute, so total = 5 computer + 6 last = 11)
+ */
+function defaultRunExecuteResults(opts: {
+  computerOutputs?: Partial<{
+    weekly_new_drafts: unknown[];
+    review_backlog_hours_p50: unknown[];
+    helped_ratio: unknown[];
+    avg_edges_per_node: unknown[];
+    stale_unchecked_fast: unknown[];
+  }>;
+  lastStatuses?: Partial<Record<string, "healthy" | "warning" | "critical">>;
+} = {}) {
+  const co = opts.computerOutputs ?? {};
+  const last = opts.lastStatuses ?? {};
+  return [
+    co.weekly_new_drafts ?? [{ count: 5 }],
+    co.review_backlog_hours_p50 ?? [{ p50_hours: 10, pending_count: 3 }],
+    co.helped_ratio ?? [{ total: 20, ratio: 0.7 }],
+    co.avg_edges_per_node ?? [{ node_count: 5, weighted: 8, auto_count: 0, human_count: 8, total: 8 }],
+    // computeUnresolvedConflicts has no execute call
+    co.stale_unchecked_fast ?? [{ count: 2 }],
+    // "last status" queries — one per metric in declared order
+    last.weekly_new_drafts ? [{ status: last.weekly_new_drafts }] : [],
+    last.review_backlog_hours_p50 ? [{ status: last.review_backlog_hours_p50 }] : [],
+    last.helped_ratio ? [{ status: last.helped_ratio }] : [],
+    last.avg_edges_per_node ? [{ status: last.avg_edges_per_node }] : [],
+    last.unresolved_conflicts ? [{ status: last.unresolved_conflicts }] : [],
+    last.stale_unchecked_fast ? [{ status: last.stale_unchecked_fast }] : [],
+  ];
+}
+
+describe("runHealthcheck", () => {
+  it("computes all 6 metrics and batch-inserts to knowledge_metrics", async () => {
+    const db = fakeDbForRun(defaultRunExecuteResults());
+    const issueSvc = fakeIssueSvc();
+    const svc = knowledgeHealthcheckService(db, issueSvc);
+
+    const result = await svc.runHealthcheck("co-1");
+
+    expect(result.metricsComputed).toBe(6);
+    // 1 insert call with 6 rows
+    expect((db as any).__valuesFn).toHaveBeenCalledTimes(1);
+    const inserted = (db as any).__insertedRows[0] as Array<{ metricName: string }>;
+    expect(inserted).toHaveLength(6);
+    expect(inserted.map((r) => r.metricName).sort()).toEqual([
+      "avg_edges_per_node",
+      "helped_ratio",
+      "review_backlog_hours_p50",
+      "stale_unchecked_fast",
+      "unresolved_conflicts",
+      "weekly_new_drafts",
+    ]);
+  });
+
+  it("creates 0 alarms when all metrics are healthy (default fixtures)", async () => {
+    const db = fakeDbForRun(defaultRunExecuteResults());
+    const issueSvc = fakeIssueSvc();
+    const svc = knowledgeHealthcheckService(db, issueSvc);
+
+    const result = await svc.runHealthcheck("co-1");
+
+    expect(result.alarmsCreated).toBe(0);
+    expect(issueSvc.create).not.toHaveBeenCalled();
+  });
+
+  it("creates an alarm when weekly_new_drafts drops to 0 (first run, no history)", async () => {
+    const db = fakeDbForRun(
+      defaultRunExecuteResults({
+        computerOutputs: { weekly_new_drafts: [{ count: 0 }] }, // → critical
+      }),
+    );
+    const issueSvc = fakeIssueSvc();
+    const svc = knowledgeHealthcheckService(db, issueSvc);
+
+    const result = await svc.runHealthcheck("co-1");
+
+    expect(result.alarmsCreated).toBe(1);
+    expect(issueSvc.create).toHaveBeenCalledTimes(1);
+    const [companyId, payload] = issueSvc.create.mock.calls[0];
+    expect(companyId).toBe("co-1");
+    expect(payload.title).toMatch(/\[LLM-Wiki Health\] weekly_new_drafts = 0 \(critical\)/);
+    expect(payload.status).toBe("todo");
+    expect(payload.priority).toBe("high"); // critical → high
+    expect(payload.description).toContain("weekly_new_drafts");
+  });
+
+  it("uses priority=medium for warning, priority=high for critical", async () => {
+    const db = fakeDbForRun(
+      defaultRunExecuteResults({
+        computerOutputs: {
+          review_backlog_hours_p50: [{ p50_hours: 36, pending_count: 12 }], // → warning
+        },
+      }),
+    );
+    const issueSvc = fakeIssueSvc();
+    const svc = knowledgeHealthcheckService(db, issueSvc);
+
+    await svc.runHealthcheck("co-1");
+
+    const payload = issueSvc.create.mock.calls[0][1];
+    expect(payload.priority).toBe("medium");
+  });
+
+  it("does NOT create alarm on warning → warning (stable, dedup)", async () => {
+    const db = fakeDbForRun(
+      defaultRunExecuteResults({
+        computerOutputs: {
+          review_backlog_hours_p50: [{ p50_hours: 36, pending_count: 12 }], // warning
+        },
+        lastStatuses: { review_backlog_hours_p50: "warning" },
+      }),
+    );
+    const issueSvc = fakeIssueSvc();
+    const svc = knowledgeHealthcheckService(db, issueSvc);
+
+    const result = await svc.runHealthcheck("co-1");
+
+    expect(result.alarmsCreated).toBe(0);
+    expect(issueSvc.create).not.toHaveBeenCalled();
+  });
+
+  it("creates alarm on warning → critical (further degradation)", async () => {
+    const db = fakeDbForRun(
+      defaultRunExecuteResults({
+        computerOutputs: {
+          review_backlog_hours_p50: [{ p50_hours: 72, pending_count: 30 }], // critical
+        },
+        lastStatuses: { review_backlog_hours_p50: "warning" },
+      }),
+    );
+    const issueSvc = fakeIssueSvc();
+    const svc = knowledgeHealthcheckService(db, issueSvc);
+
+    const result = await svc.runHealthcheck("co-1");
+
+    expect(result.alarmsCreated).toBe(1);
+  });
+
+  it("respects opts.metrics filter (subset)", async () => {
+    const db = fakeDbForRun([
+      [{ count: 5 }], // weekly_new_drafts
+      [{ count: 2 }], // stale_unchecked_fast
+      // last status queries for the 2 requested
+      [], // weekly_new_drafts last
+      [], // stale_unchecked_fast last
+    ]);
+    const issueSvc = fakeIssueSvc();
+    const svc = knowledgeHealthcheckService(db, issueSvc);
+
+    const result = await svc.runHealthcheck("co-1", {
+      metrics: ["weekly_new_drafts", "stale_unchecked_fast"],
+    });
+
+    expect(result.metricsComputed).toBe(2);
+    const inserted = (db as any).__insertedRows[0] as Array<{ metricName: string }>;
+    expect(inserted).toHaveLength(2);
+  });
+
+  it("skips alarm creation when issueSvc is not provided (logs warn instead)", async () => {
+    const db = fakeDbForRun(
+      defaultRunExecuteResults({
+        computerOutputs: { weekly_new_drafts: [{ count: 0 }] },
+      }),
+    );
+    const svc = knowledgeHealthcheckService(db);
+
+    const result = await svc.runHealthcheck("co-1");
+
+    // metrics still computed + written, but no alarm created
+    expect(result.metricsComputed).toBe(6);
+    expect(result.alarmsCreated).toBe(0);
   });
 });
