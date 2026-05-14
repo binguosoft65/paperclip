@@ -28,6 +28,21 @@ After Phase 3a lands the full Phase 3 PRD acceptance criteria can be checked: "6
 
 ---
 
+## v0.2 Amendment — schema-truth corrections (post-`partial-smoke` 2026-05-14)
+
+After committing the v0.1 plan, a partial smoke against the live `paperclip-pg` MCP database surfaced four wrong schema assumptions. All v0.1 assumptions about how Phase 3a interacts with the `issues` table are revised here; SQL drafts and code skeletons below have been updated to match real schema.
+
+| # | v0.1 wrong assumption | v0.2 truth + fix |
+|---|---|---|
+| 1 | `issueSvc.create({ companyId, title, ..., labels, metadata })` — single object arg with `labels` array and `metadata` jsonb | `issueSvc.create(companyId, { title, description, status, priority })` — `companyId` is **positional first arg**; data object has no `labels` and no `metadata` fields. Type confirmed via `IssueServiceLike = Pick<ReturnType<typeof issueService>, "create">` in `server/src/services/knowledge-healthcheck.ts` (Phase 3c already uses the correct signature). |
+| 2 | `issues.metadata` jsonb column exists → dedup via `metadata.subject_node_id = <id>` | `issues` table has **no `metadata` column**. Dedup moves to `knowledge_nodes.metadata.last_<behavior>_proposal_at` ISO timestamp on the source node (or `knowledge_drafts.metadata` for draft-anchored proposals). Plus default 7-day cooldown matches the weekly tick. |
+| 3 | `issues.labels` text[] column exists → write `labels: ['[Evolution]', '[Evolution:promotion]']` per Issue | `issues` table has **no `labels` array**. Labels go through join tables `issue_labels` × `labels` (lazy-create-on-use). MVP skips label seeding entirely and uses **title prefix** `[Evolution:<behavior>]` as the visual category. Later PR can backfill labels via the join tables if board UX needs them. |
+| 4 | pgvector index is `ivfflat` | Actual index is **HNSW with `vector_cosine_ops`** (`knowledge_nodes_embedding_idx`, `m=16`, `ef_construction=200`). Functionally equivalent for `<=>` cosine distance queries; HNSW is more accurate + needs no training. Prose updated; no SQL change needed. |
+
+These corrections do not invalidate the task ordering or the maintainer decisions A/B/C/D — they only adjust the **interface** Phase 3a code uses to write Issues and check dedup. Task 1 onwards now references `knowledge_nodes.metadata.last_<behavior>_proposal_at` instead of `issues.metadata.subject_node_id`.
+
+---
+
 ## Maintainer Decisions
 
 Recorded as named decisions so they are easy to reference in code (`// per Phase 3a decision A`) and in commit messages. Mirror Phase 3c's 1A/2C/3A style.
@@ -91,14 +106,19 @@ All fields PRD §FR6 references are already in master via `migration 0084`. Veri
   targetNodeId: uuid  // null = brand-new node proposal; non-null = revision
 }
 
-// issues (Paperclip core)
+// issues (Paperclip core) — confirmed via partial smoke 2026-05-14
 {
-  title / description / companyId / status / priority / assignee  // assignee=null per decision A
-  // labels via labels join table; we'll add label '[Evolution]'
+  title / description / status / priority         // base fields used by Phase 3a
+  companyId                                        // POSITIONAL 1st arg to issueSvc.create, not a data field
+  // assigneeAgentId + assigneeUserId both null per decision A (no Curator Agent)
+  // NOTE: issues table has NO `labels` array column and NO `metadata` jsonb column.
+  //       Labels live in `issue_labels` × `labels` join tables (lazy-create-on-use).
+  //       MVP skips label seeding entirely; title prefix `[Evolution:<behavior>]`
+  //       serves as the visual category instead.
 }
 ```
 
-**No migration required for Phase 3a.** All cooldown / pattern markers go in existing `metadata jsonb` columns. The `[Evolution]` label may need a one-off seed but Paperclip's label model is lazy-create-on-use; we'll just set `labels: ['[Evolution]', '[Evolution:promotion]'']` per behavior on Issue creation.
+**No migration required for Phase 3a.** All cooldown / pattern markers go on **`knowledge_nodes.metadata`** (per-node jsonb), specifically `last_<behavior>_proposal_at` ISO timestamp set when Phase 3a creates a proposal Issue against that node. Issue dedup queries the source node's metadata, not the issues table. Title prefix `[Evolution:<behavior>]` provides the human-readable category without seeding any label entities.
 
 ---
 
@@ -437,42 +457,42 @@ Each task targets a self-contained commit. Estimated session count: 4-6 (Tasks 1
 ```ts
 async function proposeViaIssue(
   companyId: string,
-  label: string,             // e.g. "[Evolution:promotion]"
-  title: string,
+  titlePrefix: string,        // e.g. "[Evolution:promotion]"
+  title: string,              // human-readable subject ("建议升级为 rule: {node.title}")
   body: string,
-  metadata: Record<string, unknown>,
 ): Promise<string | null> {
   if (!issueSvc) {
-    logger.warn({ companyId, label }, "evolution: issueService unavailable, Issue not created");
+    logger.warn({ companyId, titlePrefix }, "evolution: issueService unavailable, Issue not created");
     return null;
   }
   try {
-    const issue = await issueSvc.create({
-      companyId,
-      title,
+    // issueSvc.create signature (confirmed v0.2): positional companyId + data object
+    // without `labels` (issues table has no labels column) and without `metadata`
+    // (issues table has no metadata column). assigneeAgentId / assigneeUserId
+    // omitted → both null per Phase 3a decision A (no Curator Agent).
+    const issue = await issueSvc.create(companyId, {
+      title: `${titlePrefix} ${title}`,
       description: body,
-      labels: ["[Evolution]", label],
+      status: "todo",
       priority: "medium",
-      // assignee left null per Phase 3a decision A — no Curator Agent
-      metadata,
     });
     return issue.id;
   } catch (err) {
-    logger.warn({ err, companyId, label }, "evolution: Issue creation failed");
+    logger.warn({ err, companyId, titlePrefix }, "evolution: Issue creation failed");
     return null;
   }
 }
 ```
 
-Dedup: before creating, check if an open Issue with the same `metadata.subject_node_id` exists for this company.
+Dedup (v0.2): the source node — not the issues table — stores the dedup marker. Each behavior writes `knowledge_nodes.metadata.last_<behavior>_proposal_at` (or `knowledge_drafts.metadata.last_<behavior>_proposal_at` for draft-anchored proposals) when it creates an Issue. Before creating a new proposal Issue, the candidate query filters out nodes whose `last_<behavior>_proposal_at` is within the cooldown window (default 7 days, matching the weekly tick). After Issue creation succeeds, the behavior updates the node's metadata in a single `UPDATE knowledge_nodes SET metadata = metadata || jsonb_build_object(...)` statement.
 
 - [ ] **Step 1: promotionCheck implementation**:
 
   Query (`knowledge_nodes`): `type='lesson' AND status='active' AND trigger_count >= 3 AND prevention_score >= 0.7`. For each row, propose Issue "建议升级为 rule: {title}". Body includes node id / current type / trigger_count / prevention_score / link to detail page.
 
-  Dedup: skip nodes where `metadata.evolution_cooldown_until` is in the future OR where an existing open Issue with `metadata.subject_node_id = <id>` and label `[Evolution:promotion]` exists. Use a single SQL with NOT EXISTS subquery on issues table to avoid N+1.
+  Dedup (v0.2): the candidate query already excludes nodes where `knowledge_nodes.metadata.last_promotion_proposal_at` is within 7 days. No issues-table subquery needed — dedup lives entirely on the source node's metadata.
 
-  On Issue success: write `knowledge_node_events` row `event_type='promoted'`, `metadata.proposed=true`.
+  On Issue success: (1) write `knowledge_node_events` row `event_type='promoted'`, `metadata.proposed=true`; (2) update node metadata: `UPDATE knowledge_nodes SET metadata = metadata || jsonb_build_object('last_promotion_proposal_at', NOW()::text, 'last_promotion_issue_id', $issue_id) WHERE id = $node_id`.
 
   Returns BehaviorResult with `issuesCreated = count of new Issues`.
 
@@ -502,9 +522,9 @@ Dedup: before creating, check if an open Issue with the same `metadata.subject_n
 
   Per row create Issue "请验证 [节点]: {title}" with body including reason + last verified_at + volatility.
 
-  Dedup: skip if open Issue with `metadata.subject_node_id` already exists with label `[Evolution:freshness]`.
+  Dedup (v0.2): candidate query filters out nodes where `knowledge_nodes.metadata.last_freshness_proposal_at` is within 7 days. Same per-node-metadata strategy as promotionCheck.
 
-  On Issue success: do NOT update node fields (verification is the human's job; we just nudge). Write `knowledge_node_events` row `event_type='verification_requested'`.
+  On Issue success: (1) write `knowledge_node_events` row `event_type='verification_requested'`; (2) update node metadata `last_freshness_proposal_at` to NOW(). Do NOT touch `verified_at` — that's the human reviewer's job after they actually verify.
 
 - [ ] **Step 3: Test cases** — at least 3 per behavior (happy path / dedup / issueSvc unavailable). Mock `db.execute` to return canned rows; mock `issueSvc.create` to return `{ id: 'iss-1' }`.
 
@@ -548,11 +568,11 @@ Dedup: before creating, check if an open Issue with the same `metadata.subject_n
 
   Note `<=>` is pgvector's cosine **distance** operator (0 = identical, 2 = opposite). So cosine_similarity = 1 - distance. Distance < 0.1 ⇔ similarity > 0.9. We filter in the join condition so the index on `(embedding)` can be used; the `ORDER BY` is then over the already-filtered candidates.
 
-  **Performance**: pgvector's `<=>` will use the ivfflat index already created on `knowledge_nodes.embedding`. For ~1000 nodes per company, the cross-join with `<=> < 0.1` filter typically returns < 100 candidates; the LIMIT 10 keeps wire size predictable.
+  **Performance**: pgvector's `<=>` will use the **HNSW index** `knowledge_nodes_embedding_idx` (`vector_cosine_ops`, `m=16`, `ef_construction=200`) — confirmed via partial smoke EXPLAIN. For ~1000 nodes per company, the cross-join with `<=> < 0.1` filter typically returns < 100 candidates; the LIMIT 10 keeps wire size predictable.
 
-- [ ] **Step 2: For each pair**: dedup against existing open Issue with `metadata.pair_key = '<id_a>:<id_b>'` (sorted lexicographically). Create Issue "建议合并 [{title_a}] 与 [{title_b}]" with body containing both titles + types + cosine + node id links + suggested merged-node action.
+- [ ] **Step 2: For each pair**: dedup using **per-node metadata** — skip the pair if `knowledge_nodes.metadata.last_merge_proposal_at` on either node is within 7 days, OR if `knowledge_nodes.metadata.last_merge_pair_keys` array (on either node) contains the sorted-lexicographic pair_key `"{id_a}:{id_b}"`. Create Issue with title `[Evolution:merge] 建议合并 [{title_a}] 与 [{title_b}]` and body containing both titles + types + cosine + node id links + suggested merged-node action.
 
-  Dedup also checks `metadata.evolution_cooldown_until` on either node.
+  On Issue success: append the pair_key to both nodes' `metadata.last_merge_pair_keys` and set `last_merge_proposal_at = NOW()` on both. (One UPDATE per node.)
 
 - [ ] **Step 3: Test cases**:
   - happy path: 3 pairs returned → 3 Issues created
@@ -916,7 +936,7 @@ Case skeleton:
 2. **decay_scan archives idle nodes** — seed an active lesson with `last_triggered = now - 200d`; tick; assert `status='archived'` and a `knowledge_node_events` row with `event_type='archived'`.
 3. **promotion_check creates Issue** — seed a lesson with `trigger_count=5`, `prevention_score=0.8`; tick; assert one new `[Evolution:promotion]` Issue.
 4. **freshness_audit creates Issue for fast-stale node** — seed a `volatility='fast'` node with `verified_at = now - 100d`; tick; assert `[Evolution:freshness]` Issue.
-5. **merge_candidate_detect creates Issue for similar pair** — seed 2 nodes with similar embeddings (manually compute or use `pgvector.embed`); tick; assert merge Issue with `metadata.pair_key`.
+5. **merge_candidate_detect creates Issue for similar pair** — seed 2 nodes with similar embeddings (manually compute or use `pgvector.embed`); tick; assert one new Issue with title prefix `[Evolution:merge]` and both nodes' `metadata.last_merge_pair_keys` array contains the sorted pair_key.
 6. **conflict_detect materializes Phase 3b conflicts** — seed a draft with `detected_conflicts = [other_node_id]` and `target_node_id = src_node_id`; tick; assert a `conflicts_with` edge inserted + Issue created + `detected_conflicts` cleared.
 7. **pattern_emergence creates concept draft** — seed 6 similar lesson nodes in same `(used_for, business_domain_id)`; tick; assert one new `type='concept'` draft with `metadata.is_pattern=true`.
 8. **Subset filter + cross-company isolation** — `POST /evolution/run` with `body.behaviors=["decay_scan"]` only runs decay; cross-company `?companyId=B` from A actor returns 403.
@@ -936,8 +956,8 @@ Plus a "known limitations" section:
 |---|---|
 | LLM cost in weekly tick | `BEHAVIOR_LIMITS.pattern_emergence.topClusters=5` and `merge_candidate_detect.topPairs=10` bound it. Worst case ~15 LLM calls per company per week. |
 | Issue noise from `decay_scan` | Explicitly **no** Issue creation for decay (archive is reversible + high-volume). Activity log entry only. |
-| Issue noise from other behaviors | Dedup by open-Issue + `metadata.subject_node_id` lookup + 30-day cooldown for failed pattern attempts. |
-| pgvector O(n²) cost on large companies | LIMITs at every cross-join; index `knowledge_nodes_embedding_ivfflat_idx` (already in master) keeps `<=>` cheap. Will revisit if any company exceeds 5k nodes. |
+| Issue noise from other behaviors | Dedup via `knowledge_nodes.metadata.last_<behavior>_proposal_at` per-node cooldown (default 7 days, matches weekly tick) + 30-day cooldown for failed pattern attempts via `metadata.evolution_cooldown_until`. No `issues.metadata` query needed (column doesn't exist in this fork). |
+| pgvector O(n²) cost on large companies | LIMITs at every cross-join; **HNSW index** `knowledge_nodes_embedding_idx` (`vector_cosine_ops`, `m=16`, `ef_construction=200`, already in master) keeps `<=>` cheap. Will revisit if any company exceeds 5k nodes. |
 | LLM unparseable JSON on pattern-emergence | Try/catch around JSON.parse; on failure set 30-day cooldown on the cluster (don't retry every week with the same unproductive prompt). |
 | Phase 3b detected_conflicts may be empty for all drafts (cold start) | conflict-detect just returns `candidatesFound=0`, no error. v0.2 follow-up may add independent active-rule scan. |
 | Schema drift if Phase 1 changes draft fields | All SQL uses Drizzle-typed columns via `sql\`\`\``; renames will fail at compile time. |
@@ -988,15 +1008,13 @@ WHERE company_id = $1
   AND prevention_score >= 0.7
   AND (metadata->>'evolution_cooldown_until' IS NULL
        OR (metadata->>'evolution_cooldown_until')::timestamptz < NOW())
-  AND NOT EXISTS (
-    SELECT 1 FROM issues i
-    WHERE i.company_id = $1
-      AND i.status IN ('todo', 'in_progress', 'in_review')
-      AND i.metadata->>'subject_node_id' = knowledge_nodes.id::text
-      AND 'Evolution:promotion' = ANY(i.labels)
-  )
+  AND (metadata->>'last_promotion_proposal_at' IS NULL
+       OR (metadata->>'last_promotion_proposal_at')::timestamptz < NOW() - INTERVAL '7 days')
 ORDER BY prevention_score DESC, trigger_count DESC
 LIMIT 50;
+-- v0.2: dedup moved from `issues.metadata.subject_node_id` (column does not exist
+-- in this fork) to `knowledge_nodes.metadata.last_promotion_proposal_at`,
+-- written by promotionCheck after a successful issueSvc.create() call.
 ```
 
 ### A.3 freshnessAudit (three-way UNION)
