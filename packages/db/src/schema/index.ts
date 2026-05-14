@@ -73,7 +73,7 @@ export { pluginJobs, pluginJobRuns } from "./plugin_jobs.js";
 export { pluginWebhookDeliveries } from "./plugin_webhooks.js";
 export { pluginLogs } from "./plugin_logs.js";
 
-// LLM-Wiki 知识引擎（Phase 0）—— 见 docs/design/2026-05-12-llm-wiki-knowledge-engine-*
+// LLM-Wiki 知识引擎（Phase 0）—— 见 docs/specs/2026-05-12-llm-wiki-knowledge-engine-*
 export { businessDomains } from "./business_domains.js";
 export { knowledgeNodes } from "./knowledge_nodes.js";
 export { knowledgeEdges } from "./knowledge_edges.js";

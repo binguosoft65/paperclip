@@ -25,7 +25,7 @@ import { authUsers } from "./auth.js";
  * Reviewer Agent 初筛字段（pre_verdict / pre_verdict_reasoning / detected_conflicts）
  * 由 hourly-draft-pre-review Routine 填充，给人审提供建议。
  *
- * 详见 docs/design/...-database.md §4.4。
+ * 详见 docs/specs/...-database.md §4.4。
  */
 export const knowledgeDrafts = pgTable(
   "knowledge_drafts",

@@ -6,7 +6,7 @@ import type { Db } from "@paperclipai/db";
  *
  * Phase 0 MVP 只暴露一个能力：text → 1536 维 vector。后续 Phase 1+ 会
  * 在此 service 内部增加 drafts / nodes / search / drafter / retriever
- * 等子模块（见 docs/design/2026-05-12-llm-wiki-knowledge-engine-architecture.md
+ * 等子模块（见 docs/specs/2026-05-12-llm-wiki-knowledge-engine-architecture.md
  * §3）。
  *
  * 模型选型：OpenAI text-embedding-3-small（1536 维，对应 knowledge_nodes.embedding

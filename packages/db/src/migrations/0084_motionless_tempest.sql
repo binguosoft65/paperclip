@@ -1,6 +1,6 @@
 -- ============================================================================
 -- LLM-Wiki 知识引擎 — Phase 0 基础设施
--- 见 docs/design/2026-05-12-llm-wiki-knowledge-engine-database.md
+-- 见 docs/specs/2026-05-12-llm-wiki-knowledge-engine-database.md
 -- ============================================================================
 
 -- pgvector 扩展（用于 knowledge_nodes.embedding 1536 维向量 + HNSW 近邻搜索）

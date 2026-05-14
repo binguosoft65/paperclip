@@ -43,7 +43,7 @@ const vector = (name: string, dim: number) =>
  * / fact（事实）。MVP 5 种，枚举可扩展（用 text + CHECK 而非 pgEnum
  * 跟项目惯例）。
  *
- * 详细字段语义见 docs/design/2026-05-12-llm-wiki-knowledge-engine-database.md §4.2。
+ * 详细字段语义见 docs/specs/2026-05-12-llm-wiki-knowledge-engine-database.md §4.2。
  */
 export const knowledgeNodes = pgTable(
   "knowledge_nodes",
