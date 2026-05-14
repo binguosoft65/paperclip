@@ -152,3 +152,58 @@ export const batchApplyVerdictSchema = z.object({
   review_notes: z.string().max(500).optional(),
 }).strict();
 export type BatchApplyVerdict = z.infer<typeof batchApplyVerdictSchema>;
+
+// ──────────────────────────────────────────────────────────────────
+// Phase 3c: Daily Healthcheck + Metrics + Alarm
+// ──────────────────────────────────────────────────────────────────
+
+/**
+ * Phase 3c 健康指标枚举（与 PRD §7.5 一一对应）。
+ *
+ * 新增指标时同步：
+ * - server/src/services/knowledge-healthcheck.ts 的 METRIC_THRESHOLDS / computer 注册
+ * - packages/db/src/schema/knowledge_metrics.ts 的 metric_name 注释列表
+ *
+ * 这里用 const tuple 而非 enum,方便 z.enum() 推导出字面量联合类型,也方便
+ * runtime 用 `KNOWLEDGE_METRIC_NAMES.includes(...)` 校验。
+ */
+export const KNOWLEDGE_METRIC_NAMES = [
+  "weekly_new_drafts",
+  "review_backlog_hours_p50",
+  "helped_ratio",
+  "avg_edges_per_node",
+  "unresolved_conflicts",
+  "stale_unchecked_fast",
+] as const;
+
+export type KnowledgeMetricName = (typeof KNOWLEDGE_METRIC_NAMES)[number];
+
+/**
+ * knowledge_metrics.status 三档,与 DB CHECK 约束镜像。
+ * 同名常量在 packages/db/src/migrations/0084_*.sql 第 200 行附近。
+ */
+export const KNOWLEDGE_METRIC_STATUSES = [
+  "healthy",
+  "warning",
+  "critical",
+] as const;
+
+export type KnowledgeMetricStatus = (typeof KNOWLEDGE_METRIC_STATUSES)[number];
+
+/**
+ * POST /api/knowledge/healthcheck/run 请求体。
+ *
+ * `metrics` 可选,缺省时跑全部 6 个;给子集时只跑指定的几个(用于手动调试或
+ * routine 分批跑)。
+ */
+export const healthcheckRunQuerySchema = z
+  .object({
+    metrics: z
+      .array(z.enum(KNOWLEDGE_METRIC_NAMES))
+      .min(1)
+      .optional()
+      .default([...KNOWLEDGE_METRIC_NAMES]),
+  })
+  .strict();
+
+export type HealthcheckRunQuery = z.infer<typeof healthcheckRunQuerySchema>;
