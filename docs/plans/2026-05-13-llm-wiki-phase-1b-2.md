@@ -114,7 +114,7 @@ packages/plugins/<name>/
 | `packages/plugins/paperclip-plugin-knowledge-engine/src/worker.ts` | Plugin worker，注册 tool 调 ctx.knowledge.proposeDraft | **新建** |
 | `packages/plugins/paperclip-plugin-knowledge-engine/src/index.ts` | Re-export | **新建** |
 | `server/src/routes/plugins.ts` | `BUNDLED_PLUGIN_EXAMPLES` 加新条目 | 修改 |
-| `docs/superpowers/plans/2026-05-13-llm-wiki-phase-1b-2-smoke.md` | 手动 smoke checklist | **新建** |
+| `docs/plans/2026-05-13-llm-wiki-phase-1b-2-smoke.md` | 手动 smoke checklist | **新建** |
 
 ---
 
@@ -869,7 +869,7 @@ git commit -m "feat(plugin-host): register paperclip-plugin-knowledge-engine in 
 
 ### Step 1: 写文档
 
-写入 `docs/superpowers/plans/2026-05-13-llm-wiki-phase-1b-2-smoke.md`：
+写入 `docs/plans/2026-05-13-llm-wiki-phase-1b-2-smoke.md`：
 
 ```markdown
 # LLM-Wiki Phase 1b-2 — Path C Plugin Smoke Checklist
@@ -977,7 +977,7 @@ curl -X POST "http://127.0.0.1:3100/api/plugins/tools/execute" \
 ### Step 2: Commit
 
 ```bash
-git add docs/superpowers/plans/2026-05-13-llm-wiki-phase-1b-2-smoke.md
+git add docs/plans/2026-05-13-llm-wiki-phase-1b-2-smoke.md
 git commit -m "docs(llm-wiki): Phase 1b-2 smoke checklist"
 ```
 

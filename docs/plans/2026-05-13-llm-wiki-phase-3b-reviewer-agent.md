@@ -29,7 +29,7 @@
 - `server/src/services/knowledge-reviewer.ts` — reviewerAgentService 工厂
 - `server/src/services/knowledge-reviewer.test.ts` — 单元测试（mocked LLM + retriever + db）
 - `server/src/services/knowledge-reviewer-scheduler.ts` — startReviewerScheduler() / stopReviewerScheduler() in-process 定时
-- `docs/superpowers/plans/2026-05-13-llm-wiki-phase-3b-smoke.md` — 手动 smoke 清单
+- `docs/plans/2026-05-13-llm-wiki-phase-3b-smoke.md` — 手动 smoke 清单
 
 **Modify:**
 - `packages/shared/src/validators/knowledge.ts` — 添加 `reviewerRunQuerySchema`、`batchApplyVerdictSchema`、`KNOWLEDGE_PRE_VERDICT_VALUES`
@@ -1181,7 +1181,7 @@ cd D:/aiprojects/paperclip && git add ui/src/api/knowledge.ts ui/src/pages/Knowl
 ## Task 6: smoke 清单 doc
 
 **Files:**
-- Create: `docs/superpowers/plans/2026-05-13-llm-wiki-phase-3b-smoke.md`
+- Create: `docs/plans/2026-05-13-llm-wiki-phase-3b-smoke.md`
 
 - [ ] **Step 1: 写 smoke 清单**
 
@@ -1253,7 +1253,7 @@ KNOWLEDGE_REVIEWER_ENABLED=true KNOWLEDGE_REVIEWER_INTERVAL_MINUTES=1 pnpm dev
 - [ ] **Step 2: 提交 + 完结**
 
 ```bash
-cd D:/aiprojects/paperclip && git add docs/superpowers/plans/2026-05-13-llm-wiki-phase-3b-smoke.md && git commit -m "docs(llm-wiki): Phase 3b reviewer smoke checklist (Task 6)"
+cd D:/aiprojects/paperclip && git add docs/plans/2026-05-13-llm-wiki-phase-3b-smoke.md && git commit -m "docs(llm-wiki): Phase 3b reviewer smoke checklist (Task 6)"
 ```
 
 ---
@@ -1280,7 +1280,7 @@ cd D:/aiprojects/paperclip && git add docs/superpowers/plans/2026-05-13-llm-wiki
 
 ---
 
-Plan complete and saved to `docs/superpowers/plans/2026-05-13-llm-wiki-phase-3b-reviewer-agent.md`. Two execution options:
+Plan complete and saved to `docs/plans/2026-05-13-llm-wiki-phase-3b-reviewer-agent.md`. Two execution options:
 
 **1. Subagent-Driven (recommended)** — 每个 task 一个独立 subagent，task 间复核，快速迭代
 

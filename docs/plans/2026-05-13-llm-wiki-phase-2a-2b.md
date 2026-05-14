@@ -108,7 +108,7 @@ WHERE (d.name = ANY($domains) OR d.name = 'general')   -- general 永远兜底
 | `server/src/__tests__/knowledge-routes.test.ts` | 加 search / feedback 路由 supertest | 修改 |
 | `server/src/app.ts` | 构造 retriever + feedback service，传给 issueRoutes & knowledgeRoutes | 修改 |
 | `server/src/routes/issues.ts` | heartbeat-context 注入 `knowledgeNodes` Top-5（仅当 retriever 注入时） | 修改 |
-| `docs/superpowers/plans/2026-05-13-llm-wiki-phase-2a-2b-smoke.md` | 手动 smoke checklist | **新建** |
+| `docs/plans/2026-05-13-llm-wiki-phase-2a-2b-smoke.md` | 手动 smoke checklist | **新建** |
 
 ---
 
@@ -1636,7 +1636,7 @@ git commit -m "feat(llm-wiki): inject Top-5 knowledge nodes into heartbeat-conte
 
 ### Step 1: 写 smoke 文档
 
-写入 `docs/superpowers/plans/2026-05-13-llm-wiki-phase-2a-2b-smoke.md`：
+写入 `docs/plans/2026-05-13-llm-wiki-phase-2a-2b-smoke.md`：
 
 ```markdown
 # LLM-Wiki Phase 2a + 2b — Smoke Checklist
@@ -1752,7 +1752,7 @@ curl -s "http://127.0.0.1:3100/api/issues/$ISSUE_ID/heartbeat-context?companyId=
 ### Step 2: Commit
 
 ```bash
-git add docs/superpowers/plans/2026-05-13-llm-wiki-phase-2a-2b-smoke.md
+git add docs/plans/2026-05-13-llm-wiki-phase-2a-2b-smoke.md
 git commit -m "docs(llm-wiki): Phase 2a + 2b smoke checklist"
 ```
 

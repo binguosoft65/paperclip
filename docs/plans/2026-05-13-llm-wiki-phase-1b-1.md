@@ -70,7 +70,7 @@
 | `server/src/services/approvals.ts` | Path B-2 触发点：`reject()` 内 fire-and-forget 调 drafter | 修改 |
 | `server/src/services/heartbeat.ts` | Path B-3 触发点：run cancel 时 fire-and-forget 调 drafter | 修改 |
 | `server/src/app.ts` | 在 service wire-up 时构造 drafter 实例，传给上述 3 个 service / routes | 修改 |
-| `docs/superpowers/plans/2026-05-13-llm-wiki-phase-1b-1-smoke.md` | 手动 smoke checklist | **新建** |
+| `docs/plans/2026-05-13-llm-wiki-phase-1b-1-smoke.md` | 手动 smoke checklist | **新建** |
 
 ### Drafter 接口设计（早锁定，避免后写步骤走样）
 
@@ -1165,7 +1165,7 @@ git commit -m "feat(llm-wiki): wire knowledgeDrafter into heartbeat cancel — P
 
 ### Step 1: 写 smoke checklist 文档
 
-写入 `docs/superpowers/plans/2026-05-13-llm-wiki-phase-1b-1-smoke.md`：
+写入 `docs/plans/2026-05-13-llm-wiki-phase-1b-1-smoke.md`：
 
 ```markdown
 # LLM-Wiki Phase 1b-1 — End-to-End Smoke Checklist
@@ -1259,7 +1259,7 @@ curl "http://localhost:3100/api/knowledge/drafts?companyId=$COMPANY_ID&source=fa
 ### Step 2: Commit
 
 ```bash
-git add docs/superpowers/plans/2026-05-13-llm-wiki-phase-1b-1-smoke.md
+git add docs/plans/2026-05-13-llm-wiki-phase-1b-1-smoke.md
 git commit -m "docs(llm-wiki): Phase 1b-1 smoke checklist"
 ```
 

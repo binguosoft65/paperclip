@@ -81,7 +81,7 @@ knowledgeNodeEvents.nodeId / eventType / agentId / runId / issueId / userId
 | `server/src/services/knowledge-drafts.test.ts` | service 层单测（用 mock Drizzle，覆盖状态机和校验）| **新建** |
 | `server/src/__tests__/knowledge-routes.test.ts` | route 层 supertest + vi.mock | **新建** |
 | `server/src/services/knowledge-node-writer.test.ts` | materialize 流程单测（mock embed + mock Drizzle 验证写入序列）| **新建** |
-| `docs/superpowers/plans/2026-05-13-llm-wiki-phase-1a.md` | 本文件 | **新建** |
+| `docs/plans/2026-05-13-llm-wiki-phase-1a.md` | 本文件 | **新建** |
 
 ---
 
@@ -1916,14 +1916,14 @@ git commit -m "feat(llm-wiki): REST routes for drafts CRUD + review decisions (P
 ## Task 7: 端到端 smoke test 脚本 + 文档
 
 **Files:**
-- Create: `docs/superpowers/plans/2026-05-13-llm-wiki-phase-1a-smoke.md`
+- Create: `docs/plans/2026-05-13-llm-wiki-phase-1a-smoke.md`
 - Modify: `CHANGELOG.md`
 
 Phase 1a 的真 PG + pgvector 端到端验证（需 docker + OPENAI_API_KEY）。这是一份手动执行的 checklist，不进 CI。
 
 - [ ] **Step 1: 写 smoke checklist 文档**
 
-写入 `docs/superpowers/plans/2026-05-13-llm-wiki-phase-1a-smoke.md`：
+写入 `docs/plans/2026-05-13-llm-wiki-phase-1a-smoke.md`：
 
 ```markdown
 # LLM-Wiki Phase 1a — End-to-End Smoke Checklist
@@ -2026,7 +2026,7 @@ curl -X POST "http://localhost:3100/api/knowledge/drafts?companyId=$COMPANY_ID" 
 - [ ] **Step 3: Commit**
 
 ```bash
-git add docs/superpowers/plans/2026-05-13-llm-wiki-phase-1a-smoke.md CHANGELOG.md
+git add docs/plans/2026-05-13-llm-wiki-phase-1a-smoke.md CHANGELOG.md
 git commit -m "docs(llm-wiki): Phase 1a smoke checklist + changelog"
 ```
 

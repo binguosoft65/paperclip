@@ -105,7 +105,7 @@ If you change schema/API behavior, update all impacted layers:
 Prefer additive updates. Keep `docs/SPEC.md` and `docs/SPEC-implementation.md` aligned.
 
 5. Keep repo plan docs dated and centralized.
-When you are creating a plan file in the repository itself, new plan documents belong in `docs/plans/` and should use `YYYY-MM-DD-slug.md` filenames. This does not replace Paperclip issue planning: if a Paperclip issue asks for a plan, update the issue's `plan` document via the Paperclip platform instead of creating a repo markdown file.
+When you are creating a plan file in the repository itself, new plan documents belong in `docs/plans/` and should use `YYYY-MM-DD-slug.md` filenames. This applies to **all** plan-style files, including those produced by the `writing-plans` / `planning-with-files` skills or any other superpowers-style workflow — do **not** create a parallel `docs/superpowers/plans/` tree. Design specs follow the same rule: land them in `docs/specs/`, not `docs/superpowers/specs/`. This does not replace Paperclip issue planning: if a Paperclip issue asks for a plan, update the issue's `plan` document via the Paperclip platform instead of creating a repo markdown file.
 
 ## 6. Database Change Workflow
 
