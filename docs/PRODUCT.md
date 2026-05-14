@@ -22,7 +22,7 @@ Every employee is an agent. When you create a company, you start by defining the
 
 Each employee has:
 
-- **Adapter type + config** — how this agent runs and what defines its identity/behavior. This is adapter-specific (e.g., an OpenClaw agent might use SOUL.md and HEARTBEAT.md files; a Claude Code agent might use CLAUDE.md; a bare script might use CLI args). Paperclip doesn't prescribe the format — the adapter does.
+- **Adapter type + config** — how this agent runs and what defines its identity/behavior. The exact configuration format is adapter-specific (e.g., a Claude Code agent uses `CLAUDE.md` / `AGENTS.md`; an OpenClaw agent uses its own onboarding config; a bare script uses CLI args). Paperclip doesn't prescribe the format — the adapter does.
 - **Role & reporting** — their title, who they report to, who reports to them
 - **Capabilities description** — a short paragraph on what this agent does and when they're relevant (helps other agents discover who can help with what)
 
@@ -91,7 +91,7 @@ There are two runtime modes Paperclip must support:
 - `local_trusted` (default): single-user local trusted deployment with no login friction
 - `authenticated`: login-required mode that supports both private-network and public deployment exposure policies
 
-Canonical mode design and command expectations live in `doc/DEPLOYMENT-MODES.md`.
+Canonical mode design and command expectations live in `docs/DEPLOYMENT-MODES.md`.
 
 ## Further Detail
 

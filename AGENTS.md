@@ -5,23 +5,24 @@ Guidance for human and AI contributors working in this repository.
 ## 1. Purpose
 
 Paperclip is a control plane for AI-agent companies.
-The current implementation target is V1 and is defined in `doc/SPEC-implementation.md`.
+The current implementation target is V1 and is defined in `docs/SPEC-implementation.md`.
 
 ## 2. Read This First
 
 Before making changes, read in this order:
 
-1. `doc/GOAL.md`
-2. `doc/PRODUCT.md`
-3. `doc/SPEC-implementation.md`
-4. `doc/DEVELOPING.md`
-5. `doc/DATABASE.md`
+1. `docs/GOAL.md`
+2. `docs/PRODUCT.md`
+3. `docs/SPEC-implementation.md`
+4. `docs/DEVELOPING.md`
+5. `docs/DATABASE.md`
 
-`doc/SPEC.md` is long-horizon product context.
-`doc/SPEC-implementation.md` is the concrete V1 build contract.
+`docs/SPEC.md` is long-horizon product context.
+`docs/SPEC-implementation.md` is the concrete V1 build contract.
 
 ## 3. Repo Map
 
+- `cli/`: `paperclipai` CLI (onboard / configure / worktree / doctor / issue management)
 - `server/`: Express REST API and orchestration services
 - `ui/`: React + Vite board UI
 - `packages/db/`: Drizzle schema, migrations, DB clients
@@ -29,7 +30,16 @@ Before making changes, read in this order:
 - `packages/adapters/`: agent adapter implementations (Claude, Codex, Cursor, etc.)
 - `packages/adapter-utils/`: shared adapter utilities
 - `packages/plugins/`: plugin system packages
-- `doc/`: operational and product docs
+- `scripts/`: build, release, dev-runner, Vitest harness, smoke scripts referenced by `package.json`
+- `tests/`: Playwright `e2e` and `release-smoke` suites
+- `evals/`: agent eval harness (`promptfoo`)
+- `docker/`: Dockerfile and compose configs
+- `releases/`: published changelog files (`releases/v*.md`)
+- `patches/`: pnpm dependency patches
+- `skills/`: gstack-style developer skills loaded by Claude Code in this repo
+- `.agents/skills/`: maintainer-facing skills (release-changelog, doc-maintenance, company-creator, etc.)
+- `.github/`: PR template, CODEOWNERS, workflows
+- `docs/`: operational and product docs
 
 ## 4. Dev Setup (Auto DB)
 
@@ -79,10 +89,10 @@ If you change schema/API behavior, update all impacted layers:
 - Activity logging for mutating actions
 
 4. Do not replace strategic docs wholesale unless asked.
-Prefer additive updates. Keep `doc/SPEC.md` and `doc/SPEC-implementation.md` aligned.
+Prefer additive updates. Keep `docs/SPEC.md` and `docs/SPEC-implementation.md` aligned.
 
 5. Keep repo plan docs dated and centralized.
-When you are creating a plan file in the repository itself, new plan documents belong in `doc/plans/` and should use `YYYY-MM-DD-slug.md` filenames. This does not replace Paperclip issue planning: if a Paperclip issue asks for a plan, update the issue `plan` document per the `paperclip` skill instead of creating a repo markdown file.
+When you are creating a plan file in the repository itself, new plan documents belong in `docs/plans/` and should use `YYYY-MM-DD-slug.md` filenames. This does not replace Paperclip issue planning: if a Paperclip issue asks for a plan, update the issue's `plan` document via the Paperclip platform instead of creating a repo markdown file.
 
 ## 6. Database Change Workflow
 
@@ -170,13 +180,16 @@ When creating a pull request (via `gh pr create` or any other method), you **mus
 
 A change is done when all are true:
 
-1. Behavior matches `doc/SPEC-implementation.md`
+1. Behavior matches `docs/SPEC-implementation.md`
 2. Typecheck, tests, and build pass
 3. Contracts are synced across db/shared/server/ui
 4. Docs updated when behavior or commands change
 5. PR description follows the [PR template](.github/PULL_REQUEST_TEMPLATE.md) with all sections filled in (including Model Used)
+6. Greptile review score is 5/5 and every Greptile comment is addressed (see `CONTRIBUTING.md` for the policy)
 
-## 11. Fork-Specific: HenkDz/paperclip
+## 12. Fork-Specific: HenkDz/paperclip
+
+> **Scope**: The Hermes externalization rules below are authoritative **only on the `feat/externalize-hermes-adapter` branch**. Other branches (master, `claude/*` feature branches, etc.) may not need them. The "Local Dev" hints (NTFS quirks, port 3101+, vite build workaround) and the "Fork QoL Patches" still apply on most fork branches. When unsure, confirm with the branch maintainer before treating any sub-section as binding.
 
 This is a fork of `paperclipai/paperclip` with QoL patches and an **external-only** Hermes adapter story on branch `feat/externalize-hermes-adapter` ([tree](https://github.com/HenkDz/paperclip/tree/feat/externalize-hermes-adapter)).
 
