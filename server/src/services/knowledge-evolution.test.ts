@@ -350,3 +350,194 @@ describe("freshnessAudit", () => {
     expect((data as never as { metadata?: unknown }).metadata).toBeUndefined();
   });
 });
+
+// ──────────────────────────────────────────────────────────────────
+// mergeCandidateDetect (PRD §FR6 row 3: pgvector cosine ≥ 0.9 →
+//                                       propose merge via Issue, top 10)
+// ──────────────────────────────────────────────────────────────────
+
+describe("mergeCandidateDetect", () => {
+  it("creates one Issue per pair + records dedup metadata on BOTH nodes", async () => {
+    // SELECT returns 2 pairs; per successful pair: 1 execute for UPDATE+events CTE.
+    const db = fakeDb(
+      [
+        {
+          id_a: "n-1",
+          id_b: "n-2",
+          title_a: "Avoid singletons",
+          title_b: "Singletons are anti-pattern",
+          type_a: "lesson",
+          type_b: "lesson",
+          cosine: 0.95,
+        },
+        {
+          id_a: "n-3",
+          id_b: "n-4",
+          title_a: "Use factory",
+          title_b: "Factory pattern over global state",
+          type_a: "lesson",
+          type_b: "rule",
+          cosine: 0.91,
+        },
+      ],
+      [], // recordMergeProposalSuccess for pair-1
+      [], // recordMergeProposalSuccess for pair-2
+    );
+    const issueSvc = fakeIssueSvc();
+    (issueSvc as never as { create: { mockResolvedValueOnce: (v: unknown) => unknown } }).create
+      .mockResolvedValueOnce({ id: "iss-m1" })
+      .mockResolvedValueOnce({ id: "iss-m2" });
+
+    const svc = knowledgeEvolutionService(db, fakeLlm, fakeRetriever, issueSvc);
+    const r = await svc.__test__.mergeCandidateDetect("co-1");
+
+    expect(r.behavior).toBe("merge_candidate_detect");
+    expect(r.candidatesFound).toBe(2);
+    expect(r.issuesCreated).toBe(2);
+    // 2 nodes touched per pair × 2 pairs = 4 nodesModified.
+    expect(r.nodesModified).toBe(4);
+    expect(r.errors).toEqual([]);
+    expect(r.details).toMatchObject({
+      cosine_threshold: 0.9,
+      top_pairs_limit: 10,
+      cooldown_days: 7,
+    });
+
+    // v0.2 signature: positional companyId; no labels/metadata in data.
+    const calls = (issueSvc as never as { create: { mock: { calls: unknown[][] } } }).create.mock.calls;
+    expect(calls).toHaveLength(2);
+    expect(calls[0][0]).toBe("co-1");
+    const data1 = calls[0][1] as { title: string; description: string };
+    expect(data1.title).toMatch(/^\[Evolution:merge\] 建议合并 /);
+    expect(data1.title).toContain("Avoid singletons");
+    expect(data1.title).toContain("Singletons are anti-pattern");
+    // Body contains pair_key, cosine, both ids
+    expect(data1.description).toContain("Pair key: n-1:n-2");
+    expect(data1.description).toContain("0.950");
+    expect(data1.description).toContain("n-1");
+    expect(data1.description).toContain("n-2");
+    expect((data1 as never as { labels?: unknown }).labels).toBeUndefined();
+    expect((data1 as never as { metadata?: unknown }).metadata).toBeUndefined();
+  });
+
+  it("returns 0 issues when no candidate pairs match (empty SELECT)", async () => {
+    const db = fakeDb([]);
+    const svc = knowledgeEvolutionService(db, fakeLlm, fakeRetriever, fakeIssueSvc());
+    const r = await svc.__test__.mergeCandidateDetect("co-1");
+    expect(r.candidatesFound).toBe(0);
+    expect(r.issuesCreated).toBe(0);
+    expect(r.nodesModified).toBe(0);
+    expect(r.errors).toEqual([]);
+  });
+
+  it("degrades gracefully when issueSvc is null (logs, counts errors with pair_key)", async () => {
+    const db = fakeDb([
+      {
+        id_a: "n-a",
+        id_b: "n-b",
+        title_a: "x",
+        title_b: "y",
+        type_a: "lesson",
+        type_b: "lesson",
+        cosine: 0.92,
+      },
+    ]);
+    const svc = knowledgeEvolutionService(db, fakeLlm, fakeRetriever, null);
+    const r = await svc.__test__.mergeCandidateDetect("co-1");
+    expect(r.candidatesFound).toBe(1);
+    expect(r.issuesCreated).toBe(0);
+    expect(r.nodesModified).toBe(0);
+    expect(r.errors).toEqual([
+      { subject: "n-a:n-b", reason: "issue_create_failed_or_unavailable" },
+    ]);
+    // Only 1 execute call: the candidate SELECT. No metadata UPDATE attempted.
+    expect((db as never as { execute: { mock: { calls: unknown[] } } }).execute.mock.calls).toHaveLength(1);
+  });
+
+  it("uses sorted pair_key (id_a < id_b enforced by JOIN, surfaced to caller)", async () => {
+    // Note: in production the SQL enforces a.id < b.id; here we mock the
+    // result honoring that order so the helper sees a sorted pair_key.
+    const db = fakeDb(
+      [
+        {
+          id_a: "aaaa1111-...",
+          id_b: "bbbb2222-...",
+          title_a: "x",
+          title_b: "y",
+          type_a: "lesson",
+          type_b: "lesson",
+          cosine: 0.95,
+        },
+      ],
+      [],
+    );
+    const issueSvc = fakeIssueSvc();
+    (issueSvc as never as { create: { mockResolvedValueOnce: (v: unknown) => unknown } }).create.mockResolvedValueOnce({ id: "iss-1" });
+    const svc = knowledgeEvolutionService(db, fakeLlm, fakeRetriever, issueSvc);
+    await svc.__test__.mergeCandidateDetect("co-1");
+    const data = (issueSvc as never as { create: { mock: { calls: unknown[][] } } }).create.mock.calls[0][1] as { description: string };
+    expect(data.description).toContain("Pair key: aaaa1111-...:bbbb2222-...");
+  });
+
+  it("limits per-pair to top 10 by cosine (enforced in SQL — verify LIMIT value reflects BEHAVIOR_LIMITS)", () => {
+    expect(BEHAVIOR_LIMITS.merge_candidate_detect.topPairs).toBe(10);
+    expect(BEHAVIOR_LIMITS.merge_candidate_detect.cosineThreshold).toBe(0.9);
+  });
+
+  it("coerces numeric-as-string cosine from postgres.js driver", async () => {
+    const db = fakeDb(
+      [
+        {
+          id_a: "n-1",
+          id_b: "n-2",
+          title_a: "x",
+          title_b: "y",
+          type_a: "lesson",
+          type_b: "lesson",
+          cosine: "0.92", // postgres.js may return numeric as string
+        },
+      ],
+      [],
+    );
+    const issueSvc = fakeIssueSvc();
+    (issueSvc as never as { create: { mockResolvedValueOnce: (v: unknown) => unknown } }).create.mockResolvedValueOnce({ id: "iss-1" });
+    const svc = knowledgeEvolutionService(db, fakeLlm, fakeRetriever, issueSvc);
+    await svc.__test__.mergeCandidateDetect("co-1");
+    const data = (issueSvc as never as { create: { mock: { calls: unknown[][] } } }).create.mock.calls[0][1] as { description: string };
+    // toFixed(3) applied to Number(cosine) — should produce "0.920" not crash
+    expect(data.description).toContain("0.920");
+  });
+
+  it("counts errors with pair_key (not node id) when post-issue UPDATE fails", async () => {
+    // SELECT returns 1 pair, issueSvc succeeds, then the UPDATE+events CTE throws.
+    const db = {
+      execute: vi
+        .fn()
+        .mockResolvedValueOnce([
+          {
+            id_a: "n-1",
+            id_b: "n-2",
+            title_a: "x",
+            title_b: "y",
+            type_a: "lesson",
+            type_b: "lesson",
+            cosine: 0.95,
+          },
+        ])
+        .mockRejectedValueOnce(new Error("metadata UPDATE blew up")),
+    } as never;
+    const issueSvc = fakeIssueSvc();
+    (issueSvc as never as { create: { mockResolvedValueOnce: (v: unknown) => unknown } }).create.mockResolvedValueOnce({ id: "iss-1" });
+
+    const svc = knowledgeEvolutionService(db, fakeLlm, fakeRetriever, issueSvc);
+    const r = await svc.__test__.mergeCandidateDetect("co-1");
+
+    expect(r.candidatesFound).toBe(1);
+    // Issue creation succeeded, but post-issue UPDATE failed → counted as error,
+    // issuesCreated stays 0 (we only increment after the CTE succeeds).
+    expect(r.issuesCreated).toBe(0);
+    expect(r.errors).toEqual([
+      { subject: "n-1:n-2", reason: "metadata UPDATE blew up" },
+    ]);
+  });
+});

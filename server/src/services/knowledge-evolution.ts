@@ -352,6 +352,196 @@ export function knowledgeEvolutionService(
   }
 
   // ──────────────────────────────────────────────────────────────────
+  // Behavior #3 — mergeCandidateDetect (PRD §FR6 row 3)
+  //
+  // Trigger: any two active nodes in the same company with cosine
+  //          similarity ≥ 0.9 (== pgvector distance `<=>` < 0.1),
+  //          top 10 by similarity, neither node in 7-day cooldown.
+  // Effect:  per pair, create "[Evolution:merge] 建议合并 [A] 与 [B]"
+  //          Issue. On success: update BOTH nodes' metadata —
+  //            last_merge_proposal_at = NOW
+  //            last_merge_issue_id    = <issue id>
+  //            last_merge_pair_keys  += "{a.id}:{b.id}"  (sorted)
+  //          + write 2 audit events (one per node), event_type=
+  //          'merge_proposed', metadata.pair_key set.
+  //          NO direct node mutation — human approves the Issue to
+  //          materialize a new node + merged_from edges (out of scope).
+  //
+  // Performance: pgvector `<=>` operator uses the HNSW index
+  // `knowledge_nodes_embedding_idx` (vector_cosine_ops, m=16,
+  // ef_construction=200). For ≤1000 nodes/company the join with
+  // `<=> < 0.1` filter typically yields ≤ 100 raw candidates; the
+  // ORDER BY cosine DESC + LIMIT keeps wire size bounded.
+  //
+  // Dedup (v0.2 strategy):
+  //   1. cooldown filter: skip if either node's last_merge_proposal_at
+  //      is within `cooldownDays` (default 7)
+  //   2. pair-key filter: skip if either node's last_merge_pair_keys
+  //      array already contains "{id_a}:{id_b}"  (so re-proposing the
+  //      same pair after cooldown is possible IF the prior pair was
+  //      explicitly cleared, but in MVP we just dedup on pair_key
+  //      perpetually — board operator can manually clear if needed)
+  // ──────────────────────────────────────────────────────────────────
+  async function mergeCandidateDetect(
+    companyId: string,
+  ): Promise<BehaviorResult> {
+    const t = BEHAVIOR_LIMITS.merge_candidate_detect;
+    // pgvector `<=>` returns cosine **distance** in [0, 2]
+    // (0 = identical, 1 = orthogonal, 2 = opposite).
+    // cosine **similarity** = 1 - distance.
+    // We translate the maintainer-set cosine threshold (0.9) into a
+    // distance ceiling (0.1) for the WHERE clause so the HNSW index
+    // can use the operator predicate, then re-compute similarity in
+    // the projection for human-readable Issue body + ORDER BY.
+    const distanceCeiling = 1 - t.cosineThreshold;
+
+    const candidates = (await db.execute(sql`
+      WITH pairs AS (
+        SELECT
+          a.id AS id_a, b.id AS id_b,
+          a.title AS title_a, b.title AS title_b,
+          a.type AS type_a, b.type AS type_b,
+          a.metadata AS metadata_a, b.metadata AS metadata_b,
+          1 - (a.embedding <=> b.embedding) AS cosine
+        FROM knowledge_nodes a
+        JOIN knowledge_nodes b
+          ON a.id < b.id
+          AND a.company_id = b.company_id
+          AND a.embedding <=> b.embedding < ${String(distanceCeiling)}::float
+        WHERE a.company_id = ${companyId}
+          AND a.status = 'active'
+          AND b.status = 'active'
+          AND (a.metadata->>'last_merge_proposal_at' IS NULL
+               OR (a.metadata->>'last_merge_proposal_at')::timestamptz
+                    < NOW() - (${String(t.cooldownDays)} || ' days')::INTERVAL)
+          AND (b.metadata->>'last_merge_proposal_at' IS NULL
+               OR (b.metadata->>'last_merge_proposal_at')::timestamptz
+                    < NOW() - (${String(t.cooldownDays)} || ' days')::INTERVAL)
+      )
+      SELECT id_a, id_b, title_a, title_b, type_a, type_b, cosine
+      FROM pairs
+      WHERE NOT (
+        COALESCE(metadata_a->'last_merge_pair_keys', '[]'::jsonb)
+          ? (id_a::text || ':' || id_b::text)
+        OR COALESCE(metadata_b->'last_merge_pair_keys', '[]'::jsonb)
+          ? (id_a::text || ':' || id_b::text)
+      )
+      ORDER BY cosine DESC
+      LIMIT ${t.topPairs}::int
+    `)) as Array<{
+      id_a: string;
+      id_b: string;
+      title_a: string;
+      title_b: string;
+      type_a: string;
+      type_b: string;
+      cosine: number | string;
+    }>;
+
+    let issuesCreated = 0;
+    const errors: Array<{ subject: string; reason: string }> = [];
+
+    for (const p of candidates) {
+      const cosine = Number(p.cosine);
+      // a.id < b.id is guaranteed in the JOIN ⇒ pair_key is already
+      // in sorted lexicographic order. Stored as text for jsonb
+      // array membership lookup via `?` operator.
+      const pairKey = `${p.id_a}:${p.id_b}`;
+      const body = [
+        `Pair key: ${pairKey}`,
+        `cosine 相似度: ${cosine.toFixed(3)} (≥ ${t.cosineThreshold})`,
+        ``,
+        `Node A:`,
+        `- id: ${p.id_a}`,
+        `- title: ${p.title_a}`,
+        `- type: ${p.type_a}`,
+        ``,
+        `Node B:`,
+        `- id: ${p.id_b}`,
+        `- title: ${p.title_b}`,
+        `- type: ${p.type_b}`,
+        ``,
+        `请人审决定是否合并。通过后:`,
+        `1. 创建新节点继承两者内容`,
+        `2. 添加 merged_from 边从新节点指向 A 与 B`,
+        `3. 把 A 和 B status 改为 archived`,
+      ].join("\n");
+
+      const issueId = await proposeViaIssue(
+        companyId,
+        "[Evolution:merge]",
+        `建议合并 [${p.title_a}] 与 [${p.title_b}]`,
+        body,
+      );
+      if (issueId === null) {
+        errors.push({
+          subject: pairKey,
+          reason: "issue_create_failed_or_unavailable",
+        });
+        continue;
+      }
+
+      try {
+        // Single CTE: update both nodes' metadata in one UPDATE
+        // (uses IN-clause), then INSERT 2 audit events from the
+        // RETURNING list. Atomic per pair.
+        await db.execute(sql`
+          WITH up AS (
+            UPDATE knowledge_nodes
+            SET metadata = metadata
+              || jsonb_build_object(
+                'last_merge_proposal_at', NOW()::text,
+                'last_merge_issue_id', ${issueId}::text
+              )
+              || jsonb_build_object(
+                'last_merge_pair_keys',
+                COALESCE(metadata->'last_merge_pair_keys', '[]'::jsonb)
+                  || to_jsonb(ARRAY[${pairKey}::text])
+              )
+            WHERE id IN (${p.id_a}::uuid, ${p.id_b}::uuid)
+              AND company_id = ${companyId}::uuid
+            RETURNING id
+          )
+          INSERT INTO knowledge_node_events
+            (node_id, event_type, metadata, created_at)
+          SELECT
+            id,
+            'merge_proposed',
+            jsonb_build_object(
+              'proposed', true,
+              'issue_id', ${issueId}::text,
+              'pair_key', ${pairKey}::text
+            ),
+            NOW()
+          FROM up
+        `);
+        issuesCreated += 1;
+      } catch (err) {
+        errors.push({
+          subject: pairKey,
+          reason: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+
+    return {
+      behavior: "merge_candidate_detect",
+      candidatesFound: candidates.length,
+      issuesCreated,
+      draftsCreated: 0,
+      edgesCreated: 0,
+      // Each successful proposal touches 2 nodes (id_a + id_b metadata).
+      nodesModified: issuesCreated * 2,
+      errors,
+      details: {
+        cosine_threshold: t.cosineThreshold,
+        top_pairs_limit: t.topPairs,
+        cooldown_days: t.cooldownDays,
+      },
+    };
+  }
+
+  // ──────────────────────────────────────────────────────────────────
   // Behavior #5 — freshnessAudit (PRD §FR6 row 5)
   //
   // 3-way UNION ALL: (a) valid_until 临近 7 天 / (b) volatility=fast
@@ -491,6 +681,7 @@ export function knowledgeEvolutionService(
       decayScan,
       promotionCheck,
       freshnessAudit,
+      mergeCandidateDetect,
     },
   };
 }
