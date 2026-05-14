@@ -6,6 +6,8 @@ import {
   KNOWLEDGE_METRIC_NAMES,
   KNOWLEDGE_METRIC_STATUSES,
   healthcheckRunQuerySchema,
+  KNOWLEDGE_EVOLUTION_BEHAVIORS,
+  evolutionRunQuerySchema,
 } from "./knowledge.js";
 
 describe("reviewerRunQuerySchema", () => {
@@ -95,6 +97,58 @@ describe("healthcheckRunQuerySchema", () => {
     expect(() =>
       healthcheckRunQuerySchema.parse({
         metrics: ["weekly_new_drafts"],
+        extra: "nope",
+      }),
+    ).toThrow();
+  });
+});
+
+// ──────────────────────────────────────────────────────────────────
+// Phase 3a: Evolution Engine + 6 Behaviors
+// ──────────────────────────────────────────────────────────────────
+
+describe("KNOWLEDGE_EVOLUTION_BEHAVIORS", () => {
+  it("contains exactly the 6 PRD §13.3 behaviors in declared order", () => {
+    expect(KNOWLEDGE_EVOLUTION_BEHAVIORS).toEqual([
+      "promotion_check",
+      "decay_scan",
+      "merge_candidate_detect",
+      "conflict_detect",
+      "freshness_audit",
+      "pattern_emergence",
+    ]);
+  });
+});
+
+describe("evolutionRunQuerySchema", () => {
+  it("defaults to all 6 behaviors when payload is empty", () => {
+    const parsed = evolutionRunQuerySchema.parse({});
+    expect(parsed.behaviors).toEqual(KNOWLEDGE_EVOLUTION_BEHAVIORS);
+  });
+
+  it("preserves the requested subset when behaviors provided", () => {
+    const parsed = evolutionRunQuerySchema.parse({
+      behaviors: ["decay_scan", "freshness_audit"],
+    });
+    expect(parsed.behaviors).toEqual(["decay_scan", "freshness_audit"]);
+  });
+
+  it("rejects an unknown behavior name", () => {
+    expect(() =>
+      evolutionRunQuerySchema.parse({ behaviors: ["bogus_behavior"] }),
+    ).toThrow();
+  });
+
+  it("rejects empty behaviors array (min 1)", () => {
+    expect(() =>
+      evolutionRunQuerySchema.parse({ behaviors: [] }),
+    ).toThrow();
+  });
+
+  it("rejects unknown top-level keys (strict)", () => {
+    expect(() =>
+      evolutionRunQuerySchema.parse({
+        behaviors: ["decay_scan"],
         extra: "nope",
       }),
     ).toThrow();

@@ -207,3 +207,40 @@ export const healthcheckRunQuerySchema = z
   .strict();
 
 export type HealthcheckRunQuery = z.infer<typeof healthcheckRunQuerySchema>;
+
+// ──────────────────────────────────────────────────────────────────
+// Phase 3a: Evolution Engine + 6 Behaviors + Routine 1
+// ──────────────────────────────────────────────────────────────────
+
+/**
+ * Phase 3a 演化引擎 6 条行为枚举(PRD §FR6 + §13.3 Routine 1)。
+ * 顺序与 PRD §FR6 表 + §13.3 Action 列表一致;runEvolution 默认按此顺序串行。
+ * 同步:server/src/services/knowledge-evolution.ts 的 method 注册。
+ */
+export const KNOWLEDGE_EVOLUTION_BEHAVIORS = [
+  "promotion_check",
+  "decay_scan",
+  "merge_candidate_detect",
+  "conflict_detect",
+  "freshness_audit",
+  "pattern_emergence",
+] as const;
+
+export type KnowledgeEvolutionBehavior =
+  (typeof KNOWLEDGE_EVOLUTION_BEHAVIORS)[number];
+
+/**
+ * POST /api/knowledge/evolution/run 请求体。
+ * `behaviors` 可选,缺省跑全 6 个;给子集时只跑指定的几个(调试 / 分批跑)。
+ */
+export const evolutionRunQuerySchema = z
+  .object({
+    behaviors: z
+      .array(z.enum(KNOWLEDGE_EVOLUTION_BEHAVIORS))
+      .min(1)
+      .optional()
+      .default([...KNOWLEDGE_EVOLUTION_BEHAVIORS]),
+  })
+  .strict();
+
+export type EvolutionRunQuery = z.infer<typeof evolutionRunQuerySchema>;
