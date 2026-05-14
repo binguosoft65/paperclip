@@ -2,6 +2,8 @@ import { describe, it, expect, vi } from "vitest";
 import {
   knowledgeEvolutionService,
   BEHAVIOR_LIMITS,
+  unionFindClusters,
+  PATTERN_EMERGENCE_SYSTEM_PROMPT,
 } from "./knowledge-evolution.js";
 
 /**
@@ -750,5 +752,272 @@ describe("conflictDetect", () => {
       { subject: "d-1:n-c1", reason: "FK violation" },
     ]);
     expect(r.details.processed_drafts).toBe(1); // d-1 still tracked for array clear
+  });
+});
+
+// ──────────────────────────────────────────────────────────────────
+// unionFindClusters (Task 6 helper, exported for direct testing)
+// ──────────────────────────────────────────────────────────────────
+
+describe("unionFindClusters", () => {
+  it("returns empty when no ids and no edges", () => {
+    expect(unionFindClusters([], [])).toEqual([]);
+  });
+
+  it("returns each isolated id as its own cluster (no edges)", () => {
+    const r = unionFindClusters(["a", "b", "c"], []);
+    expect(r).toHaveLength(3);
+    expect(r.flat().sort()).toEqual(["a", "b", "c"]);
+  });
+
+  it("merges a 3-chain A-B-C via transitive edges (A-B + B-C, no A-C)", () => {
+    const r = unionFindClusters(
+      ["a", "b", "c"],
+      [
+        { a: "a", b: "b" },
+        { a: "b", b: "c" },
+      ],
+    );
+    expect(r).toHaveLength(1);
+    expect(r[0].sort()).toEqual(["a", "b", "c"]);
+  });
+
+  it("keeps two disjoint components separate", () => {
+    const r = unionFindClusters(
+      ["a", "b", "c", "d"],
+      [
+        { a: "a", b: "b" },
+        { a: "c", b: "d" },
+      ],
+    );
+    expect(r).toHaveLength(2);
+    const sorted = r.map((c) => c.sort()).sort((x, y) => x[0].localeCompare(y[0]));
+    expect(sorted[0]).toEqual(["a", "b"]);
+    expect(sorted[1]).toEqual(["c", "d"]);
+  });
+
+  it("idempotent on duplicate edges", () => {
+    const r = unionFindClusters(
+      ["a", "b"],
+      [
+        { a: "a", b: "b" },
+        { a: "a", b: "b" },
+        { a: "b", b: "a" },
+      ],
+    );
+    expect(r).toHaveLength(1);
+    expect(r[0].sort()).toEqual(["a", "b"]);
+  });
+
+  it("ignores edges referencing unknown ids (safety)", () => {
+    const r = unionFindClusters(
+      ["a", "b"],
+      [
+        { a: "a", b: "b" },
+        { a: "a", b: "ghost" }, // ghost not in allIds
+      ],
+    );
+    expect(r).toHaveLength(1);
+    expect(r[0].sort()).toEqual(["a", "b"]);
+  });
+});
+
+// ──────────────────────────────────────────────────────────────────
+// PATTERN_EMERGENCE_SYSTEM_PROMPT (Task 6) — guard against drift
+// ──────────────────────────────────────────────────────────────────
+
+describe("PATTERN_EMERGENCE_SYSTEM_PROMPT", () => {
+  it("exports the v0.1 plan-defined system prompt", () => {
+    expect(PATTERN_EMERGENCE_SYSTEM_PROMPT).toContain("Curator");
+    expect(PATTERN_EMERGENCE_SYSTEM_PROMPT).toContain("pattern_name");
+    expect(PATTERN_EMERGENCE_SYSTEM_PROMPT).toContain("no_pattern");
+    expect(PATTERN_EMERGENCE_SYSTEM_PROMPT).toContain("source_lesson_ids");
+    expect(PATTERN_EMERGENCE_SYSTEM_PROMPT).toContain("只输出 JSON");
+  });
+});
+
+// ──────────────────────────────────────────────────────────────────
+// patternEmergence (PRD §FR6 row 6) — most complex behavior
+// ──────────────────────────────────────────────────────────────────
+
+function fakeDraftSvc() {
+  return { create: vi.fn() } as never;
+}
+
+describe("patternEmergence", () => {
+  const groupRow = {
+    used_for: "bug-fix",
+    business_domain_id: "bd-1",
+    business_domain_name: "software",
+    lesson_count: 6,
+  };
+  const lessonRows = [
+    { id: "L1", title: "Use parseURL not regex", content: "URL parsing with regex breaks on edge cases." },
+    { id: "L2", title: "Validate inputs", content: "Always validate untrusted input at the boundary." },
+    { id: "L3", title: "Avoid global state", content: "Singletons make tests flaky." },
+    { id: "L4", title: "Prefer factories", content: "Factory pattern over global state." },
+    { id: "L5", title: "Boundary checks", content: "Validate at the system boundary, not inside." },
+    { id: "L6", title: "Outlier topic", content: "Completely unrelated topic." }, // not in cluster
+  ];
+  // Edges connecting L1-L5 in a chain; L6 is isolated.
+  const clusterEdges = [
+    { id_a: "L1", id_b: "L2", cosine: 0.8 },
+    { id_a: "L2", id_b: "L3", cosine: 0.75 },
+    { id_a: "L3", id_b: "L4", cosine: 0.78 },
+    { id_a: "L4", id_b: "L5", cosine: 0.72 },
+  ];
+
+  it("happy path: 1 group, 1 cluster of 5, LLM returns valid pattern → 1 draft created", async () => {
+    const db = fakeDb([groupRow], lessonRows, clusterEdges);
+    const llm = { embed: vi.fn(), completeChat: vi.fn().mockResolvedValueOnce(JSON.stringify({
+      pattern_name: "validate-at-boundary",
+      pattern_summary: "在系统边界验证输入,而不是在内部各处重复验证。",
+      pattern_conditions: ["接受外部输入时", "API 请求处理"],
+      source_lesson_ids: ["L1", "L2", "L3", "L4", "L5"],
+    })) } as never;
+    const draftSvc = fakeDraftSvc();
+    (draftSvc as never as { create: { mockResolvedValueOnce: (v: unknown) => unknown } }).create.mockResolvedValueOnce({ id: "draft-1" });
+
+    const svc = knowledgeEvolutionService(db, llm, fakeRetriever, null, draftSvc);
+    const r = await svc.__test__.patternEmergence("co-1");
+
+    expect(r.behavior).toBe("pattern_emergence");
+    expect(r.candidatesFound).toBe(1);
+    expect(r.draftsCreated).toBe(1);
+    expect(r.nodesModified).toBe(0); // no cooldown set
+    expect(r.errors).toEqual([]);
+    expect(r.details.clusters_processed).toBe(1);
+    expect(r.details.llm_calls).toBe(1);
+
+    // Draft created with v0.1 contract
+    const callArg = (draftSvc as never as { create: { mock: { calls: unknown[][] } } }).create.mock.calls[0][0] as {
+      companyId: string;
+      actor: { type: string };
+      payload: {
+        title: string;
+        content: string;
+        type: string;
+        level: string;
+        business_domain_name: string;
+        metadata: { is_pattern: boolean; derived_from_lessons: string[]; used_for: string };
+        confidence: number;
+        source: string;
+      };
+    };
+    expect(callArg.companyId).toBe("co-1");
+    expect(callArg.actor.type).toBe("system");
+    expect(callArg.payload.type).toBe("concept");
+    expect(callArg.payload.level).toBe("company");
+    expect(callArg.payload.business_domain_name).toBe("software");
+    expect(callArg.payload.metadata.is_pattern).toBe(true);
+    expect(callArg.payload.metadata.derived_from_lessons).toEqual(["L1", "L2", "L3", "L4", "L5"]);
+    expect(callArg.payload.metadata.used_for).toBe("bug-fix");
+    expect(callArg.payload.source).toBe("agent_self_review");
+    expect(callArg.payload.content).toContain("触发条件:");
+  });
+
+  it("empty groups → no LLM calls, no drafts", async () => {
+    const db = fakeDb([]);
+    const llm = { embed: vi.fn(), completeChat: vi.fn() } as never;
+    const svc = knowledgeEvolutionService(db, llm, fakeRetriever, null, fakeDraftSvc());
+    const r = await svc.__test__.patternEmergence("co-1");
+    expect(r.candidatesFound).toBe(0);
+    expect(r.draftsCreated).toBe(0);
+    expect((llm as never as { completeChat: { mock: { calls: unknown[] } } }).completeChat.mock.calls).toHaveLength(0);
+  });
+
+  it("group post-filter lessons < minClusterSize → skip without LLM call", async () => {
+    // Race: group SELECT saw 5 lessons, but step 2a returns only 3
+    // (e.g. concurrent status change / cooldown).
+    const db = fakeDb([groupRow], lessonRows.slice(0, 3));
+    const llm = { embed: vi.fn(), completeChat: vi.fn() } as never;
+    const svc = knowledgeEvolutionService(db, llm, fakeRetriever, null, fakeDraftSvc());
+    const r = await svc.__test__.patternEmergence("co-1");
+    expect(r.candidatesFound).toBe(1);
+    expect(r.draftsCreated).toBe(0);
+    expect((llm as never as { completeChat: { mock: { calls: unknown[] } } }).completeChat.mock.calls).toHaveLength(0);
+  });
+
+  it("LLM returns no_pattern → cooldown set on all cluster lessons, 0 drafts", async () => {
+    // SELECT group, SELECT lessons, SELECT edges, [LLM call], [cooldown UPDATE]
+    const db = fakeDb([groupRow], lessonRows, clusterEdges, []); // 4th call = cooldown UPDATE
+    const llm = { embed: vi.fn(), completeChat: vi.fn().mockResolvedValueOnce(JSON.stringify({
+      no_pattern: true,
+      reason: "Lessons cover different sub-topics; abstracting would lose specificity.",
+    })) } as never;
+
+    const svc = knowledgeEvolutionService(db, llm, fakeRetriever, null, fakeDraftSvc());
+    const r = await svc.__test__.patternEmergence("co-1");
+    expect(r.draftsCreated).toBe(0);
+    expect(r.nodesModified).toBe(5); // 5 cluster lessons cooldown'd
+    expect(r.errors).toEqual([]);
+    expect(r.details.cooldowns_set).toBe(5);
+  });
+
+  it("LLM returns malformed JSON → cooldown set + error logged", async () => {
+    const db = fakeDb([groupRow], lessonRows, clusterEdges, []); // cooldown UPDATE
+    const llm = { embed: vi.fn(), completeChat: vi.fn().mockResolvedValueOnce("not valid json at all") } as never;
+
+    const svc = knowledgeEvolutionService(db, llm, fakeRetriever, null, fakeDraftSvc());
+    const r = await svc.__test__.patternEmergence("co-1");
+    expect(r.draftsCreated).toBe(0);
+    expect(r.nodesModified).toBe(5);
+    expect(r.errors).toHaveLength(1);
+    expect(r.errors[0].reason).toBe("llm_output_not_json");
+  });
+
+  it("LLM returns Branch-A but missing required field → cooldown + error", async () => {
+    const db = fakeDb([groupRow], lessonRows, clusterEdges, []); // cooldown UPDATE
+    const llm = { embed: vi.fn(), completeChat: vi.fn().mockResolvedValueOnce(JSON.stringify({
+      pattern_name: "foo",
+      // missing pattern_summary + pattern_conditions + source_lesson_ids
+    })) } as never;
+
+    const svc = knowledgeEvolutionService(db, llm, fakeRetriever, null, fakeDraftSvc());
+    const r = await svc.__test__.patternEmergence("co-1");
+    expect(r.draftsCreated).toBe(0);
+    expect(r.nodesModified).toBe(5);
+    expect(r.errors[0].reason).toBe("llm_output_malformed");
+  });
+
+  it("LLM call throws → error counted, NO cooldown set (don't punish lessons for transient LLM error)", async () => {
+    const db = fakeDb([groupRow], lessonRows, clusterEdges);
+    const llm = { embed: vi.fn(), completeChat: vi.fn().mockRejectedValueOnce(new Error("LLM provider timeout")) } as never;
+    const svc = knowledgeEvolutionService(db, llm, fakeRetriever, null, fakeDraftSvc());
+    const r = await svc.__test__.patternEmergence("co-1");
+    expect(r.draftsCreated).toBe(0);
+    expect(r.nodesModified).toBe(0); // no cooldown
+    expect(r.errors[0].reason).toContain("llm_failed");
+  });
+
+  it("draftSvc null → pattern extracted but counted as error (no draft created)", async () => {
+    const db = fakeDb([groupRow], lessonRows, clusterEdges);
+    const llm = { embed: vi.fn(), completeChat: vi.fn().mockResolvedValueOnce(JSON.stringify({
+      pattern_name: "x",
+      pattern_summary: "y",
+      pattern_conditions: ["a"],
+      source_lesson_ids: ["L1", "L2", "L3", "L4", "L5"],
+    })) } as never;
+
+    const svc = knowledgeEvolutionService(db, llm, fakeRetriever, null, null);
+    const r = await svc.__test__.patternEmergence("co-1");
+    expect(r.draftsCreated).toBe(0);
+    expect(r.errors[0].reason).toBe("draftSvc unavailable");
+  });
+
+  it("LLM output with markdown code fence is stripped before JSON.parse", async () => {
+    const db = fakeDb([groupRow], lessonRows, clusterEdges);
+    const llm = { embed: vi.fn(), completeChat: vi.fn().mockResolvedValueOnce("```json\n" + JSON.stringify({
+      pattern_name: "x",
+      pattern_summary: "y",
+      pattern_conditions: [],
+      source_lesson_ids: ["L1"],
+    }) + "\n```") } as never;
+    const draftSvc = fakeDraftSvc();
+    (draftSvc as never as { create: { mockResolvedValueOnce: (v: unknown) => unknown } }).create.mockResolvedValueOnce({ id: "draft-1" });
+
+    const svc = knowledgeEvolutionService(db, llm, fakeRetriever, null, draftSvc);
+    const r = await svc.__test__.patternEmergence("co-1");
+    expect(r.draftsCreated).toBe(1);
   });
 });

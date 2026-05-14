@@ -4,6 +4,18 @@ import { logger } from "../middleware/logger.js";
 import type { LlmWikiService } from "./llm-wiki.js";
 import type { KnowledgeRetrieverService } from "./knowledge-retriever.js";
 import type { IssueServiceLike } from "./knowledge-healthcheck.js";
+import type { knowledgeDraftService } from "./knowledge-drafts.js";
+
+/**
+ * Minimal interface Phase 3a needs from knowledgeDraftService.create.
+ * Same Pick<...> pattern as IssueServiceLike (Phase 3c). Avoids coupling
+ * Phase 3a to all of Phase 1a's draft service surface while still letting
+ * TypeScript derive the exact CreateKnowledgeDraftInput shape.
+ */
+export type DraftServiceLike = Pick<
+  ReturnType<typeof knowledgeDraftService>,
+  "create"
+>;
 
 /**
  * Phase 3a 演化引擎 (PRD §FR6 + §13.3 Routine 1 weekly-knowledge-evolution).
@@ -123,17 +135,111 @@ export interface RunEvolutionResult {
   perBehavior: BehaviorResult[];
 }
 
+/**
+ * Union-find connected-components helper used by pattern_emergence
+ * (PRD §FR6 row 6). Exported for direct testing — proves the graph
+ * algorithm is correct independent of the SQL / LLM machinery around it.
+ *
+ * Per maintainer decision B (PR #3 plan v0.2): zero external clustering
+ * dependency. Each pair of lessons with cosine ≥ threshold becomes a
+ * graph edge; union-find finds connected components in O(α(n) * |E|);
+ * components with size ≥ minClusterSize move on to LLM extraction.
+ */
+export function unionFindClusters(
+  allIds: string[],
+  edges: Array<{ a: string; b: string }>,
+): string[][] {
+  const parent = new Map<string, string>();
+  for (const id of allIds) parent.set(id, id);
+
+  function find(x: string): string {
+    let cur = x;
+    while (parent.get(cur)! !== cur) cur = parent.get(cur)!;
+    // path compression
+    let walker = x;
+    while (parent.get(walker)! !== cur) {
+      const next = parent.get(walker)!;
+      parent.set(walker, cur);
+      walker = next;
+    }
+    return cur;
+  }
+
+  for (const { a, b } of edges) {
+    if (!parent.has(a) || !parent.has(b)) continue;
+    const ra = find(a);
+    const rb = find(b);
+    if (ra !== rb) parent.set(ra, rb);
+  }
+
+  const buckets = new Map<string, string[]>();
+  for (const id of allIds) {
+    const root = find(id);
+    if (!buckets.has(root)) buckets.set(root, []);
+    buckets.get(root)!.push(id);
+  }
+  return Array.from(buckets.values());
+}
+
+/**
+ * LLM system prompt for pattern emergence extraction.
+ * Exported so the route layer (Task 7) + smoke checklist (Task 9)
+ * + tests can reference the exact same prompt without literal copy-paste.
+ *
+ * Output contract is strict JSON, two-branch (pattern found vs no_pattern).
+ * v0.1 confidence: 0.6 baseline because patterns are derived, not direct
+ * observations; Phase 3b reviewer can promote to higher confidence after
+ * human approval.
+ */
+export const PATTERN_EMERGENCE_SYSTEM_PROMPT =
+  `你是 Paperclip LLM-Wiki 的 Curator,负责从一批 lesson 节点中提炼共性模式。
+
+输入: 同 used_for + business_domain 下的 N 条相似 lesson (N >= 5)。
+
+任务: 判断它们是否反映出一个可复用的"模式 / 理论 / 规律",并产出 concept 节点 draft。
+
+输出严格 JSON,二选一:
+
+A) 存在共性模式:
+{
+  "pattern_name": "≤ 30 字简洁中文模式名",
+  "pattern_summary": "≤ 200 字模式描述,讲清适用情景 + 核心建议",
+  "pattern_conditions": ["触发条件 1 (≤ 20 字)", "触发条件 2", ...],
+  "source_lesson_ids": ["uuid 1", "uuid 2", ...]
+}
+
+B) 无明显共性 (lessons 主题分散,强行抽象会产生空洞 concept):
+{
+  "no_pattern": true,
+  "reason": "≤ 100 字说明为什么不应抽象"
+}
+
+判定标准:
+- pattern_summary 必须能让一个**没看过原 lesson** 的人也能套用
+- pattern_conditions 必须可机械判断 (不能是"看情况"这种空话)
+- 若 lessons 之间只是表面相似 (同关键词 / 同领域 / 同时间) 但实质各管各的事,选 B
+- 若 pattern_summary 写下来感觉像在重复其中一两条 lesson,而非提炼共性,选 B
+
+只输出 JSON,不要 markdown 围栏,不要解释。`.trim();
+
+/** Maximum chars of lesson content sent to LLM (per lesson). */
+const LESSON_CONTENT_EXCERPT_CHARS = 500;
+/** Cap on lessons per cluster sent to LLM (defensive). */
+const LESSON_PROMPT_BATCH_CAP = 20;
+
 export function knowledgeEvolutionService(
   db: Db,
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  _llm: LlmWikiService,
+  llm: LlmWikiService,
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   _retriever: KnowledgeRetrieverService,
   issueSvc: IssueServiceLike | null,
+  draftSvc: DraftServiceLike | null = null,
 ) {
-  // _llm + _retriever remain unused until Tasks 4 + 6 (merge / pattern_emergence).
-  // issueSvc is now consumed by promotionCheck + freshnessAudit (Task 3) and
-  // will be reused by mergeCandidateDetect + conflictDetect + patternEmergence.
+  // _retriever remains unused until Tasks 7+ (runEvolution / future routing).
+  // llm is consumed by patternEmergence (Task 6).
+  // issueSvc consumed by promotionCheck / freshnessAudit / mergeCandidateDetect /
+  //   conflictDetect.
+  // draftSvc consumed by patternEmergence (Task 6) to create concept drafts.
 
   // ──────────────────────────────────────────────────────────────────
   // Internal helpers (shared by behaviors that propose via Issue)
@@ -871,8 +977,334 @@ export function knowledgeEvolutionService(
       freshnessAudit,
       mergeCandidateDetect,
       conflictDetect,
+      patternEmergence,
     },
   };
+
+  // ──────────────────────────────────────────────────────────────────
+  // Behavior #6 — patternEmergence (PRD §FR6 row 6) — most complex
+  //
+  // Pipeline:
+  //   1. Discover (used_for, business_domain_id) groups with ≥ 5
+  //      active lessons not in cooldown. Top 5 by lesson_count.
+  //   2. For each group:
+  //      a) Fetch qualifying lesson (id, title, content).
+  //      b) Compute pairwise cosine similarity via pgvector;
+  //         threshold ≥ 0.7 → graph edge.
+  //      c) Union-find connected components; keep size ≥ 5.
+  //      d) Per eligible cluster, LLM call extracts:
+  //         { pattern_name, pattern_summary, pattern_conditions[],
+  //           source_lesson_ids[] }
+  //         OR
+  //         { no_pattern: true, reason }
+  //      e) Pattern path: create knowledge_drafts row via draftSvc
+  //         (type=concept, source=agent_self_review, system actor,
+  //         metadata.is_pattern=true, metadata.derived_from_lessons=[...]).
+  //      f) No-pattern path: set 30-day evolution_cooldown_until on
+  //         every lesson in the cluster (avoids retrying same group
+  //         every weekly tick without new data).
+  //
+  // Returns BehaviorResult with draftsCreated = pattern drafts created,
+  // nodesModified = cluster lessons whose metadata.cooldown was set,
+  // details = groupings + LLM call stats.
+  //
+  // Decisions baked in:
+  //   B (PR #3 plan v0.2): no external clustering deps; cosine
+  //     threshold graph + union-find connected components.
+  //   30-day cooldown for failed pattern extraction
+  //     (BEHAVIOR_LIMITS.pattern_emergence.cooldownDays = 30).
+  //   Concept drafts go through Phase 1b draft → Phase 3b reviewer
+  //     → human approval pipeline; this behavior never bypasses review.
+  // ──────────────────────────────────────────────────────────────────
+  async function patternEmergence(
+    companyId: string,
+  ): Promise<BehaviorResult> {
+    const t = BEHAVIOR_LIMITS.pattern_emergence;
+
+    // Step 1: discover candidate groups.
+    const groups = (await db.execute(sql`
+      SELECT
+        n.used_for,
+        n.business_domain_id,
+        bd.name AS business_domain_name,
+        COUNT(*)::int AS lesson_count
+      FROM knowledge_nodes n
+      JOIN business_domains bd ON bd.id = n.business_domain_id
+      WHERE n.company_id = ${companyId}
+        AND n.type = 'lesson'
+        AND n.status = 'active'
+        AND n.used_for IS NOT NULL
+        AND n.business_domain_id IS NOT NULL
+        AND (n.metadata->>'evolution_cooldown_until' IS NULL
+             OR (n.metadata->>'evolution_cooldown_until')::timestamptz < NOW())
+      GROUP BY n.used_for, n.business_domain_id, bd.name
+      HAVING COUNT(*) >= ${t.minClusterSize}::int
+      ORDER BY COUNT(*) DESC
+      LIMIT ${t.topClusters}::int
+    `)) as Array<{
+      used_for: string;
+      business_domain_id: string;
+      business_domain_name: string;
+      lesson_count: number;
+    }>;
+
+    let draftsCreated = 0;
+    let cooldownsSet = 0;
+    let clustersProcessed = 0;
+    let llmCalls = 0;
+    const errors: Array<{ subject: string; reason: string }> = [];
+
+    for (const g of groups) {
+      const groupKey = `${g.used_for}:${g.business_domain_id}`;
+
+      // Step 2a: fetch lesson tuples for this group.
+      let lessons: Array<{ id: string; title: string; content: string }>;
+      try {
+        lessons = (await db.execute(sql`
+          SELECT id, title, content
+          FROM knowledge_nodes
+          WHERE company_id = ${companyId}
+            AND type = 'lesson'
+            AND status = 'active'
+            AND used_for = ${g.used_for}
+            AND business_domain_id = ${g.business_domain_id}::uuid
+            AND (metadata->>'evolution_cooldown_until' IS NULL
+                 OR (metadata->>'evolution_cooldown_until')::timestamptz < NOW())
+        `)) as Array<{ id: string; title: string; content: string }>;
+      } catch (err) {
+        errors.push({
+          subject: groupKey,
+          reason: err instanceof Error ? err.message : String(err),
+        });
+        continue;
+      }
+
+      // Sanity: post-filter could yield < minClusterSize (race against
+      // a concurrent cooldown / status change between Step 1 and 2a).
+      if (lessons.length < t.minClusterSize) continue;
+
+      // Step 2b: pairwise cosine edges via pgvector. Uses the HNSW
+      // index for the `<=>` predicate.
+      const distanceCeiling = 1 - t.cosineThreshold;
+      let edges: Array<{ id_a: string; id_b: string; cosine: number | string }>;
+      try {
+        edges = (await db.execute(sql`
+          SELECT a.id AS id_a, b.id AS id_b,
+                 1 - (a.embedding <=> b.embedding) AS cosine
+          FROM knowledge_nodes a
+          JOIN knowledge_nodes b
+            ON a.id < b.id
+            AND a.company_id = b.company_id
+            AND a.embedding <=> b.embedding < ${String(distanceCeiling)}::float
+          WHERE a.company_id = ${companyId}
+            AND a.type = 'lesson' AND a.status = 'active'
+            AND a.used_for = ${g.used_for}
+            AND a.business_domain_id = ${g.business_domain_id}::uuid
+            AND b.type = 'lesson' AND b.status = 'active'
+            AND b.used_for = ${g.used_for}
+            AND b.business_domain_id = ${g.business_domain_id}::uuid
+        `)) as Array<{ id_a: string; id_b: string; cosine: number | string }>;
+      } catch (err) {
+        errors.push({
+          subject: groupKey,
+          reason: err instanceof Error ? err.message : String(err),
+        });
+        continue;
+      }
+
+      // Step 2c: union-find connected components.
+      const lessonIds = lessons.map((l) => l.id);
+      const clusters = unionFindClusters(
+        lessonIds,
+        edges.map((e) => ({ a: e.id_a, b: e.id_b })),
+      );
+      const eligibleClusters = clusters.filter(
+        (c) => c.length >= t.minClusterSize,
+      );
+
+      // Step 3: LLM call per eligible cluster.
+      for (const cluster of eligibleClusters) {
+        clustersProcessed += 1;
+        const clusterKey = `${groupKey}:size${cluster.length}:${cluster[0]}`;
+        const clusterLessons = lessons.filter((l) =>
+          cluster.includes(l.id),
+        ).slice(0, LESSON_PROMPT_BATCH_CAP);
+
+        const userMessage = JSON.stringify(
+          {
+            used_for: g.used_for,
+            business_domain: g.business_domain_name,
+            lessons: clusterLessons.map((l) => ({
+              id: l.id,
+              title: l.title,
+              content_excerpt: l.content.slice(0, LESSON_CONTENT_EXCERPT_CHARS),
+            })),
+          },
+          null,
+          2,
+        );
+
+        let raw: string;
+        try {
+          raw = await llm.completeChat({
+            system: PATTERN_EMERGENCE_SYSTEM_PROMPT,
+            user: userMessage,
+          });
+          llmCalls += 1;
+        } catch (err) {
+          errors.push({
+            subject: clusterKey,
+            reason: `llm_failed: ${err instanceof Error ? err.message : String(err)}`,
+          });
+          continue;
+        }
+
+        // Parse LLM output (allow accidental markdown fence).
+        let parsed: {
+          pattern_name?: string;
+          pattern_summary?: string;
+          pattern_conditions?: string[];
+          source_lesson_ids?: string[];
+          no_pattern?: boolean;
+          reason?: string;
+        };
+        try {
+          const cleaned = raw
+            .trim()
+            .replace(/^```(?:json)?\n?/, "")
+            .replace(/\n?```$/, "");
+          parsed = JSON.parse(cleaned);
+        } catch {
+          // Unparseable → set cooldown to avoid retrying same prompt
+          // with same lessons every weekly tick.
+          const setOk = await setClusterCooldown(companyId, cluster, t.cooldownDays);
+          if (setOk) cooldownsSet += cluster.length;
+          errors.push({
+            subject: clusterKey,
+            reason: "llm_output_not_json",
+          });
+          continue;
+        }
+
+        // Branch B: LLM explicitly said no useful pattern.
+        if (parsed.no_pattern === true) {
+          const setOk = await setClusterCooldown(companyId, cluster, t.cooldownDays);
+          if (setOk) cooldownsSet += cluster.length;
+          continue;
+        }
+
+        // Branch A validation. Malformed → treat as no_pattern for
+        // cooldown purposes + record specific error.
+        if (
+          typeof parsed.pattern_name !== "string" ||
+          parsed.pattern_name.length === 0 ||
+          typeof parsed.pattern_summary !== "string" ||
+          parsed.pattern_summary.length === 0 ||
+          !Array.isArray(parsed.pattern_conditions) ||
+          !Array.isArray(parsed.source_lesson_ids) ||
+          parsed.source_lesson_ids.length === 0
+        ) {
+          const setOk = await setClusterCooldown(companyId, cluster, t.cooldownDays);
+          if (setOk) cooldownsSet += cluster.length;
+          errors.push({
+            subject: clusterKey,
+            reason: "llm_output_malformed",
+          });
+          continue;
+        }
+
+        // Create concept draft via Phase 1a draft service.
+        if (!draftSvc) {
+          errors.push({
+            subject: clusterKey,
+            reason: "draftSvc unavailable",
+          });
+          continue;
+        }
+        const conditionsBlock = parsed.pattern_conditions.length > 0
+          ? `\n\n触发条件:\n${parsed.pattern_conditions.map((c) => `- ${c}`).join("\n")}`
+          : "";
+        try {
+          await draftSvc.create({
+            companyId,
+            actor: { type: "system" },
+            payload: {
+              title: parsed.pattern_name.slice(0, 500),
+              content: (parsed.pattern_summary + conditionsBlock).slice(0, 8000),
+              type: "concept",
+              level: "company",
+              business_domain_name: g.business_domain_name,
+              metadata: {
+                is_pattern: true,
+                derived_from_lessons: parsed.source_lesson_ids,
+                used_for: g.used_for,
+              },
+              confidence: 0.6,
+              source: "agent_self_review",
+            },
+          });
+          draftsCreated += 1;
+        } catch (err) {
+          errors.push({
+            subject: clusterKey,
+            reason: `draft_create_failed: ${err instanceof Error ? err.message : String(err)}`,
+          });
+        }
+      }
+    }
+
+    return {
+      behavior: "pattern_emergence",
+      candidatesFound: groups.length,
+      issuesCreated: 0,
+      draftsCreated,
+      edgesCreated: 0,
+      // Each cooldown set bumps a lesson's metadata.evolution_cooldown_until.
+      nodesModified: cooldownsSet,
+      errors,
+      details: {
+        cosine_threshold: t.cosineThreshold,
+        min_cluster_size: t.minClusterSize,
+        cooldown_days: t.cooldownDays,
+        top_clusters_limit: t.topClusters,
+        clusters_processed: clustersProcessed,
+        cooldowns_set: cooldownsSet,
+        llm_calls: llmCalls,
+      },
+    };
+  }
+
+  /**
+   * Helper: stamp `metadata.evolution_cooldown_until = NOW() + N days`
+   * on every lesson in the cluster. Used for both LLM-says-no-pattern
+   * and LLM-output-malformed paths so the cluster doesn't get retried
+   * weekly with the same unproductive prompt.
+   * Returns true on success, false on error (errors logged but not thrown).
+   */
+  async function setClusterCooldown(
+    companyId: string,
+    clusterIds: string[],
+    cooldownDays: number,
+  ): Promise<boolean> {
+    try {
+      await db.execute(sql`
+        UPDATE knowledge_nodes
+        SET metadata = metadata || jsonb_build_object(
+          'evolution_cooldown_until',
+          (NOW() + (${String(cooldownDays)} || ' days')::INTERVAL)::text
+        )
+        WHERE id = ANY(${clusterIds}::uuid[])
+          AND company_id = ${companyId}::uuid
+      `);
+      return true;
+    } catch (err) {
+      logger.warn(
+        { err, companyId, clusterSize: clusterIds.length },
+        "evolution: setClusterCooldown failed",
+      );
+      return false;
+    }
+  }
 }
 
 export type KnowledgeEvolutionService = ReturnType<
