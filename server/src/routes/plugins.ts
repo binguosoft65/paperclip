@@ -21,7 +21,7 @@
  * 导致 404 或错误匹配。静态路由必须先注册。
  *
  * @module server/routes/plugins
- * @see doc/plugins/PLUGIN_SPEC.md for the full plugin specification
+ * @see docs/plugins/PLUGIN_SPEC.md for the full plugin specification
  */
 
 import { existsSync } from "node:fs";

@@ -41,7 +41,7 @@ Future issue, comment, and document writes sync references automatically without
 
 This mode is ideal for local development and one-command installs.
 
-Docker note: the Docker quickstart image also uses embedded PostgreSQL by default. Persist `/paperclip` to keep DB state across container restarts (see `doc/DOCKER.md`).
+Docker note: the Docker quickstart image also uses embedded PostgreSQL by default. Persist `/paperclip` to keep DB state across container restarts (see `docs/DOCKER.md`).
 
 ## 2. Local PostgreSQL (Docker)
 
@@ -151,7 +151,7 @@ The plugin runtime tracks plugin-owned database namespaces and migrations in `pl
 
 Paperclip supports automatic and manual logical database backups. These dumps include
 non-system database schemas such as `public`, the Drizzle migration journal, and
-plugin-owned database schemas. See `doc/DEVELOPING.md` for the current
+plugin-owned database schemas. See `docs/DEVELOPING.md` for the current
 `paperclipai db:backup` / `pnpm db:backup` commands and backup retention
 configuration.
 

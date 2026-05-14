@@ -2,7 +2,7 @@
 
 Low-level reference for how Paperclip packages are prepared and published to npm.
 
-For the maintainer workflow, use [doc/RELEASING.md](RELEASING.md). This document focuses on packaging internals.
+For the maintainer workflow, use [docs/RELEASING.md](RELEASING.md). This document focuses on packaging internals.
 
 ## Current Release Entry Points
 
@@ -174,7 +174,7 @@ That means:
 - GitHub Actions obtains short-lived publish credentials
 - trusted publisher rules are configured per workflow file
 
-See [doc/RELEASE-AUTOMATION-SETUP.md](RELEASE-AUTOMATION-SETUP.md) for the GitHub/npm setup steps.
+See [docs/RELEASE-AUTOMATION-SETUP.md](RELEASE-AUTOMATION-SETUP.md) for the GitHub/npm setup steps.
 
 ## Release enrollment for new public packages
 
@@ -247,4 +247,4 @@ This is the fastest way to restore the default install path if a stable release 
 - [`scripts/generate-ui-package-json.mjs`](../scripts/generate-ui-package-json.mjs)
 - [`scripts/release-package-map.mjs`](../scripts/release-package-map.mjs)
 - [`cli/esbuild.config.mjs`](../cli/esbuild.config.mjs)
-- [`doc/RELEASING.md`](RELEASING.md)
+- [`docs/RELEASING.md`](RELEASING.md)

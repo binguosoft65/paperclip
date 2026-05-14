@@ -59,7 +59,7 @@ function getPluginErrorSummary(plugin: PluginRecord): string {
  *   `queryKeys.plugins.all` so the list refreshes automatically.
  *
  * @see PluginSettings — linked from the Settings icon on each plugin row.
- * @see doc/plugins/PLUGIN_SPEC.md §3 — Plugin Lifecycle for status semantics.
+ * @see docs/plugins/PLUGIN_SPEC.md §3 — Plugin Lifecycle for status semantics.
  */
 export function PluginManager() {
   const { selectedCompany } = useCompany();

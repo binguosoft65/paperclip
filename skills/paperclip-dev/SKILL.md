@@ -14,11 +14,11 @@ This skill covers the day-to-day workflows for developing and operating a local 
 
 > **OPEN SOURCE HYGIENE:** This repository is public-facing. Treat anything you push to `origin` as publishable. Never commit or push secrets, API keys, tokens, private logs, PII, customer data, or machine-local configuration that should stay private. Keep git history tidy as well: avoid pushing throwaway branches, noisy checkpoint commits, or speculative work that does not need to be shared upstream.
 
-> **MANDATORY:** Before running any CLI command, building, testing, or managing worktrees, you MUST read `doc/DEVELOPING.md` in the Paperclip repo. It is the canonical reference for all `paperclipai` CLI commands, their options, build/test workflows, database operations, worktree management, and diagnostics. Do NOT guess at flags or options — read the doc first.
+> **MANDATORY:** Before running any CLI command, building, testing, or managing worktrees, you MUST read `docs/DEVELOPING.md` in the Paperclip repo. It is the canonical reference for all `paperclipai` CLI commands, their options, build/test workflows, database operations, worktree management, and diagnostics. Do NOT guess at flags or options — read the doc first.
 
 ## Quick Command Reference
 
-These are the most common commands. For full option tables and details, see `doc/DEVELOPING.md`.
+These are the most common commands. For full option tables and details, see `docs/DEVELOPING.md`.
 
 | Task | Command |
 |------|---------|
@@ -49,7 +49,7 @@ If schema changes landed, also run `pnpm db:generate && pnpm db:migrate`.
 
 Paperclip worktrees combine git worktrees with isolated Paperclip instances — each gets its own database, server port, and environment seeded from the primary instance.
 
-> **MANDATORY:** Before creating or managing worktrees, you MUST read the "Worktree-local Instances" and "Worktree CLI Reference" sections in `doc/DEVELOPING.md`. That is the canonical reference for all worktree commands, their options, seed modes, and environment variables.
+> **MANDATORY:** Before creating or managing worktrees, you MUST read the "Worktree-local Instances" and "Worktree CLI Reference" sections in `docs/DEVELOPING.md`. That is the canonical reference for all worktree commands, their options, seed modes, and environment variables.
 
 ### When to Use Worktrees
 
@@ -59,7 +59,7 @@ Paperclip worktrees combine git worktrees with isolated Paperclip instances — 
 
 ### Command Overview
 
-The CLI has two tiers (see `doc/DEVELOPING.md` for full option tables):
+The CLI has two tiers (see `docs/DEVELOPING.md` for full option tables):
 
 | Command | Purpose |
 |---------|---------|
@@ -202,7 +202,7 @@ These rules exist because agents have caused real damage by improvising around C
    ```
    If any step fails, follow rule 2 — stop and report.
 
-5. **Seeding is a CLI operation.** When asked to seed a worktree database from the main instance, use `worktree reseed` or recreate with `worktree:make --seed-mode full`. Read `doc/DEVELOPING.md` for the full option tables. Never attempt manual database copying.
+5. **Seeding is a CLI operation.** When asked to seed a worktree database from the main instance, use `worktree reseed` or recreate with `worktree:make --seed-mode full`. Read `docs/DEVELOPING.md` for the full option tables. Never attempt manual database copying.
 
 ## Persistent Dev Servers (for Manual Testing)
 

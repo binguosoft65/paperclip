@@ -51,8 +51,8 @@ Add a single storage subsystem for Paperclip that supports:
 - [ ] `cli/src/prompts/index` (if present) or direct imports: wire new storage prompt.
 - [ ] `server/src/config.ts`: load storage config and resolve home-aware local path.
 - [ ] `server/src/home-paths.ts`: add `resolveDefaultStorageDir()`.
-- [ ] `doc/CLI.md`: document `configure --section storage`.
-- [ ] `doc/DEVELOPING.md`: document default local storage path and overrides.
+- [ ] `docs/CLI.md`: document `configure --section storage`.
+- [ ] `docs/DEVELOPING.md`: document default local storage path and overrides.
 
 ### Acceptance Criteria
 
@@ -156,8 +156,8 @@ Add a single storage subsystem for Paperclip that supports:
 - [ ] `cli/src/checks/storage-check.ts`: add storage check (local writable dir, optional S3 reachability check).
 - [ ] `cli/src/checks/index.ts`: export new storage check.
 - [ ] `cli/src/commands/doctor.ts`: include storage check in doctor sequence.
-- [ ] `doc/DATABASE.md` or `doc/DEVELOPING.md`: mention storage backend behavior by deployment mode.
-- [ ] `doc/SPEC-implementation.md`: add storage subsystem and issue-attachment endpoint contract.
+- [ ] `docs/DATABASE.md` or `docs/DEVELOPING.md`: mention storage backend behavior by deployment mode.
+- [ ] `docs/SPEC-implementation.md`: add storage subsystem and issue-attachment endpoint contract.
 
 ### Acceptance Criteria
 

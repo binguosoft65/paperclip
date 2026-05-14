@@ -16,7 +16,7 @@ A repeatable procedure for the recurring class of issues where the user (or a ma
 
 This skill is **diagnostic + product-design**, not engineering. The output is a written root cause and an approved plan. No code changes leave this skill.
 
-Canonical execution model: read `doc/execution-semantics.md` before diagnosing or proposing a new liveness/recovery rule. Use that document as the source of truth for status, action-path, post-run disposition, bounded continuation, productivity review, pause-hold, watchdog, and explicit recovery semantics. If the investigation finds a true product-rule gap, the plan should say whether `doc/execution-semantics.md` needs a matching update.
+Canonical execution model: read `docs/execution-semantics.md` before diagnosing or proposing a new liveness/recovery rule. Use that document as the source of truth for status, action-path, post-run disposition, bounded continuation, productivity review, pause-hold, watchdog, and explicit recovery semantics. If the investigation finds a true product-rule gap, the plan should say whether `docs/execution-semantics.md` needs a matching update.
 
 ## When to use
 
@@ -50,7 +50,7 @@ If a proposed rule violates any of the three, drop it or rework it. State explic
 
 ### 0. Read the current execution contract
 
-Before walking the tree, read `doc/execution-semantics.md` and keep its terms intact:
+Before walking the tree, read `docs/execution-semantics.md` and keep its terms intact:
 
 - live path / waiting path / recovery path
 - post-run disposition: terminal, explicitly live, explicitly waiting, invalid
@@ -102,7 +102,7 @@ This is the table the user has asked for repeatedly ([PAP-2335](/PAP/issues/PAP-
 The user does not want a one-off patch on the named tree. They want the rule. Two checks:
 
 - The rule is **stated as a contract**, not as an if/else patch. Example contract: "every agent-owned non-terminal issue must finish each heartbeat with a terminal state, an explicit waiting path, or an explicit live path" ([PAP-2674](/PAP/issues/PAP-2674)).
-- The rule is reconciled against `doc/execution-semantics.md`. Prefer citing and applying the existing contract; propose a document change only when the current doc is incomplete or contradicted by accepted/implemented behavior.
+- The rule is reconciled against `docs/execution-semantics.md`. Prefer citing and applying the existing contract; propose a document change only when the current doc is incomplete or contradicted by accepted/implemented behavior.
 - The rule **explicitly preserves the three invariants** above. Show the work.
 
 If the rule would have blocked a recent productive run from succeeding, drop or narrow it.
@@ -113,7 +113,7 @@ Write the plan into the issue's `plan` document. Cover:
 
 - Forensics summary (root cause + evidence).
 - The general product rule, stated as a contract.
-- Whether the existing `doc/execution-semantics.md` contract already covers the case, or what exact documentation update is needed.
+- Whether the existing `docs/execution-semantics.md` contract already covers the case, or what exact documentation update is needed.
 - Phased subtasks: typically `Phase 0` resolves the named live tree (carefully, not destructively), `Phase 1` codifies the contract in docs, then implementation phases for detection, recovery, UI surfacing, security review, QA, and CTO review.
 - Explicit assignees per phase; favor team specialty (CodexCoder for server, ClaudeCoder for FE, UXDesigner for visible state, SecurityEngineer for ownership/permissions, QA for validation).
 - Blocking dependencies wired with `blockedByIssueIds`, parallel branches identified.

@@ -4,7 +4,7 @@ This project can run fully in local dev without setting up PostgreSQL manually.
 
 ## Deployment Modes
 
-For mode definitions and intended CLI behavior, see `doc/DEPLOYMENT-MODES.md`.
+For mode definitions and intended CLI behavior, see `docs/DEPLOYMENT-MODES.md`.
 
 Current implementation status:
 
@@ -151,11 +151,11 @@ Or use Compose:
 docker compose -f docker/docker-compose.quickstart.yml up --build
 ```
 
-See `doc/DOCKER.md` for API key wiring (`OPENAI_API_KEY` / `ANTHROPIC_API_KEY`) and persistence details.
+See `docs/DOCKER.md` for API key wiring (`OPENAI_API_KEY` / `ANTHROPIC_API_KEY`) and persistence details.
 
 ## Docker For Untrusted PR Review
 
-For a separate review-oriented container that keeps `codex`/`claude` login state in Docker volumes and checks out PRs into an isolated scratch workspace, see `doc/UNTRUSTED-PR-REVIEW.md`.
+For a separate review-oriented container that keeps `codex`/`claude` login state in Docker volumes and checks out PRs into an isolated scratch workspace, see `docs/UNTRUSTED-PR-REVIEW.md`.
 
 ## Database in Dev (Auto-Handled)
 
@@ -522,7 +522,7 @@ pnpm paperclipai issue list
 pnpm paperclipai dashboard get
 ```
 
-See full command reference in `doc/CLI.md`.
+See full command reference in `docs/CLI.md`.
 
 ## OpenClaw Invite Onboarding Endpoints
 

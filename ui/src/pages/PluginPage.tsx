@@ -30,8 +30,8 @@ import { NotFoundPage } from "./NotFound";
  * 当插件提供了 routeSidebar 插槽时，侧边栏提供返回按钮（back affordance），
  * 顶栏只需显示页面标题。否则，顶栏显示面包屑导航（Plugins > 插件名）。
  *
- * @see doc/plugins/PLUGIN_SPEC.md §19.2 — Company-Context Routes
- * @see doc/plugins/PLUGIN_SPEC.md §24.4 — Company-Context Plugin Page
+ * @see docs/plugins/PLUGIN_SPEC.md §19.2 — Company-Context Routes
+ * @see docs/plugins/PLUGIN_SPEC.md §24.4 — Company-Context Plugin Page
  */
 export function PluginPage() {
   const { t } = useTranslation("common");

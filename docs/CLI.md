@@ -27,7 +27,7 @@ pnpm paperclipai run --instance dev
 
 ## Deployment Modes
 
-Mode taxonomy and design intent are documented in `doc/DEPLOYMENT-MODES.md`.
+Mode taxonomy and design intent are documented in `docs/DEPLOYMENT-MODES.md`.
 
 Current CLI behavior:
 
@@ -37,7 +37,7 @@ Current CLI behavior:
 - runtime can override mode with `PAPERCLIP_DEPLOYMENT_MODE`
 - `paperclipai run` and `paperclipai doctor` still do not expose a direct low-level `--mode` flag
 
-Canonical behavior is documented in `doc/DEPLOYMENT-MODES.md`.
+Canonical behavior is documented in `docs/DEPLOYMENT-MODES.md`.
 
 Allow an authenticated/private hostname (for example custom Tailscale DNS):
 

@@ -4,7 +4,7 @@ Status: Proposed implementation plan
 Date: 2026-03-13
 Audience: Product and engineering
 Supersedes for package-format direction:
-- `doc/plans/2026-02-16-module-system.md` sections that describe company templates as JSON-only
+- `docs/plans/2026-02-16-module-system.md` sections that describe company templates as JSON-only
 - `docs/specs/cliphub-plan.md` assumptions about blueprint bundle shape where they conflict with the markdown-first package model
 
 ## 1. Purpose
@@ -26,7 +26,7 @@ This plan is about implementation and rollout inside Paperclip.
 
 Adapter-wide skill rollout details live in:
 
-- `doc/plans/2026-03-14-adapter-skill-sync-rollout.md`
+- `docs/plans/2026-03-14-adapter-skill-sync-rollout.md`
 
 ## 2. Executive Summary
 
@@ -536,7 +536,7 @@ If importing a team into an existing company:
 
 See also:
 
-- `doc/plans/2026-03-14-skills-ui-product-plan.md`
+- `docs/plans/2026-03-14-skills-ui-product-plan.md`
 
 If importing skills:
 
@@ -607,7 +607,7 @@ Primary docs:
 
 Docs to update later as implementation lands:
 
-- `doc/SPEC-implementation.md`
+- `docs/SPEC-implementation.md`
 - `docs/api/companies.md`
 - `docs/cli/control-plane-commands.md`
 - board operator docs for Company Settings import/export

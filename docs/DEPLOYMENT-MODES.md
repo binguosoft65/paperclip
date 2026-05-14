@@ -139,7 +139,7 @@ This prevents lockout when a user migrates from long-running local trusted usage
 
 ## 10. Relationship to Other Docs
 
-- implementation plan: `doc/plans/deployment-auth-mode-consolidation.md`
-- V1 contract: `doc/SPEC-implementation.md`
-- operator workflows: `doc/DEVELOPING.md` and `doc/CLI.md`
-- invite/join state map: `doc/spec/invite-flow.md`
+- implementation plan: `docs/plans/deployment-auth-mode-consolidation.md`
+- V1 contract: `docs/SPEC-implementation.md`
+- operator workflows: `docs/DEVELOPING.md` and `docs/CLI.md`
+- invite/join state map: `docs/spec/invite-flow.md`

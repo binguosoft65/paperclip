@@ -58,7 +58,7 @@ The stable version comes from one of:
 
 - an explicit maintainer request
 - `./scripts/release.sh stable --date YYYY-MM-DD --print-version`
-- the release plan already agreed in `doc/RELEASING.md`
+- the release plan already agreed in `docs/RELEASING.md`
 
 Do not derive the changelog version from a canary tag or prerelease suffix.
 Do not derive major/minor/patch bumps from API intent — calver uses the date and same-day stable slot.

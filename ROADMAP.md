@@ -8,7 +8,7 @@ We value community involvement and want to make sure contributor energy goes tow
 
 We may accept contributions in the areas below, but if you want to work on roadmap-level core features, please coordinate with us first in Discord (`#dev`) before writing code. Bugs, docs, polish, and tightly scoped improvements are still the easiest contributions to merge.
 
-If you want to extend Paperclip today, the best path is often the [plugin system](doc/plugins/PLUGIN_SPEC.md). Community reference implementations are also useful feedback even when they are not merged directly into core.
+If you want to extend Paperclip today, the best path is often the [plugin system](docs/plugins/PLUGIN_SPEC.md). Community reference implementations are also useful feedback even when they are not merged directly into core.
 
 ## Milestones
 

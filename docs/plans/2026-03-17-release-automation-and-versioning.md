@@ -2,7 +2,7 @@
 
 ## Context
 
-Paperclip's current release flow is documented in `doc/RELEASING.md` and implemented through:
+Paperclip's current release flow is documented in `docs/RELEASING.md` and implemented through:
 
 - `.github/workflows/release.yml`
 - `scripts/release-lib.sh`
@@ -197,7 +197,7 @@ Add or tighten `CODEOWNERS` coverage for:
 
 - `.github/workflows/*`
 - `scripts/release*`
-- `doc/RELEASING.md`
+- `docs/RELEASING.md`
 
 This matters because trusted publishing authorizes a workflow file. The biggest remaining risk is not secret exfiltration from forks. It is a maintainer-approved change to the release workflow itself.
 
@@ -445,7 +445,7 @@ That is acceptable if canaries stay clearly separate:
 2. Add explicit calendar-version computation
 3. Add canary git tagging
 4. Remove changelog requirement from canaries
-5. Update `doc/RELEASING.md`
+5. Update `docs/RELEASING.md`
 
 ### Phase 3: Stable promotion
 

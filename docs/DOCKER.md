@@ -90,7 +90,7 @@ PostgreSQL data persists in a named Docker volume (`pgdata`). Paperclip data per
 
 ### Untrusted PR review
 
-Isolated container for reviewing untrusted pull requests with Codex or Claude, without exposing your host machine. See `doc/UNTRUSTED-PR-REVIEW.md` for the full workflow.
+Isolated container for reviewing untrusted pull requests with Codex or Claude, without exposing your host machine. See `docs/UNTRUSTED-PR-REVIEW.md` for the full workflow.
 
 ```sh
 docker compose -f docker/docker-compose.untrusted-review.yml build

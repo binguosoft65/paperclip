@@ -666,7 +666,7 @@ export const PERMISSION_KEYS = [
 export type PermissionKey = (typeof PERMISSION_KEYS)[number];
 
 // ---------------------------------------------------------------------------
-// Plugin System — see doc/plugins/PLUGIN_SPEC.md for the full specification
+// Plugin System — see docs/plugins/PLUGIN_SPEC.md for the full specification
 // ---------------------------------------------------------------------------
 
 /**

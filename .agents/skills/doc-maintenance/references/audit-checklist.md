@@ -46,7 +46,7 @@ against the change summary from git history.
 - [ ] Commands are accurate (`pnpm dev`, `pnpm build`, etc.)
 - [ ] Link to DEVELOPING.md is correct
 
-## doc/SPEC.md
+## docs/SPEC.md
 
 ### Company Model
 - [ ] Fields match current schema
@@ -69,7 +69,7 @@ against the change summary from git history.
 - [ ] Resolved questions removed or updated
 - [ ] No "TBD" items that have been decided
 
-## doc/PRODUCT.md
+## docs/PRODUCT.md
 
 ### Core Concepts
 - [ ] Company, Employees, Task Management descriptions accurate

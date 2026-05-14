@@ -163,7 +163,7 @@ react-i18next re-render ──► 所有 useTranslation() hooks 更新
 ## 非范围
 
 - Server 端不涉及（无用户可见文本）
-- `doc/` 和 `docs/` 内容不翻译
+- `docs/` 和 `docs/` 内容不翻译
 - `DesignGuide.tsx` 包含在内（全部 UI 文本）
 - 不涉及 RTL 排版（中文和英文均为 LTR）
 - 不翻译数据库内容或用户生成内容

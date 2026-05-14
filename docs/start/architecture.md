@@ -65,7 +65,7 @@ paperclip/
 ├── cli/                         # CLI client
 │   └── src/                     # Setup and control-plane commands
 │
-└── doc/                         # Internal documentation
+└── docs/                         # Internal documentation
 ```
 
 ## Request Flow

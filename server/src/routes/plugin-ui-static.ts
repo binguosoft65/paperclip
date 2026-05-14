@@ -29,8 +29,8 @@
  * 通过宿主服务器发起 SSRF 攻击。
  *
  * @module server/routes/plugin-ui-static
- * @see doc/plugins/PLUGIN_SPEC.md §19.0.3 — Bundle Serving
- * @see doc/plugins/PLUGIN_SPEC.md §25.4.5 — Frontend Cache Invalidation
+ * @see docs/plugins/PLUGIN_SPEC.md §19.0.3 — Bundle Serving
+ * @see docs/plugins/PLUGIN_SPEC.md §25.4.5 — Frontend Cache Invalidation
  */
 
 import { Router } from "express";
