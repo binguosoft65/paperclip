@@ -501,6 +501,9 @@ export function projectService(db: Db) {
   };
 
   const getProjectById = async (id: string): Promise<ProjectWithGoals | null> => {
+    // projects.id 是 UUID 列：非 UUID 引用（如改名后残留的 /projects/onboarding）
+    // 此处已无法解析为短名称，直接当作不存在返回 null，避免把字符串塞进 UUID 查询触发 Postgres 500。
+    if (!isUuidLike(id)) return null;
     const row = await db
       .select()
       .from(projects)
