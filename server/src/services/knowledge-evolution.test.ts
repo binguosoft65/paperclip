@@ -5,6 +5,7 @@ import {
   unionFindClusters,
   PATTERN_EMERGENCE_SYSTEM_PROMPT,
 } from "./knowledge-evolution.js";
+import type { IssueServiceLike } from "./knowledge-healthcheck.js";
 
 /**
  * Mock db with sequential execute() return values.
@@ -121,8 +122,10 @@ describe("BEHAVIOR_LIMITS", () => {
  * fakeIssueSvc returns canned id values from `.create.mockResolvedValueOnce`
  * sequence. Test code seeds the mocks before calling the behavior.
  */
-function fakeIssueSvc() {
-  return { create: vi.fn() } as never;
+function fakeIssueSvc(): IssueServiceLike & { create: ReturnType<typeof vi.fn> } {
+  return { create: vi.fn() } as IssueServiceLike & {
+    create: ReturnType<typeof vi.fn>;
+  };
 }
 
 describe("promotionCheck", () => {
@@ -138,8 +141,8 @@ describe("promotionCheck", () => {
       [], // recordProposalSuccess for n-2
     );
     const issueSvc = fakeIssueSvc();
-    (issueSvc as never as { create: { mockResolvedValueOnce: (v: unknown) => unknown } }).create.mockResolvedValueOnce({ id: "iss-1" });
-    (issueSvc as never as { create: { mockResolvedValueOnce: (v: unknown) => unknown } }).create.mockResolvedValueOnce({ id: "iss-2" });
+    issueSvc.create.mockResolvedValueOnce({ id: "iss-1" });
+    issueSvc.create.mockResolvedValueOnce({ id: "iss-2" });
 
     const svc = knowledgeEvolutionService(db, fakeLlm, fakeRetriever, issueSvc);
     const r = await svc.__test__.promotionCheck("co-1");
@@ -203,7 +206,7 @@ describe("promotionCheck", () => {
     );
     const issueSvc = fakeIssueSvc();
     (issueSvc as never as { create: { mockRejectedValueOnce: (v: unknown) => unknown } }).create.mockRejectedValueOnce(new Error("DB down"));
-    (issueSvc as never as { create: { mockResolvedValueOnce: (v: unknown) => unknown } }).create.mockResolvedValueOnce({ id: "iss-2" });
+    issueSvc.create.mockResolvedValueOnce({ id: "iss-2" });
 
     const svc = knowledgeEvolutionService(db, fakeLlm, fakeRetriever, issueSvc);
     const r = await svc.__test__.promotionCheck("co-1");
@@ -257,7 +260,7 @@ describe("freshnessAudit", () => {
       [],
     );
     const issueSvc = fakeIssueSvc();
-    (issueSvc as never as { create: { mockResolvedValueOnce: (v: unknown) => unknown } }).create
+    issueSvc.create
       .mockResolvedValueOnce({ id: "iss-a" })
       .mockResolvedValueOnce({ id: "iss-b" })
       .mockResolvedValueOnce({ id: "iss-c" });
@@ -311,7 +314,7 @@ describe("freshnessAudit", () => {
       [], // recordProposalSuccess only does metadata UPDATE + event INSERT, not verified_at
     );
     const issueSvc = fakeIssueSvc();
-    (issueSvc as never as { create: { mockResolvedValueOnce: (v: unknown) => unknown } }).create.mockResolvedValueOnce({ id: "iss-x" });
+    issueSvc.create.mockResolvedValueOnce({ id: "iss-x" });
 
     const svc = knowledgeEvolutionService(db, fakeLlm, fakeRetriever, issueSvc);
     const r = await svc.__test__.freshnessAudit("co-1");
@@ -339,7 +342,7 @@ describe("freshnessAudit", () => {
       [],
     );
     const issueSvc = fakeIssueSvc();
-    (issueSvc as never as { create: { mockResolvedValueOnce: (v: unknown) => unknown } }).create.mockResolvedValueOnce({ id: "iss-1" });
+    issueSvc.create.mockResolvedValueOnce({ id: "iss-1" });
 
     const svc = knowledgeEvolutionService(db, fakeLlm, fakeRetriever, issueSvc);
     await svc.__test__.freshnessAudit("co-1");
@@ -386,7 +389,7 @@ describe("mergeCandidateDetect", () => {
       [], // recordMergeProposalSuccess for pair-2
     );
     const issueSvc = fakeIssueSvc();
-    (issueSvc as never as { create: { mockResolvedValueOnce: (v: unknown) => unknown } }).create
+    issueSvc.create
       .mockResolvedValueOnce({ id: "iss-m1" })
       .mockResolvedValueOnce({ id: "iss-m2" });
 
@@ -474,7 +477,7 @@ describe("mergeCandidateDetect", () => {
       [],
     );
     const issueSvc = fakeIssueSvc();
-    (issueSvc as never as { create: { mockResolvedValueOnce: (v: unknown) => unknown } }).create.mockResolvedValueOnce({ id: "iss-1" });
+    issueSvc.create.mockResolvedValueOnce({ id: "iss-1" });
     const svc = knowledgeEvolutionService(db, fakeLlm, fakeRetriever, issueSvc);
     await svc.__test__.mergeCandidateDetect("co-1");
     const data = (issueSvc as never as { create: { mock: { calls: unknown[][] } } }).create.mock.calls[0][1] as { description: string };
@@ -502,7 +505,7 @@ describe("mergeCandidateDetect", () => {
       [],
     );
     const issueSvc = fakeIssueSvc();
-    (issueSvc as never as { create: { mockResolvedValueOnce: (v: unknown) => unknown } }).create.mockResolvedValueOnce({ id: "iss-1" });
+    issueSvc.create.mockResolvedValueOnce({ id: "iss-1" });
     const svc = knowledgeEvolutionService(db, fakeLlm, fakeRetriever, issueSvc);
     await svc.__test__.mergeCandidateDetect("co-1");
     const data = (issueSvc as never as { create: { mock: { calls: unknown[][] } } }).create.mock.calls[0][1] as { description: string };
@@ -529,7 +532,7 @@ describe("mergeCandidateDetect", () => {
         .mockRejectedValueOnce(new Error("metadata UPDATE blew up")),
     } as never;
     const issueSvc = fakeIssueSvc();
-    (issueSvc as never as { create: { mockResolvedValueOnce: (v: unknown) => unknown } }).create.mockResolvedValueOnce({ id: "iss-1" });
+    issueSvc.create.mockResolvedValueOnce({ id: "iss-1" });
 
     const svc = knowledgeEvolutionService(db, fakeLlm, fakeRetriever, issueSvc);
     const r = await svc.__test__.mergeCandidateDetect("co-1");
@@ -574,7 +577,7 @@ describe("conflictDetect", () => {
       [], // array clear UPDATE (no return)
     );
     const issueSvc = fakeIssueSvc();
-    (issueSvc as never as { create: { mockResolvedValueOnce: (v: unknown) => unknown } }).create
+    issueSvc.create
       .mockResolvedValueOnce({ id: "iss-c1" })
       .mockResolvedValueOnce({ id: "iss-c2" });
 
@@ -624,7 +627,7 @@ describe("conflictDetect", () => {
       [], // array clear UPDATE
     );
     const issueSvc = fakeIssueSvc();
-    (issueSvc as never as { create: { mockResolvedValueOnce: (v: unknown) => unknown } }).create
+    issueSvc.create
       .mockResolvedValueOnce({ id: "iss-1" })
       .mockResolvedValueOnce({ id: "iss-2" });
 
@@ -691,7 +694,7 @@ describe("conflictDetect", () => {
       [],
     );
     const issueSvc = fakeIssueSvc();
-    (issueSvc as never as { create: { mockResolvedValueOnce: (v: unknown) => unknown } }).create.mockResolvedValueOnce({ id: "iss-1" });
+    issueSvc.create.mockResolvedValueOnce({ id: "iss-1" });
 
     const svc = knowledgeEvolutionService(db, fakeLlm, fakeRetriever, issueSvc);
     await svc.__test__.conflictDetect("co-1");
@@ -1019,5 +1022,117 @@ describe("patternEmergence", () => {
     const svc = knowledgeEvolutionService(db, llm, fakeRetriever, null, draftSvc);
     const r = await svc.__test__.patternEmergence("co-1");
     expect(r.draftsCreated).toBe(1);
+  });
+});
+
+// ──────────────────────────────────────────────────────────────────
+// runEvolution aggregator (Task 7 public entry, mirrors Phase 3c runHealthcheck)
+// ──────────────────────────────────────────────────────────────────
+
+describe("runEvolution", () => {
+  it("calls all 6 behaviors by default and aggregates counts", async () => {
+    // Mock db so EVERY behavior's first execute returns an empty SELECT
+    // (zero candidates), letting all 6 short-circuit gracefully.
+    // promotion_check → SELECT (1 call)
+    // decay_scan → SELECT (1 call, returns [] = no archived rows)
+    // merge_candidate_detect → SELECT (1 call)
+    // conflict_detect → SELECT (1 call)
+    // freshness_audit → SELECT (1 call)
+    // pattern_emergence → SELECT groups (1 call, returns [])
+    // Total: 6 execute calls all returning [].
+    const db = fakeDb([], [], [], [], [], []);
+    const llm = { embed: vi.fn(), completeChat: vi.fn() } as never;
+    const svc = knowledgeEvolutionService(
+      db,
+      llm,
+      fakeRetriever,
+      fakeIssueSvc(),
+      fakeDraftSvc(),
+    );
+    const r = await svc.runEvolution("co-1");
+
+    expect(r.behaviorsRun).toBe(6);
+    expect(r.issuesCreated).toBe(0);
+    expect(r.draftsCreated).toBe(0);
+    expect(r.nodesModified).toBe(0);
+    expect(r.perBehavior).toHaveLength(6);
+    // Behaviors are dispatched in PRD §13.3 declaration order
+    expect(r.perBehavior.map((b) => b.behavior)).toEqual([
+      "promotion_check",
+      "decay_scan",
+      "merge_candidate_detect",
+      "conflict_detect",
+      "freshness_audit",
+      "pattern_emergence",
+    ]);
+  });
+
+  it("opts.behaviors filters to a subset", async () => {
+    const db = fakeDb([], []);
+    const svc = knowledgeEvolutionService(
+      db,
+      { embed: vi.fn(), completeChat: vi.fn() } as never,
+      fakeRetriever,
+      null,
+      null,
+    );
+    const r = await svc.runEvolution("co-1", {
+      behaviors: ["decay_scan", "freshness_audit"],
+    });
+    expect(r.behaviorsRun).toBe(2);
+    expect(r.perBehavior.map((b) => b.behavior)).toEqual([
+      "decay_scan",
+      "freshness_audit",
+    ]);
+  });
+
+  it("one behavior throwing does not abort the rest (captured as synthetic BehaviorResult)", async () => {
+    // First SELECT (promotion_check candidates) throws; decay_scan
+    // continues from the next execute call (empty result).
+    const db = {
+      execute: vi
+        .fn()
+        .mockRejectedValueOnce(new Error("connection lost"))
+        .mockResolvedValueOnce([]), // decay_scan SELECT
+    } as never;
+    const svc = knowledgeEvolutionService(
+      db,
+      { embed: vi.fn(), completeChat: vi.fn() } as never,
+      fakeRetriever,
+      null,
+      null,
+    );
+    const r = await svc.runEvolution("co-1", {
+      behaviors: ["promotion_check", "decay_scan"],
+    });
+    expect(r.behaviorsRun).toBe(2);
+    expect(r.perBehavior[0].errors).toEqual([
+      { subject: "promotion_check", reason: "connection lost" },
+    ]);
+    expect(r.perBehavior[0].details).toEqual({ aborted: true });
+    expect(r.perBehavior[1].behavior).toBe("decay_scan");
+    expect(r.perBehavior[1].errors).toEqual([]);
+  });
+
+  it("aggregates issuesCreated / draftsCreated / nodesModified across behaviors", async () => {
+    // Single-behavior runs are easier to mock precisely. Just verify
+    // decay_scan's nodesModified flows into the aggregate.
+    const db = fakeDb([
+      { node_id: "n-1" },
+      { node_id: "n-2" },
+      { node_id: "n-3" },
+    ]);
+    const svc = knowledgeEvolutionService(
+      db,
+      { embed: vi.fn(), completeChat: vi.fn() } as never,
+      fakeRetriever,
+      null,
+      null,
+    );
+    const r = await svc.runEvolution("co-1", { behaviors: ["decay_scan"] });
+    expect(r.behaviorsRun).toBe(1);
+    expect(r.nodesModified).toBe(3);
+    expect(r.issuesCreated).toBe(0);
+    expect(r.draftsCreated).toBe(0);
   });
 });

@@ -33,6 +33,10 @@ const mockHealthcheck = vi.hoisted(() => ({
   runHealthcheck: vi.fn(),
 }));
 
+const mockEvolution = vi.hoisted(() => ({
+  runEvolution: vi.fn(),
+}));
+
 const mockIssueService = vi.hoisted(() => ({
   create: vi.fn(),
 }));
@@ -40,11 +44,12 @@ const mockIssueService = vi.hoisted(() => ({
 vi.mock("../services/index.js", () => ({
   knowledgeDraftService: () => mockDraftService,
   knowledgeNodeWriterService: () => mockNodeWriter,
-  llmWikiService: () => ({ embed: vi.fn() }),
+  llmWikiService: () => ({ embed: vi.fn(), completeChat: vi.fn() }),
   knowledgeRetrieverService: () => mockRetriever,
   knowledgeFeedbackService: () => mockFeedback,
   reviewerAgentService: () => mockReviewer,
   knowledgeHealthcheckService: () => mockHealthcheck,
+  knowledgeEvolutionService: () => mockEvolution,
   issueService: () => mockIssueService,
 }));
 
@@ -447,6 +452,85 @@ describe.sequential("POST /api/knowledge/healthcheck/run", () => {
     );
     expect(res.status).toBe(400);
     expect(mockHealthcheck.runHealthcheck).not.toHaveBeenCalled();
+  });
+});
+
+describe.sequential("POST /api/knowledge/evolution/run", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("200 + aggregate summary (defaults to all 6 behaviors)", async () => {
+    mockEvolution.runEvolution.mockResolvedValueOnce({
+      behaviorsRun: 6,
+      issuesCreated: 3,
+      draftsCreated: 1,
+      nodesModified: 5,
+      perBehavior: [],
+    });
+    const app = await createApp(boardActor);
+    const res = await requestApp(app, (base) =>
+      request(base)
+        .post("/api/knowledge/evolution/run?companyId=c-1")
+        .send({}),
+    );
+    if (res.status !== 200) {
+      console.log("DEBUG status:", res.status, "body:", JSON.stringify(res.body), "text:", res.text);
+    }
+    expect(res.status).toBe(200);
+    expect(res.body.data).toMatchObject({
+      behaviorsRun: 6,
+      issuesCreated: 3,
+      draftsCreated: 1,
+      nodesModified: 5,
+    });
+    expect(mockEvolution.runEvolution).toHaveBeenCalledWith("c-1", {
+      behaviors: expect.arrayContaining([
+        "promotion_check",
+        "decay_scan",
+        "merge_candidate_detect",
+        "conflict_detect",
+        "freshness_audit",
+        "pattern_emergence",
+      ]),
+    });
+  });
+
+  it("passes opts.behaviors subset to service", async () => {
+    mockEvolution.runEvolution.mockResolvedValueOnce({
+      behaviorsRun: 2,
+      issuesCreated: 0,
+      draftsCreated: 0,
+      nodesModified: 0,
+      perBehavior: [],
+    });
+    const app = await createApp(boardActor);
+    const res = await requestApp(app, (base) =>
+      request(base)
+        .post("/api/knowledge/evolution/run?companyId=c-1")
+        .send({ behaviors: ["decay_scan", "freshness_audit"] }),
+    );
+    expect(res.status).toBe(200);
+    expect(mockEvolution.runEvolution).toHaveBeenCalledWith("c-1", {
+      behaviors: ["decay_scan", "freshness_audit"],
+    });
+  });
+
+  it("400 when companyId query is missing", async () => {
+    const app = await createApp(boardActor);
+    const res = await requestApp(app, (base) =>
+      request(base).post("/api/knowledge/evolution/run").send({}),
+    );
+    expect(res.status).toBe(400);
+  });
+
+  it("400 when behaviors array contains an unknown name", async () => {
+    const app = await createApp(boardActor);
+    const res = await requestApp(app, (base) =>
+      request(base)
+        .post("/api/knowledge/evolution/run?companyId=c-1")
+        .send({ behaviors: ["bogus_behavior"] }),
+    );
+    expect(res.status).toBe(400);
+    expect(mockEvolution.runEvolution).not.toHaveBeenCalled();
   });
 });
 

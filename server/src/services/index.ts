@@ -96,6 +96,23 @@ export {
   type HealthcheckSchedulerHandle,
 } from "./knowledge-healthcheck-scheduler.js";
 export {
+  knowledgeEvolutionService,
+  unionFindClusters,
+  PATTERN_EMERGENCE_SYSTEM_PROMPT,
+  BEHAVIOR_LIMITS as KNOWLEDGE_EVOLUTION_LIMITS,
+  KNOWLEDGE_EVOLUTION_BEHAVIORS_ORDER,
+  type KnowledgeEvolutionService,
+  type KnowledgeEvolutionBehavior,
+  type BehaviorResult as EvolutionBehaviorResult,
+  type RunEvolutionResult,
+  type DraftServiceLike,
+} from "./knowledge-evolution.js";
+export {
+  startEvolutionScheduler,
+  type EvolutionSchedulerDeps,
+  type EvolutionSchedulerHandle,
+} from "./knowledge-evolution-scheduler.js";
+export {
   reviewerAgentService,
   type ReviewerAgentService,
   type ReviewerLlmClient,

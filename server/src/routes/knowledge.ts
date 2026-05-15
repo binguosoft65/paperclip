@@ -13,6 +13,7 @@ import {
   reviewerRunQuerySchema,
   batchApplyVerdictSchema,
   healthcheckRunQuerySchema,
+  evolutionRunQuerySchema,
 } from "@paperclipai/shared";
 import { badRequest, notFound } from "../errors.js";
 import { validate } from "../middleware/validate.js";
@@ -25,6 +26,7 @@ import {
   reviewerAgentService,
   knowledgeHealthcheckService,
   issueService,
+  knowledgeEvolutionService,
 } from "../services/index.js";
 import { assertBoard, assertCompanyAccess, getActorInfo } from "./authz.js";
 
@@ -55,6 +57,15 @@ export function knowledgeRoutes(db: Db) {
   };
   const reviewer = reviewerAgentService(db, retriever, reviewerLlm);
   const healthcheck = knowledgeHealthcheckService(db, issueService(db));
+  // Phase 3a Task 7 wire-up: evolution service consumes llm + retriever
+  // + issueService + drafts (concept draft creation for patternEmergence).
+  const evolution = knowledgeEvolutionService(
+    db,
+    llm,
+    retriever,
+    issueService(db),
+    drafts,
+  );
 
   function requireCompanyId(req: Request): string {
     const raw = req.query.companyId;
@@ -356,6 +367,28 @@ export function knowledgeRoutes(db: Db) {
     }
     const result = await healthcheck.runHealthcheck(companyId, {
       metrics: parsed.data.metrics,
+    });
+    res.json({ data: result });
+  });
+
+  // ============================================================
+  // POST /api/knowledge/evolution/run (Phase 3a Task 7)
+  //
+  // Triggers PRD §13.3 Routine 1 weekly-knowledge-evolution. Runs
+  // all 6 behaviors (or a subset via body.behaviors) sequentially
+  // and returns { behaviorsRun, issuesCreated, draftsCreated,
+  //              nodesModified, perBehavior[] }.
+  // ============================================================
+  router.post("/evolution/run", async (req, res) => {
+    const companyId = requireCompanyId(req);
+    assertCompanyAccess(req, companyId);
+    assertBoard(req);
+    const parsed = evolutionRunQuerySchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      throw badRequest("invalid body", parsed.error.format());
+    }
+    const result = await evolution.runEvolution(companyId, {
+      behaviors: parsed.data.behaviors,
     });
     res.json({ data: result });
   });

@@ -1069,6 +1069,8 @@ export {
   KNOWLEDGE_METRIC_NAMES,
   KNOWLEDGE_METRIC_STATUSES,
   healthcheckRunQuerySchema,
+  KNOWLEDGE_EVOLUTION_BEHAVIORS,
+  evolutionRunQuerySchema,
 } from "./validators/index.js";
 export type {
   CreateKnowledgeDraft,
@@ -1085,4 +1087,6 @@ export type {
   KnowledgeMetricName,
   KnowledgeMetricStatus,
   HealthcheckRunQuery,
+  KnowledgeEvolutionBehavior,
+  EvolutionRunQuery,
 } from "./validators/index.js";

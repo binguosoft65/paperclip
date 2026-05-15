@@ -42,9 +42,11 @@ import { pluginRoutes } from "./routes/plugins.js";
 import { adapterRoutes } from "./routes/adapters.js";
 import { pluginUiStaticRoutes } from "./routes/plugin-ui-static.js";
 import { knowledgeRoutes } from "./routes/knowledge.js";
-import { llmWikiService, knowledgeDrafterService, knowledgeRetrieverService, reviewerAgentService, knowledgeHealthcheckService } from "./services/index.js";
+import { llmWikiService, knowledgeDrafterService, knowledgeRetrieverService, reviewerAgentService, knowledgeHealthcheckService, knowledgeEvolutionService } from "./services/index.js";
+import { knowledgeDraftService } from "./services/knowledge-drafts.js";
 import { startReviewerScheduler } from "./services/knowledge-reviewer-scheduler.js";
 import { startHealthcheckScheduler } from "./services/knowledge-healthcheck-scheduler.js";
+import { startEvolutionScheduler } from "./services/knowledge-evolution-scheduler.js";
 import { issueService } from "./services/issues.js";
 import { companies as companiesTable } from "@paperclipai/db";
 import { setKnowledgeDrafterForHeartbeat } from "./services/heartbeat.js";
@@ -230,6 +232,24 @@ export async function createApp(
     },
     healthcheckForCompany: (_companyId) =>
       knowledgeHealthcheckService(db, issueService(db)),
+  });
+  // 知识 Evolution 进程内调度器（Phase 3a Task 8）;env KNOWLEDGE_EVOLUTION_ENABLED=true 开启
+  // 默认 10080 min (7 天) 一次,可由 KNOWLEDGE_EVOLUTION_INTERVAL_MINUTES 覆盖。
+  // 跟 PRD §13.3 Routine 1 cron `0 9 * * 1` 近似;真正准点 weekly 由
+  // Paperclip Routine 替代时切换。
+  const evolutionSchedulerHandle = startEvolutionScheduler({
+    listCompanies: async () => {
+      const rows = await db.select({ id: companiesTable.id }).from(companiesTable);
+      return rows;
+    },
+    evolutionForCompany: (_companyId) =>
+      knowledgeEvolutionService(
+        db,
+        llmWikiClient,
+        knowledgeRetriever,
+        issueService(db),
+        knowledgeDraftService(db),
+      ),
   });
   api.use(issueRoutes(db, opts.storageService, {
     feedbackExportService: opts.feedbackExportService,
@@ -481,6 +501,7 @@ export async function createApp(
     if (feedbackExportTimer) clearInterval(feedbackExportTimer);
     reviewerSchedulerHandle?.stop();
     healthcheckSchedulerHandle?.stop();
+    evolutionSchedulerHandle?.stop();
     devWatcher?.close();
     viteHtmlRenderer?.dispose();
     hostServiceCleanup.disposeAll();

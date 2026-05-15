@@ -428,6 +428,8 @@ export {
   KNOWLEDGE_METRIC_NAMES,
   KNOWLEDGE_METRIC_STATUSES,
   healthcheckRunQuerySchema,
+  KNOWLEDGE_EVOLUTION_BEHAVIORS,
+  evolutionRunQuerySchema,
   type CreateKnowledgeDraft,
   type ApproveKnowledgeDraft,
   type RejectKnowledgeDraft,
@@ -442,4 +444,6 @@ export {
   type KnowledgeMetricName,
   type KnowledgeMetricStatus,
   type HealthcheckRunQuery,
+  type KnowledgeEvolutionBehavior,
+  type EvolutionRunQuery,
 } from "./knowledge.js";

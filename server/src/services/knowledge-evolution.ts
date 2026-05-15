@@ -18,6 +18,24 @@ export type DraftServiceLike = Pick<
 >;
 
 /**
+ * Behavior identifiers in PRD §13.3 Routine 1 declaration order.
+ * Source-of-truth for runEvolution's default iteration order.
+ * Mirrors the @paperclipai/shared KNOWLEDGE_EVOLUTION_BEHAVIORS tuple
+ * (kept local to avoid an import cycle through the route layer).
+ */
+export const KNOWLEDGE_EVOLUTION_BEHAVIORS_ORDER = [
+  "promotion_check",
+  "decay_scan",
+  "merge_candidate_detect",
+  "conflict_detect",
+  "freshness_audit",
+  "pattern_emergence",
+] as const;
+
+export type KnowledgeEvolutionBehavior =
+  (typeof KNOWLEDGE_EVOLUTION_BEHAVIORS_ORDER)[number];
+
+/**
  * Phase 3a 演化引擎 (PRD §FR6 + §13.3 Routine 1 weekly-knowledge-evolution).
  *
  * 6 行为按 PRD §13.3 顺序串行: promotionCheck → decayScan →
@@ -964,12 +982,75 @@ export function knowledgeEvolutionService(
     };
   }
 
+  // ──────────────────────────────────────────────────────────────────
+  // Public entry: runEvolution(companyId, opts?) — Task 7 aggregator
+  //
+  // Sequential per PRD §13.3 Routine 1 Action list order:
+  //   promotion_check → decay_scan → merge_candidate_detect →
+  //   conflict_detect → freshness_audit → pattern_emergence
+  //
+  // Single behavior failure does NOT abort the rest — the offending
+  // behavior gets a synthetic BehaviorResult with errors[0] set.
+  // ──────────────────────────────────────────────────────────────────
+  async function runEvolution(
+    companyId: string,
+    opts?: { behaviors?: KnowledgeEvolutionBehavior[] },
+  ): Promise<RunEvolutionResult> {
+    const behaviors =
+      opts?.behaviors ?? [...KNOWLEDGE_EVOLUTION_BEHAVIORS_ORDER];
+    const dispatch: Record<
+      KnowledgeEvolutionBehavior,
+      () => Promise<BehaviorResult>
+    > = {
+      promotion_check: () => promotionCheck(companyId),
+      decay_scan: () => decayScan(companyId),
+      merge_candidate_detect: () => mergeCandidateDetect(companyId),
+      conflict_detect: () => conflictDetect(companyId),
+      freshness_audit: () => freshnessAudit(companyId),
+      pattern_emergence: () => patternEmergence(companyId),
+    };
+
+    const perBehavior: BehaviorResult[] = [];
+    for (const b of behaviors) {
+      try {
+        perBehavior.push(await dispatch[b]());
+      } catch (err) {
+        logger.warn(
+          { err, behavior: b, companyId },
+          "evolution: behavior threw, continuing with the rest",
+        );
+        perBehavior.push({
+          behavior: b,
+          candidatesFound: 0,
+          issuesCreated: 0,
+          draftsCreated: 0,
+          edgesCreated: 0,
+          nodesModified: 0,
+          errors: [
+            {
+              subject: b,
+              reason: err instanceof Error ? err.message : String(err),
+            },
+          ],
+          details: { aborted: true },
+        });
+      }
+    }
+
+    return {
+      behaviorsRun: perBehavior.length,
+      issuesCreated: perBehavior.reduce((sum, r) => sum + r.issuesCreated, 0),
+      draftsCreated: perBehavior.reduce((sum, r) => sum + r.draftsCreated, 0),
+      nodesModified: perBehavior.reduce((sum, r) => sum + r.nodesModified, 0),
+      perBehavior,
+    };
+  }
+
   return {
+    runEvolution,
     /**
-     * Internal methods exposed for unit tests. Task 7's runEvolution
-     * aggregator will expose a public runEvolution(companyId, opts?)
-     * entry point; the __test__ namespace stays for direct per-behavior
-     * verification.
+     * Internal methods exposed for unit tests. Routes / scheduler
+     * use runEvolution() above.
      */
     __test__: {
       decayScan,
@@ -1241,6 +1322,9 @@ export function knowledgeEvolutionService(
               },
               confidence: 0.6,
               source: "agent_self_review",
+              // 不跳过审核:概念草案进 reviewer pipeline,由 Phase 3b 自动筛选
+              // 后,Board 人工最终拍板。与 PRD §FR6 "Curator 自治 ≠ 自动入库" 一致。
+              skip_review: false,
             },
           });
           draftsCreated += 1;
