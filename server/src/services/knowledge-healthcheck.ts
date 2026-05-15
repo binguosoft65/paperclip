@@ -509,7 +509,9 @@ export function knowledgeHealthcheckService(
           AND computed_at < ${computedAt}
         ORDER BY computed_at DESC
         LIMIT 1
-      `)) as Array<{ status: KnowledgeMetricStatus } | undefined>;
+        // db.execute 返回 RowList<Record<string,unknown>[]>,与目标类型无重叠,
+        // 按 TS 提示先过 unknown;空结果由下方可选链 lastRows[0]?.status 兜底。
+      `)) as unknown as Array<{ status: KnowledgeMetricStatus }>;
       const lastStatus = lastRows[0]?.status;
 
       if (!shouldCreateAlarm(lastStatus, r.status)) continue;
