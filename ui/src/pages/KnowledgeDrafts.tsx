@@ -69,7 +69,7 @@ const PRE_VERDICT_TONE: Record<NonNullable<KnowledgeDraft["preVerdict"]>, string
 };
 
 export function KnowledgeDrafts() {
-  const { selectedCompanyId } = useCompany();
+  const { selectedCompanyId, selectedCompany } = useCompany();
   const { setBreadcrumbs } = useBreadcrumbs();
   const { pushToast } = useToastActions();
   const queryClient = useQueryClient();
@@ -134,7 +134,8 @@ export function KnowledgeDrafts() {
       invalidate();
       pushToast({
         title: "已批准并物化为节点",
-        description: `node_id: ${res?.data?.node_id?.slice(0, 8)}…`,
+        // ToastInput 只认 body 字段（无 description）；本文件其余 pushToast 均用 body
+        body: `node_id: ${res?.data?.node_id?.slice(0, 8)}…`,
         tone: "success",
       });
     },
@@ -280,7 +281,7 @@ export function KnowledgeDrafts() {
           />
         </Tabs>
         <div className="text-xs text-muted-foreground">
-          公司: <code className="text-foreground/80">{selectedCompanyId.slice(0, 8)}</code>
+          公司: <code className="text-foreground/80">{selectedCompany?.name ?? selectedCompanyId.slice(0, 8)}</code>
         </div>
       </div>
 
