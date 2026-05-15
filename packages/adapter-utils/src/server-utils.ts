@@ -2,6 +2,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import { constants as fsConstants, promises as fs, type Dirent } from "node:fs";
 import path from "node:path";
+import { StringDecoder } from "node:string_decoder";
 import { sanitizeRemoteExecutionEnv } from "./remote-execution-env.js";
 import { buildSshSpawnTarget, type SshRemoteExecutionSpec } from "./ssh.js";
 import { redactCommandText } from "./command-redaction.js";
@@ -1789,6 +1790,16 @@ export async function ensureCommandResolvable(
   throw new Error(`Command not found in PATH: "${command}"`);
 }
 
+// 用有状态的 StringDecoder 解码子进程输出流的单个 chunk:
+// 不完整的多字节 UTF-8 序列会被缓存到下一个 chunk 再拼接,
+// 从根本上避免“按 chunk 各自 String(chunk)”在边界处产生 U+FFFD 的中文乱码。
+function decodeStreamChunk(decoder: StringDecoder, chunk: unknown): string {
+  if (typeof chunk === "string") return chunk;
+  if (Buffer.isBuffer(chunk)) return decoder.write(chunk);
+  if (chunk instanceof Uint8Array) return decoder.write(Buffer.from(chunk));
+  return String(chunk);
+}
+
 export async function runChildProcess(
   runId: string,
   command: string,
@@ -1925,11 +1936,15 @@ export async function runChildProcess(
               }, opts.timeoutSec * 1000)
             : null;
 
+        // 每个流各自维护一个 StringDecoder,跨 chunk 边界保留不完整的多字节序列。
+        const stdoutDecoder = new StringDecoder("utf8");
+        const stderrDecoder = new StringDecoder("utf8");
+
         child.stdout?.on("data", (chunk: unknown) => {
           const readable = child.stdout;
           if (!readable) return;
           readable.pause();
-          const text = String(chunk);
+          const text = decodeStreamChunk(stdoutDecoder, chunk);
           stdout = appendWithCap(stdout, text);
           maybeArmTerminalResultCleanup();
           logChain = logChain
@@ -1945,7 +1960,7 @@ export async function runChildProcess(
           const readable = child.stderr;
           if (!readable) return;
           readable.pause();
-          const text = String(chunk);
+          const text = decodeStreamChunk(stderrDecoder, chunk);
           stderr = appendWithCap(stderr, text);
           maybeArmTerminalResultCleanup();
           logChain = logChain
@@ -1988,6 +2003,22 @@ export async function runChildProcess(
           if (timeout) clearTimeout(timeout);
           clearTerminalCleanupTimers();
           runningProcesses.delete(runId);
+          // 进程结束时冲刷 decoder 残留:正常 UTF-8 输出下 write() 已即时返回完整字符,
+          // 这里只在输出于多字节序列中途被截断时补上尾部,保证不丢字节、stdout/stderr 完整。
+          const stdoutTail = stdoutDecoder.end();
+          if (stdoutTail) {
+            stdout = appendWithCap(stdout, stdoutTail);
+            logChain = logChain
+              .then(() => opts.onLog("stdout", stdoutTail))
+              .catch((err) => onLogError(err, runId, "failed to append stdout log tail"));
+          }
+          const stderrTail = stderrDecoder.end();
+          if (stderrTail) {
+            stderr = appendWithCap(stderr, stderrTail);
+            logChain = logChain
+              .then(() => opts.onLog("stderr", stderrTail))
+              .catch((err) => onLogError(err, runId, "failed to append stderr log tail"));
+          }
           void logChain.finally(() => {
             void Promise.resolve()
               .then(() => target.cleanup?.())

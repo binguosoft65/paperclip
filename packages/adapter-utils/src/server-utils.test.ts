@@ -222,6 +222,31 @@ describe("runChildProcess", () => {
     expect(result.stdout).toBe("done");
   });
 
+  it("reassembles multi-byte UTF-8 chars split across stdout chunks", async () => {
+    // 子进程把 "中文测试" 的 UTF-8 字节拆成两次 write,且在多字节字符内部切开,
+    // 中间延迟以确保父进程收到两个独立的 'data' chunk。
+    // 若按 chunk 各自 String(chunk) 解码,边界处会产生 U+FFFD(即 BIN-3 评论的 efbfbd 损坏)。
+    const result = await runChildProcess(
+      randomUUID(),
+      process.execPath,
+      [
+        "-e",
+        "const b=Buffer.from('中文测试','utf8');process.stdout.write(b.subarray(0,1));setTimeout(()=>process.stdout.write(b.subarray(1)),120);",
+      ],
+      {
+        cwd: process.cwd(),
+        env: {},
+        timeoutSec: 10,
+        graceSec: 1,
+        onLog: async () => {},
+      },
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).not.toContain("�");
+    expect(result.stdout).toBe("中文测试");
+  });
+
   it("waits for onSpawn before sending stdin to the child", async () => {
     const spawnDelayMs = 150;
     const startedAt = Date.now();
