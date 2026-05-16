@@ -502,14 +502,21 @@ export function knowledgeHealthcheckService(
     // 3-4. 对每个 metric 查上一次 status,决定 alarm
     let alarmsCreated = 0;
     for (const r of results) {
+      // 原来直接绑定 JS Date(computedAt)：Drizzle 原始 sql 模板没有列类型
+      // 上下文(不同于上方 db.insert().values() 走 timestamp 列映射器)，
+      // postgres-js 驱动收到未序列化的 Date → ERR_INVALID_ARG_TYPE，
+      // 导致 healthcheck/run 每次必 500。改绑 ISO 字符串并显式
+      // ::timestamptz(computed_at 为 timestamp withTimezone)，驱动可原生序列化。
+      // 另:db.execute 返回 RowList<Record<string,unknown>[]>,与目标类型无重叠,
+      // 按 TS 提示先过 unknown;空结果由下方可选链 lastRows[0]?.status 兜底。
       const lastRows = (await db.execute(sql`
         SELECT status FROM knowledge_metrics
         WHERE company_id = ${companyId}
           AND metric_name = ${r.name}
-          AND computed_at < ${computedAt}
+          AND computed_at < ${computedAt.toISOString()}::timestamptz
         ORDER BY computed_at DESC
         LIMIT 1
-      `)) as Array<{ status: KnowledgeMetricStatus } | undefined>;
+      `)) as unknown as Array<{ status: KnowledgeMetricStatus }>;
       const lastStatus = lastRows[0]?.status;
 
       if (!shouldCreateAlarm(lastStatus, r.status)) continue;
